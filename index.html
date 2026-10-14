@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Dhenors · Controle financeiro</title>
+  <meta name="description" content="Controle financeiro pessoal: contas, parcelamentos, recorrentes, metas e análise. Funciona offline e os dados ficam no seu aparelho.">
+  <meta name="theme-color" content="#F6F8FB">
+  <meta name="color-scheme" content="light dark">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <!-- Aplica o tema antes de desenhar a página (evita "piscar" branco no modo escuro) -->
+  <script>
+    (function () {
+      var t = 'auto';
+      try { t = localStorage.getItem('dhenors:theme') || 'auto'; } catch (e) {}
+      var dark = t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    })();
+  </script>
+
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/views.css">
+
+  <script type="module" src="js/main.js"></script>
+</head>
+<body class="is-loading">
+  <a class="skip-link" href="#main">Pular para o conteúdo</a>
+
+  <div class="app">
+    <!-- Menu lateral (computador / tablet) -->
+    <aside class="sidebar" aria-label="Menu principal">
+      <a class="brand" href="#/painel">
+        <img src="assets/icons/logo-64.png" alt="" width="32" height="32">
+        <span>Dhenors</span>
+      </a>
+      <nav id="sidebar-nav" class="sidebar__nav"></nav>
+      <p class="sidebar__foot">Dados salvos neste aparelho</p>
+    </aside>
+
+    <div class="app__main">
+      <header id="topbar" class="topbar"></header>
+      <main id="main" class="content" tabindex="-1">
+        <div id="view" class="view">
+          <p class="loading">Carregando…</p>
+        </div>
+      </main>
+    </div>
+
+    <!-- Barra inferior (celular) -->
+    <nav id="tabbar" class="tabbar" aria-label="Navegação"></nav>
+  </div>
+
+  <noscript>
+    <p class="noscript">O Dhenors precisa de JavaScript ativado para funcionar.</p>
+  </noscript>
+</body>
+</html>

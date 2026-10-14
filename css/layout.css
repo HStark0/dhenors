@@ -1,0 +1,172 @@
+/* =============================================================
+   layout.css — Estrutura: menu lateral, barra superior,
+   área de conteúdo e barra inferior (celular)
+   Breakpoints (mobile-first): 640px · 1024px · 1280px
+   ============================================================= */
+
+.app { min-height: 100vh; min-height: 100dvh; }
+
+/* ---------- Menu lateral (≥1024px) ---------- */
+.sidebar { display: none; }
+
+.brand {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  font-weight: 800; font-size: var(--fs-lg); letter-spacing: -.01em;
+  color: var(--text); text-decoration: none;
+}
+.brand img { border-radius: 8px; }
+
+.sidebar__nav { display: flex; flex-direction: column; gap: 2px; margin-top: var(--sp-2); }
+
+.nav-link {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: 10px var(--sp-3);
+  border-radius: var(--radius-sm);
+  color: var(--text-2); text-decoration: none; font-weight: 500;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.nav-link:hover { background: var(--surface-2); color: var(--text); }
+.nav-link[aria-current="page"] {
+  position: relative; background: var(--primary-soft); color: var(--primary-text); font-weight: 650;
+}
+.nav-link[aria-current="page"]::before {
+  content: ''; position: absolute; left: -12px; top: 8px; bottom: 8px; width: 4px;
+  border-radius: 0 4px 4px 0; background: var(--brand-grad);
+}
+.nav-section { margin: var(--sp-4) var(--sp-3) var(--sp-1); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+.sidebar__foot { margin-top: auto; padding: var(--sp-3); font-size: var(--fs-xs); color: var(--muted); }
+
+/* ---------- Barra superior ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: var(--z-sticky);
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  /* Transparente sobre o fundo (sem faixa de outra cor). Ao rolar,
+     vira "vidro" igual ao menu lateral para o conteúdo passar por baixo. */
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+body.is-scrolled .topbar {
+  background: var(--surface-glass);
+  backdrop-filter: saturate(1.5) blur(18px);
+  -webkit-backdrop-filter: saturate(1.5) blur(18px);
+  border-bottom-color: var(--border);
+  box-shadow: 0 8px 24px -16px rgb(0 0 0 / .35);
+}
+.topbar__title { flex: 1 1 auto; min-width: 0; }
+.page-title { font-size: var(--fs-xl); font-weight: 800; letter-spacing: -.03em; line-height: 1.2; }
+.topbar__actions { display: flex; align-items: center; gap: var(--sp-1); }
+.topbar .topbar__new { display: none; } /* no celular o botão + fica na barra inferior */
+
+.month-nav {
+  order: 3; flex: 1 0 100%;
+  display: flex; align-items: center; justify-content: center; gap: var(--sp-1);
+}
+.month-nav__label {
+  min-width: 11ch; text-align: center;
+  font-weight: 650;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+
+/* ---------- Conteúdo ---------- */
+.content {
+  padding: var(--sp-4);
+  padding-bottom: calc(var(--tabbar-h) + var(--sp-8) + env(safe-area-inset-bottom));
+  outline: none;
+}
+.view {
+  max-width: var(--content-max); margin: 0 auto;
+  display: flex; flex-direction: column; gap: var(--sp-4);
+}
+
+/* ---------- Barra inferior (celular) ---------- */
+.tabbar {
+  position: fixed; z-index: var(--z-nav);
+  left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom));
+  display: grid; grid-template-columns: repeat(5, 1fr); align-items: center;
+  height: var(--tabbar-h);
+  background: var(--surface-glass);
+  backdrop-filter: saturate(1.6) blur(18px);
+  -webkit-backdrop-filter: saturate(1.6) blur(18px);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow-lg);
+}
+.tabbar__item {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 6px 0; font-size: var(--fs-xs); font-weight: 550;
+  color: var(--muted); text-decoration: none;
+}
+.tabbar__item.is-active { color: var(--primary-text); }
+.tabbar__new {
+  justify-self: center;
+  width: 54px; height: 54px; margin-top: -26px;
+  display: grid; place-items: center;
+  border-radius: 18px;
+  background: var(--btn-grad); color: var(--on-primary);
+  box-shadow: var(--shadow-glow);
+  border: 3px solid var(--bg);
+  transition: transform var(--dur) var(--spring);
+}
+.tabbar__new:active { transform: scale(.94); }
+.tabbar__new .icon { width: 26px; height: 26px; }
+
+/* ---------- Tablet ---------- */
+@media (min-width: 640px) {
+  .content { padding: var(--sp-6); padding-bottom: calc(var(--tabbar-h) + var(--sp-8)); }
+  .month-nav { order: 0; flex: 0 0 auto; }
+  .topbar { padding-inline: var(--sp-6); flex-wrap: nowrap; }
+}
+
+/* ---------- Computador ---------- */
+@media (min-width: 1024px) {
+  .app { display: grid; grid-template-columns: calc(var(--sidebar-w) + 12px) 1fr; }
+  .sidebar {
+    position: sticky; top: 12px; height: calc(100vh - 24px); margin: 12px 0 12px 12px;
+    display: flex; flex-direction: column;
+    padding: var(--sp-5) var(--sp-3);
+    background: var(--surface-glass);
+    backdrop-filter: saturate(1.5) blur(18px);
+    -webkit-backdrop-filter: saturate(1.5) blur(18px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow);
+    overflow-y: auto;
+  }
+  .app__main { min-width: 0; }
+  .tabbar { display: none; }
+  .topbar .topbar__new { display: inline-flex; }
+  .topbar { padding-inline: var(--sp-8); }
+  .content { padding: var(--sp-6) var(--sp-8) var(--sp-10); }
+}
+
+/* Menu lateral: só a lista de telas rola (logo e rodapé fixos), sem
+   barra visível; um esmaecido suave indica que há mais itens. */
+@media (min-width: 1024px) {
+  .sidebar { overflow: hidden; }
+  .sidebar__nav {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    margin-inline: calc(var(--sp-3) * -1); padding-inline: var(--sp-3);
+  }
+  .nav-link span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @supports (animation-timeline: scroll()) {
+    .sidebar__nav {
+      animation: nav-fade linear both;
+      animation-timeline: scroll(self);
+    }
+    @keyframes nav-fade {
+      0%   { mask-image: linear-gradient(#000 calc(100% - 40px), transparent); }
+      8%, 92% { mask-image: linear-gradient(transparent, #000 32px, #000 calc(100% - 40px), transparent); }
+      100% { mask-image: linear-gradient(transparent, #000 32px); }
+    }
+  }
+}
+@media (min-width: 1024px) and (max-height: 860px) {
+  .nav-link { padding-block: 7px; }
+  .nav-section { margin-top: var(--sp-3); }
+  .sidebar__foot { display: none; }
+}

@@ -1,0 +1,118 @@
+// =============================================================
+// storage.js — Persistência no navegador
+// -------------------------------------------------------------
+// Usa IndexedDB (grande, assíncrono, aguenta anos de dados).
+// Se IndexedDB não estiver disponível (ex.: janela anônima de
+// alguns navegadores), cai para localStorage.
+// =============================================================
+
+const DB_NAME = 'dhenors';
+const STORE = 'kv';
+const KEY = 'state';
+const LS_KEY = 'dhenors:state';
+
+let dbPromise = null;
+
+function openDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    if (!('indexedDB' in globalThis)) return reject(new Error('IndexedDB indisponível'));
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new Error('Banco bloqueado por outra aba'));
+  });
+  return dbPromise;
+}
+
+function idbRequest(mode, fn) {
+  return openDB().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, mode);
+    const req = fn(tx.objectStore(STORE));
+    tx.oncomplete = () => resolve(req?.result);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Transação abortada'));
+  }));
+}
+
+/** Lê o estado salvo (ou null se não houver). */
+export async function loadState() {
+  try {
+    const value = await idbRequest('readonly', (s) => s.get(KEY));
+    if (value) return value;
+  } catch (err) {
+    console.warn('[storage] IndexedDB falhou, usando localStorage.', err);
+  }
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Salva o estado inteiro. */
+export async function saveState(state) {
+  try {
+    await idbRequest('readwrite', (s) => s.put(state, KEY));
+    try { localStorage.removeItem(LS_KEY); } catch { /* sem acesso */ }
+    return true;
+  } catch (err) {
+    if (!globalThis.localStorage) throw err;
+    console.warn('[storage] IndexedDB falhou ao salvar, usando localStorage.', err);
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    return true;
+  }
+}
+
+/** Guarda um valor auxiliar (sessão da nuvem, chave de criptografia…). */
+export async function getItem(key) {
+  try { return await idbRequest('readonly', (s) => s.get(key)); } catch {
+    try { const raw = localStorage.getItem(`dhenors:${key}`); return raw ? JSON.parse(raw) : undefined; } catch { return undefined; }
+  }
+}
+
+export async function setItem(key, value) {
+  try {
+    await idbRequest('readwrite', (s) => (value === undefined ? s.delete(key) : s.put(value, key)));
+  } catch {
+    // Sem IndexedDB: só valores simples (uma CryptoKey não vai para o localStorage)
+    try {
+      if (value === undefined || value instanceof CryptoKey) localStorage.removeItem(`dhenors:${key}`);
+      else localStorage.setItem(`dhenors:${key}`, JSON.stringify(value));
+    } catch { /* sem acesso */ }
+  }
+}
+
+/** Apaga tudo deste aparelho. */
+export async function clearState() {
+  try { await idbRequest('readwrite', (s) => s.delete(KEY)); } catch { /* ignora */ }
+  try { localStorage.removeItem(LS_KEY); } catch { /* ignora */ }
+}
+
+/**
+ * Pede ao navegador para não apagar os dados quando faltar espaço.
+ * Retorna true se o armazenamento ficou "persistente".
+ */
+export async function requestPersistence() {
+  try {
+    if (!navigator.storage?.persist) return false;
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch {
+    return false;
+  }
+}
+
+export async function storageInfo() {
+  try {
+    const [estimate, persisted] = await Promise.all([
+      navigator.storage?.estimate?.() ?? {},
+      navigator.storage?.persisted?.() ?? false,
+    ]);
+    return { usage: estimate.usage ?? null, quota: estimate.quota ?? null, persisted };
+  } catch {
+    return { usage: null, quota: null, persisted: false };
+  }
+}

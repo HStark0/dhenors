@@ -1,0 +1,163 @@
+/* =============================================================
+   tokens.css — Design tokens (cores, tipografia, espaçamento)
+   -------------------------------------------------------------
+   Visual 3.0: superfícies "vidro" sobre um fundo com brilho
+   suave, gradiente da marca (azul → ciano), cantos generosos.
+   Os pares texto/fundo mantêm contraste WCAG AA (4,5:1).
+   Tema: <html data-theme="light|dark"> (definido no index.html).
+   ============================================================= */
+
+:root {
+  /* Tipografia — fontes do sistema: zero download, ótima leitura */
+  --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-num: ui-rounded, 'SF Pro Rounded', var(--font);
+  --fs-xs: 0.75rem;    /* 12px — mínimo usado no app */
+  --fs-sm: 0.8125rem;  /* 13px */
+  --fs-md: 0.9375rem;  /* 15px — texto padrão */
+  --fs-lg: 1.125rem;   /* 18px */
+  --fs-xl: 1.375rem;   /* 22px */
+  --fs-2xl: 1.75rem;   /* 28px */
+  --fs-3xl: 2.25rem;   /* 36px */
+  --lh: 1.5;
+
+  /* Espaçamento (múltiplos de 4px) */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+
+  --radius-sm: 10px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-full: 999px;
+
+  /* Camadas (z-index) — escala única */
+  --z-sticky: 10;
+  --z-nav: 20;
+  --z-popover: 45;
+  --z-toast: 50;
+  --z-lock: 90;
+
+  --sidebar-w: 248px;
+  --tabbar-h: 68px;
+  --content-max: 1280px;
+  --ease: cubic-bezier(.2, .7, .3, 1);
+  --spring: cubic-bezier(.34, 1.56, .64, 1);
+  --dur: 180ms;
+
+  /* Marca */
+  --brand-1: #2563EB;
+  --brand-2: #06B6D4;
+  --brand-grad: linear-gradient(135deg, var(--brand-1) 0%, #3B82F6 45%, var(--brand-2) 100%);
+  /* Botões: gradiente que mantém branco legível (≥ 4,5:1) */
+  --btn-grad: linear-gradient(135deg, #2563EB 0%, #1D4ED8 55%, #0E7490 100%);
+}
+
+/* ---------- Tema claro ---------- */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #F4F6FB;
+  --bg-glow:
+    radial-gradient(900px 500px at 8% -10%, rgb(37 99 235 / .10), transparent 60%),
+    radial-gradient(800px 480px at 100% 0%, rgb(6 182 212 / .10), transparent 60%);
+  --surface: #FFFFFF;
+  --surface-glass: rgb(255 255 255 / .78);
+  --surface-2: #F1F4F9;
+  --surface-3: #E6EBF3;
+  --border: rgb(15 23 42 / .08);
+  --border-strong: #CBD5E1;
+
+  --text: #0B1324;        /* 17,8:1 */
+  --text-2: #334155;      /* 10,4:1 */
+  --muted: #5A6A80;       /* 5,3:1 */
+
+  --primary: #2563EB;     /* branco sobre ele: 5,2:1 */
+  --primary-hover: #1D4ED8;
+  --primary-soft: #EAF1FF;
+  --primary-text: #1D4ED8;
+  --on-primary: #FFFFFF;
+
+  --pos: #047857;         /* dinheiro entrando / pago — 5,5:1 */
+  --pos-soft: #E3F7EE;
+  --neg: #B91C1C;         /* atraso / negativo — 6,4:1 */
+  --neg-soft: #FDECEC;
+  --warn: #A16207;        /* atenção — 5,0:1 */
+  --warn-soft: #FEF6E4;
+  --info: #0369A1;
+  --info-soft: #E6F4FB;
+
+  /* Cores de gráfico (preenchimento, não texto) */
+  --chart-income: #10B981;
+  --chart-spent: #6366F1;
+  --chart-fixed: #F59E0B;
+  --chart-variable: #3B82F6;
+  --chart-balance: #2563EB;
+  --chart-grid: #E2E8F0;
+
+  --hero-bg:
+    radial-gradient(600px 300px at 110% -20%, rgb(6 182 212 / .45), transparent 60%),
+    radial-gradient(500px 300px at -10% 120%, rgb(99 102 241 / .45), transparent 60%),
+    linear-gradient(135deg, #0B1B3F 0%, #12306A 55%, #0D4F66 100%);
+  --hero-text: #F8FAFC;
+  --hero-muted: #C7D2E4;
+
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / .05);
+  --shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -6px rgb(15 23 42 / .08);
+  --shadow-lg: 0 24px 60px -12px rgb(15 23 42 / .25);
+  --shadow-glow: 0 10px 30px -8px rgb(37 99 235 / .45);
+  --backdrop: rgb(15 23 42 / .45);
+  --focus: 0 0 0 3px rgb(37 99 235 / .35);
+}
+
+/* ---------- Tema escuro ---------- */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #060A14;
+  --bg-glow:
+    radial-gradient(900px 520px at 5% -10%, rgb(37 99 235 / .22), transparent 60%),
+    radial-gradient(800px 480px at 100% 0%, rgb(6 182 212 / .14), transparent 60%);
+  --surface: #0E1526;
+  --surface-glass: rgb(14 21 38 / .72);
+  --surface-2: #141D33;
+  --surface-3: #1B2642;
+  --border: rgb(148 163 184 / .12);
+  --border-strong: #2C3A5C;
+
+  --text: #E8EDF6;
+  --text-2: #C3CCDB;
+  --muted: #98A4BA;       /* 6,4:1 sobre --surface */
+
+  --primary: #2563EB;
+  --primary-hover: #3B74F0;
+  --primary-soft: #16244A;
+  --primary-text: #93B6FF;
+  --on-primary: #FFFFFF;
+
+  --pos: #4ADE9B;
+  --pos-soft: #0D2A22;
+  --neg: #FF8A8A;
+  --neg-soft: #35161E;
+  --warn: #F7C14B;
+  --warn-soft: #30250D;
+  --info: #7CC7F2;
+  --info-soft: #0E2638;
+
+  --chart-income: #34D399;
+  --chart-spent: #818CF8;
+  --chart-fixed: #FBBF24;
+  --chart-variable: #60A5FA;
+  --chart-balance: #60A5FA;
+  --chart-grid: #1F2A44;
+
+  --hero-bg:
+    radial-gradient(600px 300px at 110% -20%, rgb(6 182 212 / .35), transparent 60%),
+    radial-gradient(500px 300px at -10% 120%, rgb(99 102 241 / .40), transparent 60%),
+    linear-gradient(135deg, #0F2150 0%, #15326B 55%, #0E4C60 100%);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .3);
+  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 30px -8px rgb(0 0 0 / .45);
+  --shadow-lg: 0 30px 70px -10px rgb(0 0 0 / .6);
+  --shadow-glow: 0 10px 34px -8px rgb(37 99 235 / .6);
+  --backdrop: rgb(2 6 15 / .65);
+  --focus: 0 0 0 3px rgb(147 182 255 / .45);
+}

@@ -1,0 +1,20 @@
+{
+  "name": "Dhenors · Controle financeiro",
+  "short_name": "Dhenors",
+  "description": "Contas, parcelamentos, recorrentes, metas e análise. Funciona offline.",
+  "lang": "pt-BR",
+  "start_url": "./index.html#/painel",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0B1220",
+  "theme_color": "#0B1220",
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Contas do mês", "url": "./index.html#/contas" },
+    { "name": "Análise", "url": "./index.html#/analise" }
+  ]
+}
