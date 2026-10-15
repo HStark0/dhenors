@@ -34,9 +34,9 @@ export function openPayslipImport(ym = store.ui.ym) {
         <p class="muted small">O app lê as verbas (salário, adicionais, horas, consignado, atestado) e mostra o que vai cadastrar antes de importar. O arquivo não sai do seu aparelho.</p>
         <button type="button" class="btn btn--primary" data-pick-pdf>${icon('upload')} Escolher PDF</button>
       </div>
-      <details class="details" style="margin-top:16px">
+      <details class="details">
         <summary>${icon('clipboard-paste', 'icon--xs')} PDF escaneado ou não abriu? Cole o texto</summary>
-        <div class="field field--full" style="margin-top:12px">
+        <div class="field field--full">
           <label class="field__label" for="pay-text">Texto do holerite</label>
           <textarea class="input textarea" id="pay-text" name="text" rows="8" placeholder="Abra o PDF, selecione tudo (Ctrl+A), copie (Ctrl+C) e cole aqui."></textarea>
           <p class="field__hint">Copie a partir do visualizador de PDF ou do app do banco/empresa.</p>

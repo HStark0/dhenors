@@ -52,6 +52,14 @@ Planilhas cansam e a maioria dos apps de finanças não entende o contracheque b
 - **Simulador "e se"**: veja o efeito de um aumento, uma compra parcelada ou de cancelar assinaturas.
 - **Análise** de renda, gastos e tendências, e **histórico** com fechamento de mês.
 
+### 📈 Investimentos
+- **Carteira completa**: CDB, Tesouro (Selic, IPCA+, Prefixado), LCI/LCA, poupança, caixinhas, fundos, ações, FIIs, ETFs, cripto e previdência.
+- **Renda fixa que rende sozinha**: informe "110% do CDI", "IPCA + 6%" ou "13% a.a." e o saldo é estimado dia a dia, até o vencimento, com o **IR regressivo** já calculado.
+- **Aportes, resgates, proventos e atualização de saldo**, com histórico; o aporte pode sair do saldo do mês.
+- **Evolução do patrimônio**, **alocação por classe** e **carteira ideal**, com sugestão de onde colocar o próximo aporte.
+- **Meta de aporte mensal**, **reserva de emergência** (entra na Saúde financeira) e **vencimentos na Agenda**.
+- **Projeção** com juros compostos (com ou sem inflação), tempo até uma meta de patrimônio e renda passiva estimada.
+
 ### 🔐 Segurança e nuvem
 - Os dados são salvos **primeiro no aparelho** — o app funciona mesmo sem internet.
 - **Sincronização na nuvem** opcional: acesse os mesmos dados no computador e no celular.

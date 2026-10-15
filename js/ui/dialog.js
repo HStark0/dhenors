@@ -53,9 +53,12 @@ export function openDialog({ title, body, submitLabel = null, onSubmit = null, o
   dialog.addEventListener('close', () => dialog.remove());
   dialog.addEventListener('click', (ev) => {
     if (ev.target.closest('[data-close]')) { ev.preventDefault(); close(); }
-    // clique no fundo escurecido fecha
-    if (ev.target === dialog) close();
   });
+  // Só fecha pelos botões (X, Cancelar, Confirmar) ou com 2 cliques no fundo
+  // escurecido — um clique ou Esc sem querer não perde o que foi digitado.
+  closeOnDoubleClickOutside(dialog, close);
+  dialog.addEventListener('cancel', (ev) => ev.preventDefault());
+  dialog.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') ev.preventDefault(); });
 
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -75,10 +78,65 @@ export function openDialog({ title, body, submitLabel = null, onSubmit = null, o
 
   dialog.showModal();
   onMount?.(dialog);
+  fillGridGaps(dialog);
   // foca o primeiro campo, não o botão de fechar
   const first = dialog.querySelector('.dialog__body input:not([type=hidden]), .dialog__body select, .dialog__body textarea, .dialog__body button');
   first?.focus();
   return { dialog, close };
+}
+
+/**
+ * Fecha a janela com 2 cliques seguidos no fundo escurecido (fora da
+ * caixa); um clique só não faz nada. Feito à mão, e não com "dblclick",
+ * para funcionar também no toque do celular.
+ */
+export function closeOnDoubleClickOutside(dialog, close, interval = 450) {
+  let last = 0;
+  dialog.addEventListener('click', (ev) => {
+    // ev.detail === 0: clique gerado pelo teclado, não pelo mouse
+    if (ev.target !== dialog || ev.detail === 0) return;
+    const r = dialog.getBoundingClientRect();
+    if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) return;
+    const now = performance.now();
+    if (now - last <= interval) { last = 0; close(); } else last = now;
+  });
+}
+
+/**
+ * Grades de campos sem buracos: quando uma linha fica incompleta
+ * (ex.: 3 campos numa grade de 2 colunas, ou um campo que aparece e
+ * some), o último campo da linha se estica até o fim dela.
+ * Refaz a conta quando algo aparece/some ou a janela muda de largura.
+ */
+function fillGridGaps(dialog) {
+  const visible = (el) => !el.hidden && el.tagName !== 'DATALIST' && getComputedStyle(el).display !== 'none';
+  const layout = () => {
+    for (const grid of dialog.querySelectorAll('.form-grid')) {
+      const cols = getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length;
+      const items = [...grid.children];
+      items.forEach((el) => el.style.removeProperty('grid-column'));
+      if (cols < 2) continue;
+      let col = 0;
+      let last = null;
+      for (const el of items) {
+        if (!visible(el)) continue;
+        const full = getComputedStyle(el).gridColumnEnd === '-1';
+        if (full) {
+          if (col && last) last.style.gridColumn = `span ${cols - col + 1}`;
+          col = 0; last = null;
+          continue;
+        }
+        col = (col + 1) % cols;
+        last = col ? el : null;
+      }
+      if (col && last) last.style.gridColumn = `span ${cols - col + 1}`;
+    }
+  };
+  let frame = 0;
+  const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(layout); };
+  layout();
+  new MutationObserver(schedule).observe(dialog, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden'] });
+  new ResizeObserver(schedule).observe(dialog);
 }
 
 function clearErrors(form) {

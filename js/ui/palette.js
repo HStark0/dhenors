@@ -9,11 +9,13 @@
 import { html, fragment, escapeHTML } from './dom.js';
 import { icon } from './icons.js';
 import { toast } from './toast.js';
+import { closeOnDoubleClickOutside } from './dialog.js';
 import { store } from '../core/store.js';
 import { formatBRL } from '../core/money.js';
 import { formatDateBR, relativeDays } from '../core/dates.js';
 import { parseQuickAdd } from '../domain/quickadd.js';
 import { suggestCategory } from '../domain/importer.js';
+import { INVEST_TYPES } from '../domain/investments.js';
 import * as A from '../domain/actions.js';
 
 const norm = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -46,7 +48,7 @@ export function openPalette({ nav, commands, openEditor }) {
 
   const close = () => { el?.close(); };
   el.addEventListener('close', () => { el.remove(); el = null; });
-  el.addEventListener('click', (ev) => { if (ev.target === el) close(); });
+  closeOnDoubleClickOutside(el, close);
 
   const build = () => {
     const q = norm(input.value.trim());
@@ -79,6 +81,7 @@ export function openPalette({ nav, commands, openEditor }) {
         ...d.recurring.map((x) => ({ kind: 'recurring', x, label: x.description, hint: `${formatBRL(x.cents)}/mês · dia ${x.dueDay}`, icon: 'repeat' })),
         ...d.installments.map((x) => ({ kind: 'installment', x, label: x.description, hint: `${x.count}× · total ${formatBRL(x.totalCents)}`, icon: 'credit-card' })),
         ...d.goals.map((x) => ({ kind: 'goal', x, label: x.description, hint: `meta ${formatBRL(x.targetCents)}`, icon: 'target' })),
+        ...(d.investments || []).map((x) => ({ kind: 'investment', x, label: x.name, hint: [INVEST_TYPES[x.type]?.label, x.institution].filter(Boolean).join(' · '), icon: 'coins' })),
       ].filter((r) => norm(r.label).includes(q))
         .sort((a, b) => (b.x.dueDate || '').localeCompare(a.x.dueDate || ''))
         .slice(0, 8);

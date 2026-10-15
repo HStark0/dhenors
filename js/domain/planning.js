@@ -10,6 +10,7 @@ import { computeMonth, overdueBefore, goalPlan, installmentSummary } from './led
 import { monthSeries, projection, median } from './analysis.js';
 import { payrollProfileFor, thirteenthFor, vacationIn, paydayIn } from './payroll.js';
 import { newId } from './schema.js';
+import { positionAt, investingOf } from './investments.js';
 
 // ---------- Orçamento por categoria ----------
 
@@ -41,13 +42,19 @@ export function budgetStatus(state, ym, today = todayISO()) {
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
-/** Quanto a reserva de emergência cobre de meses de gastos. */
+/**
+ * Quanto a reserva de emergência cobre de meses de gastos.
+ * Conta as metas de reserva e os investimentos marcados como reserva.
+ */
 export function emergencyCoverage(state, ym, today = todayISO()) {
   const goals = state.goals.filter((g) => g.emergency || /reserva|emerg/i.test(g.description));
-  const saved = sumCents(goals.map((g) => goalPlan(g, today).saved));
+  const investing = investingOf(state.settings);
+  const invs = (state.investments || []).filter((i) => i.emergency);
+  const saved = sumCents(goals.map((g) => goalPlan(g, today).saved))
+    + sumCents(invs.map((i) => positionAt(i, investing, today).value));
   const spent = monthSeries(state, addMonthsYM(ym, -1), 3, today).map((m) => m.spent).filter((v) => v > 0);
   const monthly = spent.length ? median(spent) : computeMonth(state, ym, today).totals.all;
-  return { saved, monthly, months: monthly > 0 ? saved / monthly : 0, hasGoal: goals.length > 0 };
+  return { saved, monthly, months: monthly > 0 ? saved / monthly : 0, hasGoal: goals.length + invs.length > 0 };
 }
 
 /**
@@ -89,7 +96,7 @@ export function financialScore(state, ym, today = todayISO()) {
       key: 'reserve', label: 'Reserva de emergência', max: 20,
       value: reserve.monthly ? `${reserve.months.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${reserve.months >= 1 && reserve.months < 2 ? 'mês' : 'meses'} de gastos` : '—',
       points: 20 * clamp01(reserve.months / 6),
-      tip: reserve.hasGoal ? (reserve.months >= 6 ? 'Reserva completa (6+ meses).' : 'Meta: 6 meses de gastos guardados.') : 'Crie uma meta marcada como "reserva de emergência".',
+      tip: reserve.hasGoal ? (reserve.months >= 6 ? 'Reserva completa (6+ meses).' : 'Meta: 6 meses de gastos guardados.') : 'Crie uma meta de "reserva de emergência" ou marque um investimento como reserva.',
     },
     {
       key: 'month', label: 'Gastos do mês × renda', max: 15,
@@ -202,6 +209,10 @@ export function calendarEvents(state, ym, today = todayISO()) {
   const v = vacationIn(state.settings, ym);
   if (v) add(v.start, { type: 'vacation', label: `Início das férias (${v.days} dias)`, cents: m.income.vacation?.net || 0 });
   for (const g of state.goals) if (g.deadline && ymOf(g.deadline) === ym) add(g.deadline, { type: 'goal', label: `Prazo: ${g.description}`, cents: g.targetCents });
+  const investing = investingOf(state.settings);
+  for (const inv of state.investments || []) {
+    if (inv.maturity && ymOf(inv.maturity) === ym) add(inv.maturity, { type: 'invest', label: `Vencimento: ${inv.name}`, cents: positionAt(inv, investing, inv.maturity).value });
+  }
   return out;
 }
 

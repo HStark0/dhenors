@@ -129,7 +129,7 @@ export function editSalaryBase(ym = store.ui.ym) {
     body: html`
       <p class="dialog__text muted">Informe o valor <strong>bruto</strong> (antes de INSS e IR), como aparece no contracheque.</p>
       <div class="form-grid">
-        ${moneyField({ label: 'Salário base bruto', name: 'grossCents', cents: current && !current.legacyNet ? current.grossCents : null, required: false,
+        ${moneyField({ label: 'Salário base bruto', name: 'grossCents', cents: current && !current.legacyNet ? current.grossCents : null, required: false, full: true,
           hint: current?.legacyNet ? `Antes você informou ${formatBRL(current.grossCents)} já líquido.` : '' })}
         ${monthField({ label: 'Vale a partir de', name: 'fromYM', value: ym, hint: 'Meses anteriores continuam com o valor antigo.' })}
         ${numberField({ label: 'Dependentes (IR)', name: 'dependents', value: current?.dependents || 0, min: 0, max: 20, hint: 'R$ 189,59 de dedução cada.' })}

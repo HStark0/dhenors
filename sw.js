@@ -7,7 +7,7 @@
 // (Os DADOS do usuário não ficam aqui: ficam no IndexedDB.)
 // =============================================================
 
-const VERSION = 'dhenors-v3.2.0';
+const VERSION = 'dhenors-v3.4.2';
 
 const APP_SHELL = [
   './',
@@ -18,6 +18,7 @@ const APP_SHELL = [
   './css/layout.css',
   './css/components.css',
   './css/views.css',
+  './css/brand.css',
   './js/main.js',
   './js/config.js',
   './js/core/calendar.js',
@@ -32,6 +33,7 @@ const APP_SHELL = [
   './js/domain/analysis.js',
   './js/domain/defaults.js',
   './js/domain/importer.js',
+  './js/domain/investments.js',
   './js/domain/ledger.js',
   './js/domain/merge.js',
   './js/domain/payroll.js',
@@ -49,12 +51,15 @@ const APP_SHELL = [
   './js/ui/exports.js',
   './js/ui/forms.js',
   './js/ui/icons.js',
+  './js/ui/investEditors.js',
   './js/ui/items.js',
+  './js/ui/motion.js',
   './js/ui/lock.js',
   './js/ui/notify.js',
   './js/ui/palette.js',
   './js/ui/payrollEditor.js',
   './js/ui/payslipImport.js',
+  './js/ui/scrollHint.js',
   './js/ui/select.js',
   './js/ui/toast.js',
   './js/views/agenda.js',
@@ -67,6 +72,7 @@ const APP_SHELL = [
   './js/views/history.js',
   './js/views/importer.js',
   './js/views/installments.js',
+  './js/views/investments.js',
   './js/views/recurring.js',
   './js/views/salary.js',
   './js/views/settings.js',

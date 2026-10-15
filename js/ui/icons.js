@@ -10,6 +10,9 @@
 import { raw } from './dom.js';
 
 const PATHS = {
+  'coins': '<circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/>',
+  'chart-pie': '<path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>',
+  'landmark': '<line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="11"/><line x1="10" x2="10" y1="18" y2="11"/><line x1="14" x2="14" y1="18" y2="11"/><line x1="18" x2="18" y1="18" y2="11"/><polygon points="12 2 20 7 4 7"/>',
   'layout-dashboard': '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
   'receipt': '<path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/>',
   'repeat': '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
@@ -106,8 +109,12 @@ export function mountIconSprite() {
   const symbols = Object.entries(PATHS)
     .map(([name, body]) => `<symbol id="i-${name}" viewBox="0 0 24 24">${body}</symbol>`)
     .join('');
+  // Não pode ser display:none: o degradê da logo (#g-brand) deixaria de funcionar.
+  // userSpaceOnUse (0–24, a área do ícone) para valer também em traços retos.
+  const defs = `<defs><linearGradient id="g-brand" gradientUnits="userSpaceOnUse" x1="4" y1="2" x2="16" y2="22">
+    <stop offset="0" style="stop-color:var(--icon-g1)"/><stop offset=".5" style="stop-color:var(--icon-g2)"/><stop offset="1" style="stop-color:var(--icon-g3)"/></linearGradient></defs>`;
   document.body.insertAdjacentHTML('afterbegin',
-    `<svg id="icon-sprite" aria-hidden="true" style="display:none">${symbols}</svg>`);
+    `<svg id="icon-sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden">${defs}${symbols}</svg>`);
 }
 
 /** Ícone decorativo (leitores de tela ignoram). Passe um rótulo em botões só com ícone. */

@@ -47,9 +47,17 @@
   /* Marca */
   --brand-1: #2563EB;
   --brand-2: #06B6D4;
-  --brand-grad: linear-gradient(135deg, var(--brand-1) 0%, #3B82F6 45%, var(--brand-2) 100%);
+  /* Cores da logo: verde-limão → turquesa → azul (de cima para baixo) */
+  --logo-1: #86EF6F;
+  --logo-2: #2DD4BF;
+  --logo-3: #1E7BE8;
+  --brand-grad: linear-gradient(160deg, var(--logo-1) 0%, var(--logo-2) 45%, var(--logo-3) 100%);
+  /* Na horizontal (barras de progresso, filetes): cresce do azul para o verde */
+  --brand-grad-h: linear-gradient(90deg, var(--logo-3) 0%, var(--logo-2) 55%, var(--logo-1) 100%);
+  /* Versão escura, para fundos com ícone branco (contraste ≥ 3:1) */
+  --brand-grad-deep: linear-gradient(150deg, #15803D 0%, #0F766E 45%, #1D4ED8 100%);
   /* Botões: gradiente que mantém branco legível (≥ 4,5:1) */
-  --btn-grad: linear-gradient(135deg, #2563EB 0%, #1D4ED8 55%, #0E7490 100%);
+  --btn-grad: linear-gradient(135deg, #2563EB 0%, #1D4ED8 50%, #0F766E 100%);
 }
 
 /* ---------- Tema claro ---------- */
@@ -59,7 +67,8 @@
   --bg: #F4F6FB;
   --bg-glow:
     radial-gradient(900px 500px at 8% -10%, rgb(37 99 235 / .10), transparent 60%),
-    radial-gradient(800px 480px at 100% 0%, rgb(6 182 212 / .10), transparent 60%);
+    radial-gradient(800px 480px at 100% 0%, rgb(6 182 212 / .10), transparent 60%),
+    radial-gradient(700px 420px at 60% 110%, rgb(134 239 111 / .10), transparent 60%);
   --surface: #FFFFFF;
   --surface-glass: rgb(255 255 255 / .78);
   --surface-2: #F1F4F9;
@@ -115,7 +124,8 @@
   --bg: #060A14;
   --bg-glow:
     radial-gradient(900px 520px at 5% -10%, rgb(37 99 235 / .22), transparent 60%),
-    radial-gradient(800px 480px at 100% 0%, rgb(6 182 212 / .14), transparent 60%);
+    radial-gradient(800px 480px at 100% 0%, rgb(6 182 212 / .14), transparent 60%),
+    radial-gradient(700px 420px at 60% 110%, rgb(134 239 111 / .07), transparent 60%);
   --surface: #0E1526;
   --surface-glass: rgb(14 21 38 / .72);
   --surface-2: #141D33;

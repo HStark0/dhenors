@@ -23,10 +23,12 @@ import { openNewMenu } from './ui/editors.js';
 import { exportBackup, importBackup } from './ui/backup.js';
 import { openExportDialog } from './ui/exports.js';
 import { openPalette } from './ui/palette.js';
+import { initScrollHints } from './ui/scrollHint.js';
+import { afterViewRender } from './ui/motion.js';
 import { showLock, bindAutoLock } from './ui/lock.js';
 import { runReminders } from './ui/notify.js';
 import { cloud } from './core/cloud.js';
-import { cloudButton, openCloud } from './ui/cloudUI.js';
+import { cloudButton, openCloud, newPasswordDialog } from './ui/cloudUI.js';
 import * as E from './ui/editors.js';
 import { computeMonth, overdueBefore } from './domain/ledger.js';
 import * as A from './domain/actions.js';
@@ -37,6 +39,8 @@ import bills from './views/bills.js';
 import recurring from './views/recurring.js';
 import installments from './views/installments.js';
 import goals from './views/goals.js';
+import investments from './views/investments.js';
+import * as IE from './ui/investEditors.js';
 import creditors from './views/creditors.js';
 import categories from './views/categories.js';
 import analysis from './views/analysis.js';
@@ -48,7 +52,7 @@ import importer, { bindDrop, pickFile } from './views/importer.js';
 
 // ---------- Rotas e navegação ----------
 
-const VIEWS = [dashboard, agenda, salary, bills, recurring, installments, goals, simulator, creditors, categories, importer, analysis, history, settings];
+const VIEWS = [dashboard, agenda, salary, bills, recurring, installments, goals, investments, simulator, creditors, categories, importer, analysis, history, settings];
 const ROUTES = Object.fromEntries(VIEWS.map((v) => [v.id, v]));
 
 /** Menu lateral, em seções. */
@@ -66,6 +70,7 @@ const NAV_SECTIONS = [
   ] },
   { title: 'Planejamento', items: [
     { id: 'metas', label: 'Metas', icon: 'target' },
+    { id: 'investimentos', label: 'Investimentos', icon: 'coins' },
     { id: 'categorias', label: 'Categorias', icon: 'tags' },
     { id: 'simulador', label: 'Simulador', icon: 'wand-sparkles' },
   ] },
@@ -127,6 +132,8 @@ function palette() {
       { label: 'Nova despesa recorrente', icon: 'repeat', run: () => E.editRecurring() },
       { label: 'Novo parcelamento', icon: 'credit-card', run: () => E.editInstallment() },
       { label: 'Lançar renda extra / plantão', icon: 'stethoscope', run: () => E.editExtraIncome() },
+      { label: 'Aporte em investimento', icon: 'coins', run: () => IE.quickMovement('aporte') },
+      { label: 'Novo investimento', icon: 'landmark', run: () => IE.editInvestment() },
       { label: 'Importar extrato do banco', icon: 'file-up', run: () => pickFile() },
       { label: 'Baixar dados (planilhas, holerite)', icon: 'download', run: () => openExportDialog('summary') },
       { label: 'Fazer backup', icon: 'shield-check', run: () => exportBackup() },
@@ -138,6 +145,7 @@ function palette() {
       if (kind === 'recurring') E.editRecurring(x);
       if (kind === 'installment') E.installmentDetails(x.id);
       if (kind === 'goal') E.editGoal(x);
+      if (kind === 'investment') IE.investmentHistory(x);
     },
   });
 }
@@ -283,6 +291,8 @@ function tab(id, routeId) {
     </a>`;
 }
 
+let lastRendered = '';
+
 function renderAll({ routeChanged = false } = {}) {
   const routeId = currentRoute();
   const view = ROUTES[routeId];
@@ -294,6 +304,10 @@ function renderAll({ routeChanged = false } = {}) {
     console.error(err);
     render($('#view'), html`<div class="card empty"><p><strong>Erro ao exibir esta tela.</strong></p><p class="muted">${err.message}</p></div>`);
   }
+  // Entrada animada só ao trocar de tela, abrir o app ou mudar de mês
+  const entering = routeChanged || !lastRendered || lastRendered !== `${routeId}|${store.ui.ym}`;
+  lastRendered = `${routeId}|${store.ui.ym}`;
+  afterViewRender($('#view'), routeId, { entering });
   if (routeChanged) {
     window.scrollTo(0, 0);
     $('#main').focus({ preventScroll: true });
@@ -352,11 +366,22 @@ function onboarding() {
 // ---------- Inicialização ----------
 
 async function start() {
-  // Volta do link de confirmação de e-mail do Supabase (#access_token=… ou #error=…)
+  // Volta de um link de e-mail do Supabase (#access_token=…&type=… ou #error=…):
+  // confirmação de cadastro ou "Esqueci minha senha"
+  let recovery = null;
   if (/access_token=|error_description=/.test(location.hash)) {
-    const ok = /access_token=/.test(location.hash);
-    history.replaceState(null, '', `${location.pathname}#/ajustes`);
-    setTimeout(() => toast(ok ? 'E-mail confirmado! Agora entre na nuvem com seu e-mail e senha.' : 'O link de confirmação expirou. Peça outro criando a conta de novo.', { type: ok ? 'success' : 'error', duration: 9000 }), 800);
+    const p = new URLSearchParams(location.hash.slice(1));
+    // window.history: "history" aqui é a tela Histórico (import acima)
+    window.history.replaceState(null, '', `${location.pathname}#/ajustes`);
+    if (p.get('type') === 'recovery' && p.get('access_token')) {
+      recovery = { access_token: p.get('access_token'), refresh_token: p.get('refresh_token'), expires_in: p.get('expires_in') };
+    } else {
+      const ok = p.has('access_token');
+      const msg = ok ? 'E-mail confirmado! Agora entre na nuvem com seu e-mail e senha.'
+        : p.get('error_code') === 'otp_expired' ? 'O link do e-mail expirou ou já foi usado. Peça outro (em "Entrar na nuvem").'
+        : `Não foi possível usar o link do e-mail: ${p.get('error_description') || 'erro desconhecido'}.`;
+      setTimeout(() => toast(msg, { type: ok ? 'success' : 'error', duration: 9000 }), 800);
+    }
   }
   mountIconSprite();
   onAfterRender(enhanceWithin); // caixas de opções estilizadas (selects e sugestões)
@@ -369,6 +394,7 @@ async function start() {
   }
   applyTheme();
   bindEvents();
+  initScrollHints();
 
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 
@@ -389,6 +415,7 @@ async function start() {
   cloud.onChange(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => renderAll()); });
   document.addEventListener('dhenors:cloud-notice', (ev) => toast(ev.detail, { type: 'info', duration: 9000 }));
   cloud.init().catch((err) => console.warn('[nuvem]', err));
+  if (recovery) setTimeout(() => newPasswordDialog(recovery), 400);
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('./sw.js').catch((err) => console.warn('Service worker não registrado', err));

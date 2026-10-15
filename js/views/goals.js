@@ -60,7 +60,7 @@ const find = (el) => store.data.goals.find((g) => g.id === el.dataset.id);
 
 function card(g, p) {
   return html`
-    <article class="card entity goal ${p.done ? 'is-done' : ''}">
+    <article class="card entity goal ${p.done ? 'is-done card--feature' : ''}">
       <header class="entity__head">
         <span class="entity__icon entity__icon--goal">${g.icon}</span>
         <div class="entity__title">

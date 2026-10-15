@@ -12,6 +12,7 @@
 //
 // API REST usada (documentação pública do Supabase):
 //   Auth:  POST /auth/v1/signup · /auth/v1/token?grant_type=password|refresh_token · /auth/v1/logout
+//          POST /auth/v1/recover (e-mail de nova senha) · PUT /auth/v1/user (grava a nova senha)
 //   Dados: GET/POST/PATCH /rest/v1/dhenors_state
 // =============================================================
 
@@ -96,6 +97,9 @@ function translate(msg) {
   if (/User already registered/i.test(m)) return 'Este e-mail já tem conta. Use "Entrar".';
   if (/Password should be at least/i.test(m)) return 'A senha precisa ter pelo menos 6 caracteres.';
   if (/rate limit/i.test(m)) return 'Muitas tentativas. Espere um pouco e tente de novo.';
+  if (/only request this after|security purposes/i.test(m)) return 'Por segurança, espere alguns segundos antes de pedir outro e-mail.';
+  if (/Error sending recovery email|Error sending .*email/i.test(m)) return 'O Supabase não conseguiu enviar o e-mail. Confira o limite de envios ou o SMTP no painel do Supabase.';
+  if (/should be different from the old password/i.test(m)) return 'A nova senha precisa ser diferente da anterior.';
   if (/relation .* does not exist|Could not find the table/i.test(m)) return 'A tabela da nuvem não existe. Rode o arquivo supabase/schema.sql no Supabase.';
   if (/JWT expired/i.test(m)) return 'Sessão expirada. Entre de novo.';
   if (/Invalid API key/i.test(m)) return 'Chave do Supabase inválida. Confira em Ajustes → Nuvem.';
@@ -337,6 +341,41 @@ export const cloud = {
     await saveMeta();
     setStatus('locked');
     return { needsConfirm: false };
+  },
+
+  /**
+   * "Esqueci minha senha": o Supabase envia um e-mail com um link que
+   * volta para o app (#access_token=…&type=recovery). Por segurança, a
+   * resposta é a mesma exista ou não uma conta com esse e-mail.
+   */
+  async requestPasswordReset(email) {
+    const back = encodeURIComponent(`${location.origin}${location.pathname}`);
+    await http(`/auth/v1/recover?redirect_to=${back}`, { method: 'POST', auth: false, body: { email: String(email).trim() } });
+  },
+
+  /**
+   * Conclui a recuperação: troca a senha usando o acesso temporário que
+   * veio no link e, se der certo, entra na conta com ele.
+   * recovery = { access_token, refresh_token, expires_in }
+   * A FRASE SECRETA não muda (e não tem como ser recuperada).
+   */
+  async completePasswordReset(recovery, newPassword) {
+    const auth = { Authorization: `Bearer ${recovery.access_token}` };
+    let user;
+    try {
+      user = await http('/auth/v1/user', { method: 'PUT', auth: false, headers: auth, body: { password: newPassword } });
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) throw new CloudError('O link de recuperação expirou ou já foi usado. Peça outro em "Esqueci minha senha".');
+      throw err;
+    }
+    await saveSession({ ...recovery, expires_in: Number(recovery.expires_in) || 3600, user });
+    if (meta.userId && meta.userId !== user?.id) { // outra conta: começa do zero
+      key = null; meta = { salt: null, version: null, dirty: false, lastSync: null, userId: null, linked: false };
+      await setItem('cloud:key', undefined);
+    }
+    meta.userId = user?.id;
+    await saveMeta();
+    await this.init();
   },
 
   /** Há dados desta conta na nuvem? → { exists, updatedAt, device } */

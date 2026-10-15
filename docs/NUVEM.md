@@ -26,7 +26,10 @@ Tempo: uns 15 minutos. Tudo nos planos **gratuitos**.
 5. **Authentication → Sign In / Providers → Email**:
    - Deixe *Email* ligado.
    - **Confirm email**: pode deixar ligado (mais seguro: você confirma pelo e-mail uma vez) ou desligar (entra direto).
-6. (Depois da Parte 2) **Authentication → URL Configuration → Site URL**: cole o endereço do seu site (`https://SEU-USUARIO.github.io/dhenors/`). É para onde o link de confirmação de e-mail leva.
+6. (Depois da Parte 2) **Authentication → URL Configuration**:
+   - **Site URL**: cole o endereço do seu site (`https://SEU-USUARIO.github.io/dhenors/`). É para onde o link de confirmação de e-mail leva.
+   - **Redirect URLs** → *Add URL*: cole o mesmo endereço (`https://SEU-USUARIO.github.io/dhenors/`). Sem isso, o link de **"Esqueci minha senha"** não volta para o app.
+7. (Recomendado) **Envio de e-mails**: o servidor de e-mail padrão do Supabase serve para testes e tem um limite baixo de envios por hora. Para não ficar sem o e-mail de nova senha, configure um SMTP próprio em **Project Settings → Authentication → SMTP Settings** (Resend, Brevo, Gmail etc.). Em **Authentication → Email Templates → Reset Password** dá para traduzir o texto do e-mail.
 
 ## Parte 2 — GitHub Pages (onde o site fica)
 
@@ -67,6 +70,18 @@ Em `js/config.js`, preencha `url` e `anonKey` com os valores da Parte 1 e envie 
 1. Abra o site → na tela de boas-vindas, **Já uso em outro aparelho** (ou Ajustes → Nuvem).
 2. Entre com o mesmo e-mail e senha e digite a **mesma frase secreta**.
 3. Os dados aparecem. No celular, use **Adicionar à tela inicial** para virar app.
+
+## Esqueci a senha ou a frase secreta
+
+São duas coisas diferentes:
+
+| | Senha da conta | Frase secreta |
+|---|---|---|
+| Para que serve | Entrar na conta do Supabase | Criptografar os dados antes de irem para a nuvem |
+| Quem conhece | O Supabase | **Só você** (nunca sai do aparelho) |
+| Esqueci | **Dá para trocar**: *Entrar na nuvem → Esqueci minha senha* → abra o link do e-mail → crie a senha nova → digite a mesma frase secreta de sempre | **Não tem recuperação**, nem pelo Supabase. É isso que garante que ninguém lê os seus dados |
+
+Esqueceu a frase secreta? Os dados continuam a salvo **nos aparelhos que já estão ligados** e nos **backups** (Ajustes → Baixar backup). Por isso, anote a frase em lugar seguro e faça backups de vez em quando.
 
 ## Como a sincronização funciona
 

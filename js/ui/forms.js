@@ -3,21 +3,47 @@
 // =============================================================
 
 import { html, attrs } from './dom.js';
+import { icon } from './icons.js';
 import { centsToInput } from '../core/money.js';
 
 let seq = 0;
 const uid = (name) => `f-${name}-${++seq}`;
 
+// Botão de olho dos campos de senha: mostra/esconde o que foi digitado.
+// Um único listener para todos os campos (inclusive os criados depois).
+globalThis.document?.addEventListener('click', (ev) => {
+  const btn = ev.target.closest?.('[data-reveal]');
+  if (!btn) return;
+  const input = document.getElementById(btn.dataset.reveal);
+  if (!input) return;
+  const show = input.type === 'password';
+  const label = btn.getAttribute('aria-label').replace(/^(Mostrar|Esconder) /, '');
+  input.type = show ? 'text' : 'password';
+  btn.setAttribute('aria-pressed', String(show));
+  btn.setAttribute('aria-label', `${show ? 'Esconder' : 'Mostrar'} ${label}`);
+  btn.title = show ? 'Esconder' : 'Mostrar';
+  btn.innerHTML = String(icon(show ? 'eye-off' : 'eye'));
+  // devolve o foco ao campo, com o cursor no fim, para continuar digitando
+  input.focus({ preventScroll: true });
+  const end = input.value.length;
+  try { input.setSelectionRange(end, end); } catch { /* campos sem seleção */ }
+});
+
 /** Campo genérico. */
 export function field({ label, name, type = 'text', value = '', required = false, hint = '', placeholder = '', extra = {}, prefix = '', full = false }) {
   const id = uid(name);
+  const secret = type === 'password';
   return html`
     <div class="field ${full ? 'field--full' : ''}">
       <label class="field__label" for="${id}">${label}${required ? html`<span class="req" aria-hidden="true">*</span>` : ''}</label>
-      <div class="field__control ${prefix ? 'has-prefix' : ''}">
+      <div class="field__control ${prefix ? 'has-prefix' : ''} ${secret ? 'has-reveal' : ''}">
         ${prefix ? html`<span class="field__prefix" aria-hidden="true">${prefix}</span>` : ''}
         <input class="input" id="${id}" name="${name}" type="${type}" value="${value ?? ''}"
           ${attrs({ required, placeholder: placeholder || false, 'aria-describedby': hint ? `${id}-hint` : false, ...extra })}>
+        ${secret ? html`
+          <button type="button" class="field__reveal" data-reveal="${id}" aria-controls="${id}" aria-pressed="false" aria-label="Mostrar ${label.toLowerCase()}" title="Mostrar">
+            ${icon('eye')}
+          </button>` : ''}
       </div>
       ${hint ? html`<p class="field__hint" id="${id}-hint">${hint}</p>` : ''}
     </div>`;

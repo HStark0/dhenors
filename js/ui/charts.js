@@ -65,7 +65,7 @@ export function donutChart(segments, { center = '', centerSub = '', max = 6, lab
   let angle = -Math.PI / 2;
   const gap = data.length > 1 ? 0.025 : 0;
 
-  const arcs = data.map((s) => {
+  const arcs = data.map((s, si) => {
     const sweep = (s.value / total) * Math.PI * 2;
     const start = angle + gap / 2;
     const end = angle + sweep - gap / 2;
@@ -74,7 +74,7 @@ export function donutChart(segments, { center = '', centerSub = '', max = 6, lab
     const d = sweep >= Math.PI * 2 - 0.001
       ? `M${cx} ${cy - r}a${r} ${r} 0 1 1 0 ${2 * r}a${r} ${r} 0 1 1 0 ${-2 * r}`
       : arc(cx, cy, r, start, Math.max(start + 0.001, end));
-    return `<path d="${d}" fill="none" stroke-width="${stroke}" style="stroke:${escapeHTML(s.color)}"><title>${escapeHTML(s.label)}: ${formatBRL(s.value)} (${pct}%)</title></path>`;
+    return `<path d="${d}" pathLength="1" fill="none" stroke-width="${stroke}" style="stroke:${escapeHTML(s.color)};--s:${si}"><title>${escapeHTML(s.label)}: ${formatBRL(s.value)} (${pct}%)</title></path>`;
   }).join('');
 
   const summary = data.map((s) => `${s.label} ${((s.value / total) * 100).toFixed(0)}%`).join(', ');
@@ -130,7 +130,7 @@ export function barChart(labels, series, { label = 'Gráfico de barras', height 
       const v = s.values[gi] || 0;
       const top = y(Math.max(v, 0)), bottom = y(Math.min(v, 0));
       const h = Math.max(v === 0 ? 0 : 1.5, bottom - top);
-      bars += `<rect x="${fmt(gx + si * barW)}" y="${fmt(top)}" width="${fmt(barW - 2)}" height="${fmt(h)}" rx="3" class="chart__bar ${escapeHTML(s.className || '')}"><title>${escapeHTML(s.name)} · ${escapeHTML(lab)}: ${escapeHTML(formatBRL(v))}</title></rect>`;
+      bars += `<rect x="${fmt(gx + si * barW)}" y="${fmt(top)}" width="${fmt(barW - 2)}" height="${fmt(h)}" rx="3" class="chart__bar ${escapeHTML(s.className || '')} ${v < 0 ? 'is-down' : ''}" style="--b:${gi}"><title>${escapeHTML(s.name)} · ${escapeHTML(lab)}: ${escapeHTML(formatBRL(v))}</title></rect>`;
     });
     bars += `<text x="${fmt(padL + gi * groupW + groupW / 2)}" y="${H - 6}" class="chart__axis" text-anchor="middle">${escapeHTML(lab)}</text>`;
   });
@@ -172,7 +172,7 @@ export function lineChart(labels, series, { label = 'Gráfico de linha', height 
     const pts = s.values.map((v, i) => `${fmt(x(i))},${fmt(y(v))}`).join(' ');
     const dots = s.values.map((v, i) =>
       `<circle cx="${fmt(x(i))}" cy="${fmt(y(v))}" r="3.5" class="chart__dot ${escapeHTML(s.className || '')}"><title>${escapeHTML(s.name)} · ${escapeHTML(labels[i])}: ${escapeHTML(formatBRL(v))}</title></circle>`).join('');
-    return `<polyline points="${pts}" fill="none" class="chart__line ${escapeHTML(s.className || '')} ${s.dashed ? 'is-dashed' : ''}"/>${dots}`;
+    return `<polyline points="${pts}" ${s.dashed ? '' : 'pathLength="1"'} fill="none" class="chart__line ${escapeHTML(s.className || '')} ${s.dashed ? 'is-dashed' : ''}"/>${dots}`;
   }).join('');
 
   return html`

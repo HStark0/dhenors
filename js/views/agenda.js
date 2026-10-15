@@ -56,7 +56,7 @@ export default {
             <li><span class="dot dot--bill"></span>A pagar</li>
             <li><span class="dot dot--overdue"></span>Atrasadas</li>
             <li><span class="dot dot--paid"></span>Pagas</li>
-            <li><span class="dot dot--vacation"></span>Férias / metas</li>
+            <li><span class="dot dot--vacation"></span>Férias, metas e vencimentos</li>
           </ul>
         </article>
 
@@ -68,7 +68,7 @@ export default {
           ${dayEvents.filter((e) => e.type !== 'bill').length ? html`
             <ul class="mini-list">
               ${dayEvents.filter((e) => e.type !== 'bill').map((e) => html`
-                <li><span>${e.type === 'income' ? '💰' : e.type === 'vacation' ? '🏖️' : '🎯'} ${e.label}</span>
+                <li><span>${e.type === 'income' ? '💰' : e.type === 'vacation' ? '🏖️' : e.type === 'invest' ? '📈' : '🎯'} ${e.label}</span>
                 <span class="money ${e.type === 'income' ? 'pos' : ''}">${e.cents ? `${e.type === 'income' ? '+' : ''}${formatBRL(e.cents)}` : ''}</span></li>`)}
             </ul>` : ''}
           ${itemList(dayEvents.filter((e) => e.type === 'bill').map((e) => e.item), { showMonth: true })}
@@ -97,7 +97,7 @@ function dayCell(date, inMonth, events, isToday, isSelected) {
   const holiday = holidayName(date);
   const income = events.filter((e) => e.type === 'income');
   const bills = events.filter((e) => e.type === 'bill');
-  const other = events.filter((e) => e.type === 'vacation' || e.type === 'goal');
+  const other = events.filter((e) => e.type === 'vacation' || e.type === 'goal' || e.type === 'invest');
   const total = bills.reduce((s, e) => s + e.cents, 0);
   const dots = [
     ...income.map(() => 'income'),

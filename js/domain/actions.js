@@ -15,6 +15,7 @@ import { entryKey, recurringActiveIn, planInstallment } from './ledger.js';
 import { buildSnapshot } from './analysis.js';
 import { CATEGORY_COLORS } from './defaults.js';
 import { friendlyName, normalizeName } from './payslip.js';
+import { INVEST_TYPES, RATE_KINDS, LIQUIDITY, MOVEMENT_KINDS, CLASS_KEYS, positionAt, investingOf } from './investments.js';
 
 export class ValidationError extends Error {
   constructor(message, field = null) {
@@ -586,6 +587,122 @@ export function deleteContribution(goalId, contributionId) {
     goal.contributions = rest;
   });
 }
+
+// ---------- Investimentos ----------
+
+/** Cria ou edita um investimento. Novo: aceita um aporte inicial ({ initialCents, initialDate }). */
+export function saveInvestment(input) {
+  return store.commit((d) => {
+    d.investments ||= [];
+    if (!INVEST_TYPES[input.type]) throw new ValidationError('Escolha o tipo de investimento.', 'type');
+    const kind = RATE_KINDS[input.rateKind] ? input.rateKind : 'none';
+    const needsBp = kind === 'cdi' || kind === 'pre' || kind === 'ipca';
+    if (needsBp && (!Number.isInteger(input.rateBp) || input.rateBp <= 0 || input.rateBp > 50000)) {
+      throw new ValidationError('Informe a taxa (ex.: 100 para 100% do CDI).', 'rateBp');
+    }
+    const item = {
+      name: text(input.name, 'name', 'o nome', { max: 80 }),
+      type: input.type,
+      institution: text(input.institution, 'institution', 'a instituição', { max: 60, required: false }),
+      rate: { kind, bp: needsBp ? input.rateBp : 0 },
+      liquidity: LIQUIDITY[input.liquidity] ? input.liquidity : 'none',
+      maturity: date(input.maturity, 'maturity', { required: false }),
+      emergency: input.emergency === true,
+      notes: text(input.notes, 'notes', 'a observação', { max: 500, required: false }),
+    };
+    if (input.id) {
+      Object.assign(findOrThrow(d.investments, input.id, 'Investimento'), item);
+      return;
+    }
+    const inv = { id: newId(), ...item, movements: [] };
+    if (Number.isInteger(input.initialCents) && input.initialCents > 0) {
+      inv.movements.push({ id: newId(), kind: 'aporte', date: date(input.initialDate || todayISO(), 'initialDate'), cents: cents(input.initialCents, 'initialCents'), note: '' });
+    }
+    d.investments.push(inv);
+    return inv;
+  });
+}
+
+export function deleteInvestment(id) {
+  return store.commit((d) => { d.investments = (d.investments || []).filter((x) => x.id !== id); });
+}
+
+/**
+ * Registra um movimento: aporte, resgate, provento ou atualização de saldo.
+ * Com `asExpense`, o aporte também vira um gasto pago no mês
+ * (categoria Investimentos) e sai do saldo do mês.
+ */
+export function addInvestmentMovement(investmentId, input) {
+  return store.commit((d) => {
+    const inv = findOrThrow(d.investments || [], investmentId, 'Investimento');
+    if (!MOVEMENT_KINDS[input.kind]) throw new ValidationError('Tipo de movimento inválido.');
+    const when = date(input.date, 'date');
+    if (when > todayISO()) throw new ValidationError('A data não pode ser no futuro.', 'date');
+    const value = cents(input.cents, 'cents', { allowZero: input.kind === 'saldo' });
+    if (input.kind === 'resgate') {
+      const { value: available } = positionAt(inv, investingOf(d.settings), when);
+      if (value > available) throw new ValidationError(`O resgate é maior que o saldo nessa data (${formatBRLPlain(available)}).`, 'cents');
+    }
+    const mov = { id: newId(), kind: input.kind, date: when, cents: value, note: text(input.note, 'note', 'a observação', { max: 120, required: false }) };
+    if (input.kind === 'aporte' && input.asExpense) {
+      assertOpen(d, ymOf(when), 'date');
+      const cat = d.categories.find((c) => /investimento/i.test(c.name));
+      const expense = {
+        id: newId(), description: `Aporte: ${inv.name}`.slice(0, 120), cents: value, dueDate: when, paidAt: when,
+        categoryId: cat?.id || null, subcategoryId: null, creditorId: null, notes: 'Lançado pela tela Investimentos',
+      };
+      d.expenses.push(expense);
+      mov.expenseId = expense.id;
+    }
+    inv.movements.push(mov);
+    return mov;
+  });
+}
+
+/** Remove um movimento (e o gasto do mês ligado a ele, se o mês estiver aberto). */
+export function deleteInvestmentMovement(investmentId, movementId) {
+  return store.commit((d) => {
+    const inv = findOrThrow(d.investments || [], investmentId, 'Investimento');
+    const mov = findOrThrow(inv.movements, movementId, 'Movimento');
+    inv.movements = inv.movements.filter((m) => m.id !== movementId);
+    // Sem o aporte, um resgate posterior pode ficar maior que o saldo
+    const investing = investingOf(d.settings);
+    for (const m of inv.movements.filter((x) => x.kind === 'resgate')) {
+      const before = positionAt({ ...inv, movements: inv.movements.filter((x) => x.id !== m.id) }, investing, m.date).value;
+      if (m.cents > before + 1) throw new ValidationError('Remova antes os resgates feitos depois: o saldo ficaria negativo.');
+    }
+    if (mov.expenseId) {
+      const exp = d.expenses.find((x) => x.id === mov.expenseId);
+      if (exp && !d.closedMonths[ymOf(exp.dueDate)]) d.expenses = d.expenses.filter((x) => x.id !== exp.id);
+    }
+  });
+}
+
+/** Premissas da carteira: CDI, IPCA, meta de aporte e carteira ideal (% por classe, soma 100). */
+export function saveInvestingSettings(input) {
+  return store.commit((d) => {
+    const bp = (v, field, label) => {
+      if (!Number.isInteger(v) || v < 0 || v > 10000) throw new ValidationError(`${label} deve ser entre 0 e 100%.`, field);
+      return v;
+    };
+    const targets = {};
+    for (const [k, v] of Object.entries(input.targets || {})) {
+      if (!CLASS_KEYS.includes(k) || !v) continue;
+      if (!Number.isInteger(v) || v < 0 || v > 100) throw new ValidationError('Use percentuais inteiros entre 0 e 100.', `target-${k}`);
+      targets[k] = v;
+    }
+    const total = Object.values(targets).reduce((a, n) => a + n, 0);
+    if (total && total !== 100) throw new ValidationError(`A carteira ideal soma ${total}%: precisa somar 100% (ou deixe tudo vazio).`, 'targets');
+    d.settings.investing = {
+      cdiBp: bp(input.cdiBp, 'cdi', 'O CDI'),
+      ipcaBp: bp(input.ipcaBp, 'ipca', 'O IPCA'),
+      monthlyTargetCents: cents(input.monthlyTargetCents || 0, 'monthlyTargetCents', { allowZero: true }),
+      targets,
+    };
+  });
+}
+
+const formatBRLPlain = (c) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 // ---------- Credores ----------
 

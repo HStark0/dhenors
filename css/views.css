@@ -474,7 +474,6 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; font-fam
 .pcompare__ok { background: var(--pos-soft); color: var(--pos); font-weight: 600; }
 .pcompare__warn { background: var(--warn-soft); color: var(--warn); }
 .pcompare__ok .icon, .pcompare__warn .icon { flex: none; margin-top: 2px; }
-.pimport ~ .field, .pimport ~ .field__hint { margin-top: var(--sp-3); }
 .details summary { display: flex; align-items: center; gap: 6px; list-style: none; }
 .details summary::-webkit-details-marker { display: none; }
 .details summary::before { content: "›"; display: inline-block; width: 12px; font-size: 1.1em; transition: transform var(--dur) var(--ease); }
@@ -519,4 +518,103 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; font-fam
 .cloud-status--idle > .icon { color: var(--pos); }
 .cloud-status--error > .icon, .cloud-status--locked > .icon { color: var(--warn); }
 .banner .link { font-size: inherit; }
-.dialog__body .note + .form-grid, .dialog__body .note + .field { margin-top: var(--sp-3); }
+
+/* =============================================================
+   Janelas: ritmo único de espaçamento
+   -------------------------------------------------------------
+   • Blocos do corpo: 20px entre si (texto, grade, aviso, prévia…).
+   • Dica solta logo abaixo de um bloco: 8px (fica "presa" a ele).
+   • Seção (.dialog__subtitle): linha divisória + 28px acima, 12px abaixo.
+   • Grade de campos: 20px entre linhas, 16px entre colunas; campos
+     alinhados pelo topo. Buracos de linha incompleta são fechados
+     por dialog.js (o último campo da linha se estica).
+   ============================================================= */
+.dialog__body > * { margin-block: 0; }
+.dialog__body > * + * { margin-top: var(--sp-5); }
+.dialog__body > * + .field__hint,
+.dialog__body > * + .dialog__switch { margin-top: var(--sp-2); }
+
+.dialog__body > .dialog__subtitle {
+  margin-top: var(--sp-6); padding-top: var(--sp-5);
+  border-top: 1px solid var(--border);
+}
+.dialog__body > .dialog__subtitle:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.dialog__body > .dialog__subtitle + * { margin-top: var(--sp-3); }
+
+.dialog__body .form-grid { gap: var(--sp-5) var(--sp-4); align-items: start; }
+.dialog__body .form-grid > * { min-width: 0; }
+.dialog__body .field { gap: var(--sp-2); }
+.dialog__body .field__hint { line-height: 1.45; }
+.dialog__body .field__label { line-height: 1.3; }
+
+/* <legend> não participa do gap do fieldset: o espaço vem da margem */
+fieldset.field > legend.field__label { padding: 0; margin-bottom: var(--sp-2); }
+
+/* Interruptores e caixas de marcar viram "linhas" com fundo, no
+   mesmo tom dos campos — leitura em bloco, sem texto solto. */
+.dialog__body .field:has(> .switch),
+.dialog__body .field:has(> .check) {
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.dialog__body .switch { align-items: center; min-height: 24px; }
+.dialog__body .switch__label { line-height: 1.35; }
+.dialog__body .switch__hint { margin-left: 54px; }
+/* Interruptores seguidos ficam colados, como uma lista */
+.dialog__body .form-grid > .field:has(> .switch) + .field:has(> .switch),
+.dialog__body .form-grid > :has(> .field > .switch):not([hidden]) + :has(> .field > .switch) { margin-top: calc(var(--sp-5) * -1 + var(--sp-2)); }
+
+/* Grupos internos (empréstimo, horas): mesmo ritmo, recuo uniforme */
+.dialog__body .loan-fields { padding: var(--sp-4); gap: var(--sp-4); }
+.dialog__body .loan-fields .field:has(> .switch) { background: var(--surface); }
+
+.dialog__body .preview { padding: var(--sp-3) var(--sp-4); line-height: 1.5; }
+.dialog__body .details > summary { padding: 0; }
+.dialog__body .details[open] > summary + * { margin-top: var(--sp-3); }
+.dialog__body .steps { gap: var(--sp-1); }
+.dialog__body .choice { margin: 0; }
+
+/* =============================================================
+   Investimentos
+   ============================================================= */
+.kv.kv--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 560px) { .form-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.field__label .dot { margin-right: 4px; vertical-align: 1px; }
+.preview--warn { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+
+.invest-empty { max-width: 760px; margin: 0 auto; }
+.invest-ideas {
+  display: grid; gap: var(--sp-3); width: 100%; margin: var(--sp-2) 0; text-align: left;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+}
+.invest-ideas li { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-3) var(--sp-4); border-radius: var(--radius); background: var(--surface-2); }
+.invest-ideas .icon { color: var(--primary-text); flex: none; margin-top: 2px; }
+.invest-ideas span { display: flex; flex-direction: column; gap: 2px; }
+.invest-ideas small { color: var(--muted); font-size: var(--fs-sm); }
+
+.invest-list { margin-top: var(--sp-2); }
+.invest .entity__value { display: flex; flex-direction: column; align-items: flex-end; }
+.invest__nums {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); margin: var(--sp-1) 0 0;
+}
+.invest__nums > div { padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); min-width: 0; }
+.invest__nums dt { font-size: var(--fs-xs); color: var(--muted); font-weight: 600; }
+.invest__nums dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.invest__nums small { font-weight: 500; font-size: var(--fs-xs); color: var(--muted); }
+
+.alloc { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-4) 0 var(--sp-3); }
+.alloc li { display: grid; grid-template-columns: minmax(0, 8.5em) minmax(0, 1fr) auto; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); }
+.alloc__name { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; min-width: 0; }
+.alloc__bar { position: relative; height: 8px; border-radius: 999px; background: var(--surface-3, var(--surface-2)); }
+.alloc__fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; }
+.alloc__target { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; border-radius: 2px; background: var(--text); opacity: .7; }
+.alloc__pct { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.alloc__pct small { color: var(--muted); font-weight: 500; }
+
+.projection { display: flex; flex-direction: column; gap: var(--sp-3); }
+.projection__controls { display: grid; gap: var(--sp-3); grid-template-columns: 1fr; }
+@media (min-width: 560px) { .projection__controls { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.projection .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.projection .card__header { flex-wrap: wrap; }

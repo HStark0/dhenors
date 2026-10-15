@@ -16,6 +16,7 @@ import { formatMonth, formatMonthTitle, formatDateBR, currentYM, todayISO, ymOf 
 import { payslipIncome, computeMonth } from '../domain/ledger.js';
 import { paydayForCompetence } from '../domain/payroll.js';
 import { monthsWithData } from '../domain/analysis.js';
+import { portfolio, typeOf, classOf, INVEST_CLASSES, LIQUIDITY, MOVEMENT_KINDS, rateLabel } from '../domain/investments.js';
 
 const MONTHS = (year) => Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
 
@@ -123,6 +124,29 @@ export function exportSummaryCSV(months, filename) {
   toast('Resumo financeiro baixado.');
 }
 
+// ---------- Investimentos ----------
+
+/** Carteira (uma linha por investimento) e, abaixo, todos os movimentos. */
+export function exportInvestmentsCSV() {
+  const pf = portfolio(store.data, todayISO());
+  if (!pf.positions.length) return toast('Nenhum investimento cadastrado.', { type: 'info' });
+  const rows = [['Investimento', 'Tipo', 'Classe', 'Instituição', 'Rentabilidade', 'Liquidez', 'Vencimento', 'Reserva',
+    'Saldo (R$)', 'Investido (R$)', 'Rendimento (R$)', 'Rendimento (%)', 'IR estimado (R$)', 'Líquido (R$)', 'Proventos (R$)', 'Lucro resgatado (R$)', 'Saldo é estimado?']];
+  for (const { inv, pos } of pf.positions) {
+    rows.push([inv.name, typeOf(inv).label, INVEST_CLASSES[classOf(inv)].label, inv.institution, rateLabel(inv), LIQUIDITY[inv.liquidity],
+      inv.maturity ? formatDateBR(inv.maturity) : '', inv.emergency ? 'Sim' : '',
+      num(pos.value), num(pos.principal), num(pos.gain), pos.gainPct.toFixed(2).replace('.', ','), num(pos.ir), num(pos.net), num(pos.income), num(pos.realized), pos.estimated ? 'Sim' : 'Não']);
+  }
+  const t = pf.totals;
+  rows.push(['Total', '', '', '', '', '', '', '', num(t.value), num(t.principal), num(t.gain), t.gainPct.toFixed(2).replace('.', ','), num(t.ir), num(t.net), num(t.income), num(t.realized), '']);
+  rows.push([]);
+  rows.push(['Data', 'Investimento', 'Movimento', 'Valor (R$)', 'Observação']);
+  const movs = pf.positions.flatMap(({ inv }) => inv.movements.map((m) => ({ inv, m }))).sort((a, b) => a.m.date.localeCompare(b.m.date));
+  for (const { inv, m } of movs) rows.push([formatDateBR(m.date), inv.name, MOVEMENT_KINDS[m.kind].label, num(m.kind === 'resgate' ? -m.cents : m.cents), m.note]);
+  download(`dhenors-investimentos-${todayISO()}.csv`, toCSV(rows), 'text/csv;charset=utf-8');
+  toast('Planilha de investimentos baixada.');
+}
+
 // ---------- Janela "Exportar" ----------
 
 const KINDS = [
@@ -130,6 +154,7 @@ const KINDS = [
   { value: 'payroll', label: 'Contracheques: proventos e descontos (planilha)', icon: 'file-spreadsheet', period: 'year' },
   { value: 'summary', label: 'Resumo mensal: renda, gastos e saldo (planilha)', icon: 'chart-column', period: 'year' },
   { value: 'bills', label: 'Contas do mês (planilha)', icon: 'receipt', period: 'month' },
+  { value: 'investments', label: 'Investimentos: carteira e movimentos (planilha)', icon: 'coins', period: 'none' },
   { value: 'backup', label: 'Backup completo (JSON)', icon: 'database', period: 'none' },
 ];
 
@@ -176,6 +201,7 @@ export function openExportDialog(preset = 'payroll') {
       if (kind === 'payroll') exportPayrollCSV(range, `dhenors-contracheques-${tag}.csv`);
       if (kind === 'summary') exportSummaryCSV(range, `dhenors-resumo-${tag}.csv`);
       if (kind === 'bills') exportMonthCSV(form.month.value);
+      if (kind === 'investments') exportInvestmentsCSV();
       if (kind === 'backup') exportBackup();
     },
   });

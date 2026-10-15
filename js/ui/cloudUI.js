@@ -89,7 +89,9 @@ export function authDialog(mode = 'signin') {
         : 'A conta guarda os seus dados criptografados. Use um e-mail que você acessa.'}</p>
       <div class="form-grid">
         ${field({ label: 'E-mail', name: 'email', type: 'email', required: true, full: true, extra: { autocomplete: 'email', inputmode: 'email' } })}
-        ${field({ label: 'Senha da conta', name: 'password', type: 'password', required: true, full: true, hint: mode === 'signup' ? 'Mínimo de 6 caracteres.' : '', extra: { autocomplete: mode === 'signin' ? 'current-password' : 'new-password', minlength: 6 } })}
+        ${field({ label: 'Senha da conta', name: 'password', type: 'password', required: true, full: true,
+          hint: mode === 'signup' ? 'Mínimo de 6 caracteres.' : html`<button type="button" class="link" data-forgot>Esqueci minha senha</button>`,
+          extra: { autocomplete: mode === 'signin' ? 'current-password' : 'new-password', minlength: 6 } })}
       </div>
       <p class="dialog__switch">${mode === 'signin'
         ? html`Primeira vez? <button type="button" class="link" data-switch="signup">Criar conta</button>`
@@ -98,6 +100,11 @@ export function authDialog(mode = 'signin') {
     onMount: (dlg) => {
       dlg.querySelector('[data-switch]').addEventListener('click', (ev) => { dlg.close(); setTimeout(() => authDialog(ev.target.dataset.switch), 50); });
       dlg.querySelector('[data-config]').addEventListener('click', () => { dlg.close(); setTimeout(configDialog, 50); });
+      dlg.querySelector('[data-forgot]')?.addEventListener('click', () => {
+        const email = dlg.querySelector('[name="email"]').value.trim();
+        dlg.close();
+        setTimeout(() => forgotDialog(email), 50);
+      });
     },
     onSubmit: async (form) => {
       const email = form.email.value.trim();
@@ -121,6 +128,73 @@ export function authDialog(mode = 'signin') {
   });
 }
 
+// ---------- 2b. Esqueci minha senha ----------
+
+/** Pede o e-mail e manda o link de nova senha. */
+export function forgotDialog(email = '') {
+  openDialog({
+    title: 'Recuperar a senha',
+    submitLabel: 'Enviar link',
+    size: 'sm',
+    body: html`
+      <p class="dialog__text muted">Enviaremos um link para o seu e-mail. Ao abrir o link, o Dhenors pede uma senha nova para a conta.</p>
+      ${field({ label: 'E-mail da conta', name: 'email', type: 'email', value: email, required: true, extra: { autocomplete: 'email', inputmode: 'email' } })}
+      <div class="note">${icon('key-round')}<span>Isso troca só a <strong>senha da conta</strong>. A <strong>frase secreta</strong> continua a mesma e não pode ser recuperada por e-mail.</span></div>`,
+    onSubmit: async (form) => {
+      const value = form.email.value.trim();
+      if (!/^\S+@\S+\.\S+$/.test(value)) throw new CloudFieldError('E-mail inválido.', 'email');
+      try { await cloud.requestPasswordReset(value); } catch (err) { throw wrap(err, 'email'); }
+      setTimeout(() => sentDialog(value), 50);
+      return undefined;
+    },
+  });
+}
+
+function sentDialog(email) {
+  openDialog({
+    title: 'Confira o seu e-mail',
+    size: 'sm',
+    body: html`
+      <div class="empty empty--sm">
+        ${icon('circle-check', 'icon--lg pos')}
+        <p>Se existir uma conta com <strong>${email}</strong>, o link para criar uma nova senha chega em alguns minutos.</p>
+      </div>
+      <ul class="steps">
+        <li>Abra o e-mail <strong>neste aparelho</strong> (ou em qualquer um com o Dhenors).</li>
+        <li>Não chegou? Veja a caixa de spam e as promoções.</li>
+        <li>O link vale por pouco tempo (normalmente 1 hora) e só funciona uma vez.</li>
+      </ul>`,
+  });
+}
+
+/**
+ * Tela aberta pelo link do e-mail: cria a nova senha.
+ * recovery = { access_token, refresh_token, expires_in }
+ */
+export function newPasswordDialog(recovery) {
+  openDialog({
+    title: 'Criar uma nova senha',
+    submitLabel: 'Salvar nova senha',
+    size: 'sm',
+    body: html`
+      <p class="dialog__text muted">Escolha a nova senha da sua conta da nuvem.</p>
+      <div class="form-grid">
+        ${field({ label: 'Nova senha', name: 'password', type: 'password', required: true, full: true, hint: 'Mínimo de 6 caracteres.', extra: { autocomplete: 'new-password', minlength: 6 } })}
+        ${field({ label: 'Repita a nova senha', name: 'password2', type: 'password', required: true, full: true, extra: { autocomplete: 'new-password', minlength: 6 } })}
+      </div>
+      <div class="note">${icon('key-round')}<span>Depois, o app pede a sua <strong>frase secreta</strong>: é a mesma de antes. Ela não muda com a senha.</span></div>`,
+    onSubmit: async (form) => {
+      const password = form.password.value;
+      if (password.length < 6) throw new CloudFieldError('A senha precisa ter pelo menos 6 caracteres.', 'password');
+      if (password !== form.password2.value) throw new CloudFieldError('As senhas não conferem.', 'password2');
+      try { await cloud.completePasswordReset(recovery, password); } catch (err) { throw wrap(err, 'password'); }
+      toast('Senha alterada! Você já está conectado à nuvem.', { type: 'success' });
+      if (cloud.state.status === 'locked') setTimeout(passphraseDialog, 50);
+      return undefined;
+    },
+  });
+}
+
 // ---------- 3. Frase secreta ----------
 
 export async function passphraseDialog() {
@@ -137,7 +211,10 @@ export async function passphraseDialog() {
           <div class="note note--warn">${icon('triangle-alert')}<span><strong>Anote em lugar seguro.</strong> Sem a frase, os dados da nuvem não podem ser recuperados por ninguém. Você vai digitá-la uma vez em cada aparelho novo.</span></div>`
         : html`<p class="dialog__text">Esta conta já tem dados na nuvem${info.device ? ` (último envio: ${info.device}, ${formatDateBR(String(info.updatedAt).slice(0, 10))})` : ''}. Digite a frase que você criou no primeiro aparelho.</p>`}
       <div class="form-grid">
-        ${field({ label: 'Frase secreta', name: 'pass', type: 'password', required: true, full: true, hint: creating ? 'Pelo menos 8 caracteres. Ex.: uma frase curta que só você sabe.' : '', extra: { autocomplete: 'off', minlength: 8 } })}
+        ${field({ label: 'Frase secreta', name: 'pass', type: 'password', required: true, full: true,
+          hint: creating ? 'Pelo menos 8 caracteres. Ex.: uma frase curta que só você sabe.'
+            : 'Esqueceu? A frase não pode ser recuperada, nem pelo e-mail: "Esqueci minha senha" troca só a senha da conta. Os dados deste aparelho e dos seus backups continuam a salvo.',
+          extra: { autocomplete: 'off', minlength: 8 } })}
         ${creating ? field({ label: 'Repita a frase', name: 'pass2', type: 'password', required: true, full: true, extra: { autocomplete: 'off' } }) : ''}
       </div>`,
     onSubmit: async (form) => {

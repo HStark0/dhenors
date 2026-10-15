@@ -18,6 +18,7 @@ import { computeMonth, overdueBefore } from '../domain/ledger.js';
 import { nextPaydayFrom } from '../domain/payroll.js';
 import { financialScore, budgetStatus } from '../domain/planning.js';
 import { insightsFor, monthSeries } from '../domain/analysis.js';
+import { portfolio } from '../domain/investments.js';
 import * as A from '../domain/actions.js';
 import { cloud } from '../core/cloud.js';
 
@@ -84,6 +85,7 @@ export default {
           ${scoreCard(d, ym, today)}
           ${budgetsCard(d, ym, today)}
           ${extraIncomeCard(m)}
+          ${investCard(d, today)}
           <article class="card">
             <header class="card__header"><h2 class="card__title">Gastos por categoria</h2></header>
             ${donutChart(m.categories.map((c) => ({ label: `${c.icon} ${c.name}`, value: c.cents, color: c.color })),
@@ -167,7 +169,7 @@ function hero(m, isCurrent, today) {
 function limitCard(m, limit) {
   if (!limit) {
     return html`
-      <article class="card card--center">
+      <article class="card card--center card--feature">
         ${icon('target', 'icon--lg muted')}
         <h2 class="card__title">Meta de gastos</h2>
         <p class="muted">Defina um teto mensal e acompanhe aqui.</p>
@@ -177,7 +179,7 @@ function limitCard(m, limit) {
   const used = percent(m.totals.all, limit);
   const tone = used > 100 ? 'bad' : used >= 80 ? 'warn' : 'good';
   return html`
-    <article class="card">
+    <article class="card card--feature">
       <header class="card__header">
         <h2 class="card__title">${icon('target')} Meta de gastos</h2>
         <button type="button" class="icon-btn" data-action="limit:edit" aria-label="Editar meta de gastos">${icon('pencil')}</button>
@@ -209,7 +211,7 @@ function incomeKpi(m) {
     ? `${formatBRL(m.income.salary)} salário${m.income.extrasCents ? ` + ${formatBRL(m.income.extrasCents)} extras` : ''}`
     : `bruto ${formatBRL(m.income.gross)} · impostos ${formatBRL(taxes)}${p.deductionsTotal ? ` · descontos ${formatBRL(p.deductionsTotal)}` : ''}`;
   return html`
-    <article class="card kpi kpi--income">
+    <article class="card kpi kpi--income card--feature">
       <span class="kpi__icon">${icon('wallet')}</span>
       <div class="kpi__body">
         <p class="kpi__label">Renda líquida do mês</p>
@@ -327,9 +329,9 @@ function ring(score, size = 120) {
   return html`
     <div class="score__ring" style="width:${size}px;height:${size}px">
       <svg viewBox="0 0 120 120" aria-hidden="true">
-        <defs><linearGradient id="score-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2563EB"/><stop offset="1" stop-color="#06B6D4"/></linearGradient></defs>
+        <defs><linearGradient id="score-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4ADE80"/><stop offset=".5" stop-color="#2DD4BF"/><stop offset="1" stop-color="#1E7BE8"/></linearGradient></defs>
         <circle cx="60" cy="60" r="${r}" fill="none" stroke-width="12" class="score__track"/>
-        <circle cx="60" cy="60" r="${r}" fill="none" stroke-width="12" class="score__bar" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - score / 100)).toFixed(1)}"/>
+        <circle cx="60" cy="60" r="${r}" fill="none" stroke-width="12" class="score__bar" style="--c:${c.toFixed(1)}" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - score / 100)).toFixed(1)}"/>
       </svg>
       <div class="score__num"><strong>${score}</strong><small>de 100</small></div>
     </div>`;
@@ -339,7 +341,7 @@ function scoreCard(d, ym, today) {
   const s = financialScore(d, ym, today);
   const worst = [...s.factors].sort((a, b) => a.points / a.max - b.points / b.max)[0];
   return html`
-    <article class="card">
+    <article class="card card--feature">
       <header class="card__header">
         <h2 class="card__title">${icon('gauge')} Saúde financeira</h2>
         <button type="button" class="btn btn--ghost btn--sm" data-action="score:open">Detalhes ${icon('arrow-right', 'icon--xs')}</button>
@@ -397,5 +399,27 @@ function budgetsCard(d, ym, today) {
             <small class="muted">${b.left >= 0 ? `Ainda pode gastar ${formatBRL(b.left)}` : `Passou ${formatBRL(-b.left)} do limite`}</small>
           </li>`)}
       </ul>
+    </article>`;
+}
+
+// ---------- Investimentos ----------
+
+function investCard(d, today) {
+  if (!d.investments?.length) return '';
+  const pf = portfolio(d, today);
+  const target = pf.investing.monthlyTargetCents;
+  return html`
+    <article class="card card--feature">
+      <header class="card__header">
+        <h2 class="card__title">${icon('coins')} Investimentos</h2>
+        <a class="link small" href="#/investimentos">Ver carteira ${icon('arrow-right', 'icon--xs')}</a>
+      </header>
+      <p class="big-number money">${formatBRL(pf.totals.value)}</p>
+      <p class="muted small">Rendimento <strong class="${pf.totals.gain < 0 ? 'neg' : 'pos'}">${pf.totals.gain < 0 ? '−' : '+'}${formatBRL(Math.abs(pf.totals.gain))}</strong> (${formatPercent(pf.totals.gainPct, 1)})</p>
+      ${target ? html`
+        ${meter(Math.max(0, pf.month.net), { max: target, label: 'Meta de aporte do mês', tone: pf.month.net >= target ? 'good' : '' })}
+        <p class="muted small">Aportado no mês: ${formatBRL(pf.month.net)} de ${formatBRL(target)}</p>`
+      : html`<p class="muted small">Aportado no mês: ${formatBRL(pf.month.net)}</p>`}
+      <button type="button" class="btn btn--secondary btn--sm" data-action="invest:quick">${icon('plus', 'icon--xs')} Aportar</button>
     </article>`;
 }

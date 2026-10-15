@@ -4,9 +4,9 @@
 // Todo o estado do app é UM objeto JSON. Ele é salvo no
 // navegador (IndexedDB) e é exatamente o que vai no backup.
 //
-// Formato (schema 5):
+// Formato:
 // {
-//   schema: 6,
+//   schema: 7,
 //   settings: {
 //     profileName, salaryDay, theme,
 //     payday: { mode: 'fixed'|'business', nth, saturday, nextMonth },   // dia fixo ou N-ésimo dia útil; nextMonth = salário da competência cai no mês seguinte
@@ -22,7 +22,10 @@
 //     rules: [{ id, pattern, categoryId, subcategoryId }],                 // categorização automática
 //   importFingerprints: [ "data|valor|descrição" ]                         // evita importar 2× o mesmo extrato
 //     spendingLimitCents                                               // meta (limite) de gastos mensal
+//     investing: { cdiBp, ipcaBp, monthlyTargetCents, targets: { classe: % } } // premissas da carteira
 //   },
+//   investments:      [{ id, name, type, institution, rate: { kind, bp }, liquidity, maturity, emergency, notes,
+//                        movements: [{ id, date, kind: 'aporte'|'resgate'|'provento'|'saldo', cents, note, expenseId }] }],
 //   extraIncomes:     [{ id, ym, description, cents, date, payroll }],  // plantões, freelas…
 //                     // payroll = true → pago na folha (bruto, sofre INSS/IR)
 //   expenses:         [{ id, description, cents, dueDate, paidAt, categoryId, subcategoryId, creditorId, notes }],
@@ -38,8 +41,9 @@
 
 import { DEFAULT_CATEGORIES, CATEGORY_COLORS } from './defaults.js';
 import { isValidISO, isValidYM } from '../core/dates.js';
+import { INVEST_TYPES, RATE_KINDS, LIQUIDITY, MOVEMENT_KINDS, CLASS_KEYS, DEFAULT_INVESTING } from './investments.js';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export function newId() {
   if (globalThis.crypto?.randomUUID) return crypto.randomUUID().slice(0, 13).replace('-', '');
@@ -79,6 +83,7 @@ export function createEmptyState() {
       reminders: { enabled: false, daysBefore: 1 },
       rules: [],
       spendingLimitCents: 0,
+      investing: structuredClone(DEFAULT_INVESTING),
       theme: 'auto',
     },
     extraIncomes: [],
@@ -87,6 +92,7 @@ export function createEmptyState() {
     recurringEntries: {},
     installments: [],
     goals: [],
+    investments: [],
     creditors: [],
     categories: createDefaultCategories(),
     closedMonths: {},
@@ -147,6 +153,7 @@ export function sanitizeState(raw) {
       rules: (Array.isArray(s.rules) ? s.rules : []).filter((r) => isObj(r) && str(r.pattern, 60).trim()).slice(0, 500)
         .map((r) => ({ id: optId(r.id) || newId(), pattern: str(r.pattern, 60).trim(), categoryId: optId(r.categoryId), subcategoryId: optId(r.subcategoryId) })),
       spendingLimitCents: isInt(s.spendingLimitCents) && s.spendingLimitCents >= 0 ? s.spendingLimitCents : 0,
+      investing: sanitizeInvesting(s.investing),
       theme: ['auto', 'light', 'dark'].includes(s.theme) ? s.theme : 'auto',
     },
   };
@@ -213,6 +220,8 @@ export function sanitizeState(raw) {
       contributions: (x.contributions || []).filter((c) => isObj(c) && isInt(c.cents) && isValidISO(c.date))
         .map((c) => ({ id: optId(c.id) || newId(), date: c.date, cents: c.cents })),
     }));
+
+  state.investments = (Array.isArray(raw.investments) ? raw.investments : []).map(sanitizeInvestment).filter(Boolean);
 
   state.creditors = (raw.creditors || [])
     .filter((x) => isObj(x) && str(x.name))
@@ -315,6 +324,44 @@ function sanitizeActual(a, anyKey = false) {
     }
   }
   return out;
+}
+
+function sanitizeInvesting(v) {
+  const o = isObj(v) ? v : {};
+  const bp = (x, def, max) => (isInt(x) && x >= 0 && x <= max ? x : def);
+  const targets = {};
+  if (isObj(o.targets)) {
+    for (const k of CLASS_KEYS) if (isInt(o.targets[k]) && o.targets[k] > 0 && o.targets[k] <= 100) targets[k] = o.targets[k];
+  }
+  return {
+    cdiBp: bp(o.cdiBp, DEFAULT_INVESTING.cdiBp, 10000),
+    ipcaBp: bp(o.ipcaBp, DEFAULT_INVESTING.ipcaBp, 10000),
+    monthlyTargetCents: bp(o.monthlyTargetCents, 0, 1_000_000_000),
+    targets: Object.values(targets).reduce((a, n) => a + n, 0) === 100 ? targets : {},
+  };
+}
+
+function sanitizeInvestment(x) {
+  if (!isObj(x) || !str(x.name).trim()) return null;
+  const type = INVEST_TYPES[x.type] ? x.type : 'outro';
+  const r = isObj(x.rate) ? x.rate : {};
+  const kind = RATE_KINDS[r.kind] ? r.kind : 'none';
+  return {
+    id: optId(x.id) || newId(),
+    name: str(x.name, 80).trim(),
+    type,
+    institution: str(x.institution, 60),
+    rate: { kind, bp: kind === 'none' || kind === 'poup' ? 0 : (isInt(r.bp) && r.bp >= 0 && r.bp <= 50000 ? r.bp : 0) },
+    liquidity: LIQUIDITY[x.liquidity] ? x.liquidity : 'none',
+    maturity: isValidISO(x.maturity) ? x.maturity : null,
+    emergency: x.emergency === true,
+    notes: str(x.notes, 500),
+    movements: (Array.isArray(x.movements) ? x.movements : [])
+      .filter((m) => isObj(m) && MOVEMENT_KINDS[m.kind] && isValidISO(m.date) && isInt(m.cents)
+        && (m.kind === 'saldo' ? m.cents >= 0 : m.cents > 0) && m.cents <= 1_000_000_000)
+      .slice(0, 5000)
+      .map((m) => ({ id: optId(m.id) || newId(), date: m.date, kind: m.kind, cents: m.cents, note: str(m.note, 120), ...(optId(m.expenseId) ? { expenseId: optId(m.expenseId) } : {}) })),
+  };
 }
 
 function sanitizeVacation(v) {

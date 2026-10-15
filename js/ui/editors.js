@@ -20,6 +20,7 @@ import {
 import * as A from '../domain/actions.js';
 import { installmentSummary, entryKey, goalPlan, planInstallment } from '../domain/ledger.js';
 import { CATEGORY_ICONS, CATEGORY_COLORS } from '../domain/defaults.js';
+import { quickMovement } from './investEditors.js';
 
 const data = () => store.data;
 
@@ -40,6 +41,7 @@ export function openNewMenu() {
       { label: 'Despesa recorrente', hint: 'Todo mês: aluguel, internet, streaming…', icon: 'repeat', run: () => editRecurring() },
       { label: 'Parcelamento', hint: 'Compra parcelada no cartão ou carnê', icon: 'credit-card', run: () => editInstallment() },
       { label: 'Renda extra', hint: 'Plantão, freela, bônus…', icon: 'stethoscope', run: () => editExtraIncome() },
+      { label: 'Aporte em investimento', hint: 'CDB, Tesouro, ações, FII, cripto…', icon: 'coins', run: () => quickMovement('aporte') },
       { label: 'Importar extrato', hint: 'OFX ou CSV do banco / fatura do cartão', icon: 'file-up', run: () => { location.hash = '#/importar'; } },
       { label: 'Lançamento rápido', hint: 'Escreva "mercado 120 ontem" · Ctrl+K', icon: 'zap', run: () => document.dispatchEvent(new CustomEvent('dhenors:palette')) },
     ],

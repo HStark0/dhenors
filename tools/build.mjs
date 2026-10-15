@@ -18,7 +18,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFile(join(root, p), 'utf8');
 const dataURI = async (p) => `data:image/png;base64,${(await readFile(join(root, p))).toString('base64')}`;
 
-const CSS = ['tokens', 'base', 'layout', 'components', 'views'];
+const CSS = ['tokens', 'base', 'layout', 'components', 'views', 'brand'];
 
 const js = await build({
   entryPoints: [join(root, 'js/main.js')],
