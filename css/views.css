@@ -297,6 +297,44 @@ body.is-dragging .import-drop { border-color: var(--primary); background: var(--
 .table__desc { min-width: 200px; overflow-wrap: anywhere; }
 .table__desc .badge { margin-left: 4px; }
 
+/* ---------- Teclado do PIN (ui/pinpad.js) ----------
+   Cores por variáveis: tema do app nas janelas; branco
+   translúcido na tela de bloqueio (fundo escuro). */
+.pinpad {
+  --key: 72px; --key-gap: 14px;
+  --key-bg: var(--surface-2); --key-border: var(--border); --key-text: var(--text); --key-hover: var(--surface-3);
+  --dot: var(--border-strong); --dot-on: var(--logo-2); --pin-error: var(--neg);
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); outline: none;
+}
+.pinpad__dots { display: flex; gap: 12px; min-height: 18px; margin: var(--sp-2) 0 0; }
+.pinpad__dots span {
+  width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--dot);
+  transition: background var(--dur), border-color var(--dur), transform var(--dur) var(--spring);
+  animation: dot-in 220ms var(--spring);
+}
+.pinpad__dots span.is-on { background: var(--dot-on); border-color: var(--dot-on); transform: scale(1.12); }
+@keyframes dot-in { from { transform: scale(.4); opacity: 0; } }
+.pinpad__error { min-height: 1.3em; color: var(--pin-error); font-size: var(--fs-sm); font-weight: 600; text-align: center; }
+.pinpad__keys { display: grid; grid-template-columns: repeat(3, var(--key)); gap: var(--key-gap); }
+.pinpad__key {
+  width: var(--key); height: var(--key); border-radius: 50%; border: 1px solid var(--key-border);
+  background: var(--key-bg); color: var(--key-text); font: 600 1.5rem var(--font-num); cursor: pointer;
+  display: grid; place-items: center; transition: background var(--dur), transform 120ms;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none;
+}
+.pinpad__key:hover { background: var(--key-hover); }
+.pinpad__key:active { transform: scale(.92); }
+.pinpad__key--fn { background: transparent; border-color: transparent; }
+.pinpad__key--ok { background: var(--btn-grad); border-color: transparent; color: #fff; box-shadow: var(--shadow-glow); }
+.lock .pinpad {
+  --key-bg: rgb(255 255 255 / .08); --key-border: rgb(255 255 255 / .16); --key-text: #fff; --key-hover: rgb(255 255 255 / .16);
+  --dot: rgb(255 255 255 / .5); --dot-on: #fff; --pin-error: #FCA5A5;
+}
+.pin-dialog .dialog__body { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.pin-dialog .pinpad { --key: 64px; --key-gap: 12px; }
+.pin-dialog__hint { max-width: 32ch; }
+@media (max-height: 700px) { .pin-dialog .pinpad { --key: 54px; --key-gap: 10px; } }
+
 /* ---------- Tela de bloqueio ---------- */
 body.is-locked > :not(.lock):not(.toasts) { visibility: hidden; }
 .lock {
@@ -312,24 +350,10 @@ body.is-locked > :not(.lock):not(.toasts) { visibility: hidden; }
 .lock__logo { border-radius: 16px; box-shadow: 0 10px 30px -8px rgb(0 0 0 / .5); }
 .lock__title { font-size: var(--fs-xl); font-weight: 800; letter-spacing: -.02em; text-align: center; }
 .lock__text { display: inline-flex; align-items: center; gap: 6px; color: var(--hero-muted); font-size: var(--fs-sm); }
-.lock__dots { display: flex; gap: 12px; margin: var(--sp-2) 0; }
-.lock__dots span { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgb(255 255 255 / .5); transition: background var(--dur), transform var(--dur) var(--spring); }
-.lock__dots span.is-on { background: #fff; border-color: #fff; transform: scale(1.12); }
-.lock__input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
-.lock__error { min-height: 1.3em; color: #FCA5A5; font-size: var(--fs-sm); font-weight: 600; text-align: center; }
-.lock__pad { display: grid; grid-template-columns: repeat(3, 72px); gap: 14px; }
-.lock__key {
-  width: 72px; height: 72px; border-radius: 50%; border: 1px solid rgb(255 255 255 / .16);
-  background: rgb(255 255 255 / .08); color: #fff; font: 600 1.5rem var(--font-num); cursor: pointer;
-  display: grid; place-items: center; transition: background var(--dur), transform 120ms;
-}
-.lock__key:hover { background: rgb(255 255 255 / .16); }
-.lock__key:active { transform: scale(.94); }
-.lock__key--fn { background: transparent; border-color: transparent; }
-.lock__key--ok { background: var(--btn-grad); border-color: transparent; box-shadow: var(--shadow-glow); }
 .lock__hint { font-size: var(--fs-xs); color: var(--hero-muted); text-align: center; max-width: 30ch; margin-top: var(--sp-2); }
 .lock.is-busy .lock__card { opacity: .7; pointer-events: none; }
-@media (max-height: 640px) { .lock__pad { grid-template-columns: repeat(3, 58px); gap: 10px; } .lock__key { width: 58px; height: 58px; } .lock__card { padding: var(--sp-5); } }
+.lock__card:focus { outline: none; }
+@media (max-height: 640px) { .pinpad { --key: 58px; --key-gap: 10px; } .lock__card { padding: var(--sp-5); } }
 
 /* ---------- Saúde financeira (score) ---------- */
 .score { display: flex; align-items: center; gap: var(--sp-5); }

@@ -7,7 +7,7 @@
 // (Os DADOS do usuário não ficam aqui: ficam no IndexedDB.)
 // =============================================================
 
-const VERSION = 'dhenors-v3.4.2';
+const VERSION = 'dhenors-v3.5.0';
 
 const APP_SHELL = [
   './',
@@ -57,6 +57,7 @@ const APP_SHELL = [
   './js/ui/lock.js',
   './js/ui/notify.js',
   './js/ui/palette.js',
+  './js/ui/pinpad.js',
   './js/ui/payrollEditor.js',
   './js/ui/payslipImport.js',
   './js/ui/scrollHint.js',

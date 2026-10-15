@@ -7,6 +7,7 @@ import { icon } from '../ui/icons.js';
 import { openDialog, confirmDialog } from '../ui/dialog.js';
 import { field, categoryFields, bindCategorySelects } from '../ui/forms.js';
 import { autoLockMinutes, setAutoLockMinutes } from '../ui/lock.js';
+import { pinPad, bindPinPad } from '../ui/pinpad.js';
 import { enableNotifications } from '../ui/notify.js';
 import { cloudSettingsSection } from '../ui/cloudUI.js';
 import { toast } from '../ui/toast.js';
@@ -235,23 +236,50 @@ function pinDialog() {
     toast('Criptografia indisponível: abra o app por https (ou instalado) para usar PIN.', { type: 'error' });
     return;
   }
+  // Dois passos no teclado da tela (sem o teclado do celular): digitar e repetir
+  let first = null;
+  let pad;
+  let dlg;
+  const STEP = {
+    1: { text: html`<strong>Passo 1 de 2</strong> · Digite um PIN de 4 a 8 números.`, button: 'Continuar' },
+    2: { text: html`<strong>Passo 2 de 2</strong> · Digite o mesmo PIN de novo para confirmar.`, button: 'Salvar PIN' },
+  };
+  const goTo = (n) => {
+    dlg.querySelector('[data-pin-step]').innerHTML = STEP[n].text.toString();
+    dlg.querySelector('[type="submit"]').textContent = STEP[n].button;
+    pad.clear();
+    pad.focus();
+  };
   openDialog({
     title: store.pinEnabled ? 'Trocar PIN' : 'Criar PIN',
     size: 'sm',
-    submitLabel: 'Salvar PIN',
+    submitLabel: STEP[1].button,
     body: html`
-      <p class="dialog__text muted">Use de 4 a 8 números. <strong>Não há como recuperar um PIN esquecido</strong> — guarde um backup atualizado.</p>
-      <div class="form-grid">
-        ${field({ label: 'Novo PIN', name: 'pin', type: 'password', required: true, extra: { inputmode: 'numeric', pattern: '[0-9]{4,8}', maxlength: 8, autocomplete: 'new-password' } })}
-        ${field({ label: 'Repita o PIN', name: 'pin2', type: 'password', required: true, extra: { inputmode: 'numeric', pattern: '[0-9]{4,8}', maxlength: 8, autocomplete: 'new-password' } })}
-      </div>`,
-    onSubmit: async (form) => {
-      const pin = form.pin.value;
-      if (!/^\d{4,8}$/.test(pin)) throw new A.ValidationError('O PIN deve ter de 4 a 8 números.', 'pin');
-      if (pin !== form.pin2.value) throw new A.ValidationError('Os PINs não conferem.', 'pin2');
+      <p class="dialog__text" data-pin-step aria-live="polite">${STEP[1].text}</p>
+      ${pinPad({ ok: false })}
+      <p class="field__hint pin-dialog__hint"><strong>Não há como recuperar um PIN esquecido</strong>: guarde um backup atualizado.</p>`,
+    onMount: (d) => {
+      dlg = d;
+      d.classList.add('pin-dialog');
+      pad = bindPinPad(d, { keyTarget: d, onEnter: () => d.querySelector('form').requestSubmit() });
+      // A janela foca o 1º botão depois de montar; o foco vai para o teclado
+      setTimeout(() => pad.focus());
+    },
+    onSubmit: async () => {
+      const pin = pad.value;
+      if (pin.length < 4) { pad.error('O PIN deve ter de 4 a 8 números.'); return true; }
+      if (first == null) { first = pin; goTo(2); return true; }
+      if (pin !== first) {
+        first = null;
+        goTo(1);
+        pad.error('Os PINs não conferem. Comece de novo.');
+        return true;
+      }
       await store.setPin(pin);
+      pad.destroy();
       toast('PIN salvo. Os dados agora estão criptografados.');
       store.setUI({});
+      return undefined;
     },
   });
 }
