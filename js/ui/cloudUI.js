@@ -10,6 +10,7 @@ import { toast } from './toast.js';
 import { field, selectField } from './forms.js';
 import { store } from '../core/store.js';
 import { cloud, CloudError } from '../core/cloud.js';
+import { countItems, hasUserData } from '../core/cloud/sync.js';
 import { formatDateBR, todayISO } from '../core/dates.js';
 import { formatBRL } from '../core/money.js';
 
@@ -258,18 +259,25 @@ export async function passphraseDialog() {
         ${creating ? field({ label: 'Repita a frase', name: 'pass2', type: 'password', required: true, full: true, extra: { autocomplete: 'off' } }) : ''}
         ${selectField({ label: 'Lembrar a frase neste aparelho', name: 'remember', value: cloud.remember, options: REMEMBER_OPTIONS })}
       </div>
-      <p class="field__hint">Com PIN ligado, a frase lembrada fica cifrada pelo PIN. "Só enquanto o app estiver aberto" pede a frase toda vez que você abrir o app.</p>`,
+      <p class="field__hint">${rememberHint()} "Só enquanto o app estiver aberto" pede a frase toda vez que você abrir o app.</p>`,
     onSubmit: async (form) => {
       const pass = form.pass.value;
       if (creating && pass !== form.pass2.value) throw new CloudFieldError('As frases não conferem.', 'pass2');
       let result;
       try { result = await cloud.unlock(pass, { remember: form.remember.value }); } catch (err) { throw wrap(err, 'pass'); }
+      if (cloud.meta.linked) {
+        // Aparelho já ligado (frase pedida de novo: PIN numérico, "só nesta sessão" ou frase trocada):
+        // continua sincronizando, juntando com a última versão em comum — sem perguntar quais dados manter
+        await cloud.init();
+        toast('Frase confirmada. Sincronizando.');
+        return undefined;
+      }
       if (!result.remote) {
         await cloud.link('local', null, null);
         toast('Pronto! Seus dados agora ficam salvos na nuvem, criptografados.');
         return undefined;
       }
-      if (isEmpty(store.data)) {
+      if (!hasUserData(store.data)) {
         await cloud.link('cloud', result.remote, result.version);
         toast('Dados da nuvem carregados neste aparelho.');
         return undefined;
@@ -282,7 +290,7 @@ export async function passphraseDialog() {
 
 /** Este aparelho já tem dados e a nuvem também: qual fica? */
 function chooseDialog({ remote, version }) {
-  const count = (d) => d.expenses.length + d.recurring.length + d.installments.length + d.goals.length + d.extraIncomes.length;
+  const count = countItems;
   openDialog({
     title: 'Quais dados manter?',
     size: 'sm',
@@ -291,11 +299,11 @@ function chooseDialog({ remote, version }) {
       <div class="choice">
         <button type="button" class="choice__opt" data-pick="cloud">
           ${icon('cloud-download')}<span><strong>Usar os dados da nuvem</strong>
-          <small>${count(remote)} lançamentos · alterados em ${formatDateBR(String(remote.updatedAt || '').slice(0, 10)) || '—'}. Os deste aparelho são substituídos.</small></span>
+          <small>${count(remote)} itens · alterados em ${formatDateBR(String(remote.updatedAt || '').slice(0, 10)) || '—'}. Os deste aparelho são substituídos.</small></span>
         </button>
         <button type="button" class="choice__opt" data-pick="local">
           ${icon('cloud-upload')}<span><strong>Enviar os dados deste aparelho</strong>
-          <small>${count(store.data)} lançamentos. Substituem o que está na nuvem.</small></span>
+          <small>${count(store.data)} itens. Substituem o que está na nuvem.</small></span>
         </button>
       </div>
       <p class="field__hint">Dica: na dúvida, baixe um backup antes (Ajustes → Baixar backup).</p>`,
@@ -319,7 +327,7 @@ const REMEMBER_OPTIONS = [
 
 async function statusDialog() {
   const st = cloud.state;
-  const [conflict, conflicts] = await Promise.all([cloud.conflictBackup(), cloud.conflicts()]);
+  const [copies, conflicts] = await Promise.all([cloud.conflictBackups(), cloud.conflicts()]);
   const risk = cloud.pauseRisk();
   openDialog({
     title: 'Nuvem',
@@ -334,9 +342,9 @@ async function statusDialog() {
       ${conflicts.length ? html`
         <div class="note note--warn">${icon('triangle-alert')}<span><strong>${conflicts.length === 1 ? '1 item foi alterado' : `${conflicts.length} itens foram alterados`} em dois aparelhos ao mesmo tempo.</strong> Ficou a versão da nuvem; escolha qual manter.
           <button type="button" class="link" data-conflicts>Resolver agora</button></span></div>` : ''}
-      ${conflict ? html`
-        <div class="note">${icon('info')}<span>Há uma cópia completa guardada de ${when(conflict.at)} (versão de ${conflict.origin}).
-          <button type="button" class="link" data-restore>Restaurar essa cópia</button> · <button type="button" class="link" data-discard>Descartar</button></span></div>` : ''}
+      ${copies.map((c) => html`
+        <div class="note">${icon('info')}<span>Há uma cópia completa guardada de ${when(c.at)} (versão de ${c.origin}).
+          <button type="button" class="link" data-restore="${c.at}">Restaurar essa cópia</button> · <button type="button" class="link" data-discard="${c.at}">Descartar</button></span></div>`)}
       <ul class="sheet-list">
         <li><button type="button" class="sheet-item" data-versions>${icon('history')}<span>Histórico de versões<small>Volte os dados para como estavam (últimas 30 versões)</small></span></button></li>
         <li><button type="button" class="sheet-item" data-devices>${icon('monitor-smartphone')}<span>Aparelhos conectados<small>Veja quem acessa e desconecte à distância</small></span></button></li>
@@ -361,12 +369,19 @@ async function statusDialog() {
         const ok = await confirmDialog({ title: 'Sair da nuvem', message: 'Os dados continuam neste aparelho, mas deixam de sincronizar. Para voltar, entre de novo e digite a frase secreta.', confirmLabel: 'Sair' });
         if (ok) { await cloud.signOut(); toast('Você saiu da nuvem.'); }
       });
-      dlg.querySelector('[data-restore]')?.addEventListener('click', async () => {
+      const copyOf = (btn, attr) => copies.find((c) => String(c.at) === btn.dataset[attr]);
+      dlg.querySelectorAll('[data-restore]').forEach((btn) => btn.addEventListener('click', async () => {
+        const copy = copyOf(btn, 'restore');
         dlg.close();
         const ok = await confirmDialog({ title: 'Restaurar cópia', message: 'Os dados atuais serão substituídos pela cópia guardada (em todos os aparelhos).', confirmLabel: 'Restaurar' });
-        if (ok) { await store.replace(conflict.data); await cloud.clearConflict(); toast('Cópia restaurada.'); }
-      });
-      dlg.querySelector('[data-discard]')?.addEventListener('click', async () => { await cloud.clearConflict(); dlg.close(); toast('Cópia descartada.'); });
+        if (ok && copy) { await store.replace(copy.data); await cloud.clearConflict(copy.at); toast('Cópia restaurada.'); }
+      }));
+      dlg.querySelectorAll('[data-discard]').forEach((btn) => btn.addEventListener('click', async () => {
+        const copy = copyOf(btn, 'discard');
+        if (copy) await cloud.clearConflict(copy.at);
+        dlg.close();
+        toast('Cópia descartada.');
+      }));
     },
   });
 }
@@ -474,7 +489,7 @@ export async function devicesDialog() {
             </span>
           </li>`)}
       </ul>
-      <p class="field__hint">Desconectar: na próxima vez que aquele aparelho abrir o app, ele sai da nuvem (os dados dele continuam lá, mas param de sincronizar).</p>`;
+      <p class="field__hint">Desconectar: aquele aparelho sai da nuvem (os dados dele continuam lá, mas param de sincronizar). Por segurança, as sessões de TODOS os outros aparelhos também são encerradas no servidor: os que você usa precisam entrar de novo com e-mail e senha.</p>`;
   };
   const { dialog } = openDialog({ title: 'Aparelhos conectados', body: await render(),
     footer: html`<button type="button" class="btn btn--ghost danger" data-others>Encerrar a sessão de todos os outros</button>` });
@@ -482,7 +497,7 @@ export async function devicesDialog() {
   dialog.addEventListener('click', async (ev) => {
     const t = ev.target;
     try {
-      if (t.closest('[data-revoke]')) { await cloud.revokeDevice(t.closest('[data-revoke]').dataset.revoke); toast('Aparelho será desconectado.'); }
+      if (t.closest('[data-revoke]')) { await cloud.revokeDevice(t.closest('[data-revoke]').dataset.revoke); toast('Aparelho desconectado. Os outros aparelhos precisam entrar de novo.'); }
       else if (t.closest('[data-forget]')) await cloud.forgetDevice(t.closest('[data-forget]').dataset.forget);
       else if (t.closest('[data-rename]')) {
         const name = prompt('Nome deste aparelho', cloud.deviceName);
@@ -527,7 +542,7 @@ function rememberDialog() {
     submitLabel: 'Salvar',
     body: html`
       ${selectField({ label: 'Por quanto tempo', name: 'remember', value: cloud.remember, options: REMEMBER_OPTIONS })}
-      <p class="field__hint">Num aparelho compartilhado, escolha "Só enquanto o app estiver aberto". Com PIN ligado, a frase lembrada fica cifrada pelo PIN.</p>`,
+      <p class="field__hint">Num aparelho compartilhado, escolha "Só enquanto o app estiver aberto". ${rememberHint()}</p>`,
     onSubmit: async (form) => { await cloud.setRemember(form.remember.value); toast('Preferência salva.'); },
   });
 }
@@ -586,4 +601,8 @@ class CloudFieldError extends Error {
   constructor(message, field) { super(message); this.field = field; this.name = 'ValidationError'; }
 }
 const wrap = (err, fieldName) => (err instanceof CloudError ? new CloudFieldError(err.message, fieldName) : err);
-const isEmpty = (d) => !(d.expenses.length || d.recurring.length || d.installments.length || d.goals.length || d.extraIncomes.length || d.settings.salaryHistory.length > 1);
+
+/** Onde a frase lembrada fica guardada, conforme o bloqueio do app. */
+const rememberHint = () => (cloud.rememberLimited
+  ? 'Com PIN só de números, a frase fica lembrada só enquanto o app estiver aberto: um PIN curto pode ser testado fora do app. Use uma senha (Ajustes → Segurança) para lembrar por mais tempo.'
+  : store.pinEnabled ? 'A frase lembrada fica cifrada pela senha do app.' : 'Sem PIN ou senha no app, a frase lembrada fica guardada neste navegador.');

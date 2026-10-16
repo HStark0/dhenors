@@ -29,6 +29,7 @@ import { initSwipe, initListKeys, initPullToRefresh } from './ui/gestures.js';
 import { initInstall, initServiceWorker, initViewport, canInstall, installApp, onInstallChange } from './ui/pwa.js';
 import { onboardingWizard, isDemo, stopDemo, startDemo } from './ui/onboarding.js';
 import { helpActions } from './ui/help.js';
+import { singleKeyShortcuts } from './ui/prefs.js';
 import { cloud } from './core/cloud.js';
 import { initErrorLog, logError } from './core/errors.js';
 import { fetchRates, ratesStale } from './core/market.js';
@@ -78,8 +79,8 @@ const NAV_SECTIONS = [
     { id: 'analise', label: 'Análise', icon: 'chart-line' },
   ] },
   { title: 'Dinheiro', items: [
-    { id: 'contas', label: 'Contas', icon: 'receipt' },
-    { id: 'carteira', label: 'Cartões e contas', icon: 'wallet-cards' },
+    { id: 'contas', label: 'Contas a pagar', icon: 'receipt' },
+    { id: 'carteira', label: 'Cartões e contas bancárias', icon: 'wallet-cards' },
     { id: 'salario', label: 'Salário', icon: 'banknote' },
   ] },
   { title: 'Futuro', items: [
@@ -160,7 +161,7 @@ function palette({ voice = false } = {}) {
       { label: 'Nova despesa recorrente', icon: 'repeat', run: () => E.editRecurring() },
       { label: 'Novo parcelamento (carnê, empréstimo)', icon: 'calendar-range', run: () => E.editInstallment() },
       { label: 'Lançar receita / plantão', icon: 'stethoscope', run: () => E.editExtraIncome() },
-      { label: 'Transferência entre contas', icon: 'arrow-left-right', run: () => E.transferDialog() },
+      { label: 'Transferência entre contas bancárias', icon: 'arrow-left-right', run: () => E.transferDialog() },
       { label: 'Alguém me deve', icon: 'hand-coins', run: () => E.editReceivable() },
       { label: 'Aporte em investimento', icon: 'coins', run: () => IE.quickMovement('aporte') },
       { label: 'Novo investimento', icon: 'landmark', run: () => IE.editInvestment() },
@@ -226,6 +227,11 @@ function bindEvents() {
     }
   });
   document.addEventListener('dhenors:action', (ev) => dispatch(ev.detail));
+  // "Pular para o conteúdo": só move o foco (o #main mudaria a rota para o Painel)
+  document.querySelector('.skip-link')?.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    $('#main')?.focus();
+  });
 
   // Filtros (busca, selects) das telas
   const onFilter = (ev) => {
@@ -243,6 +249,7 @@ function bindEvents() {
     if (ev.target.closest('input, textarea, select, [contenteditable], dialog')) return;
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z' && store.undoable) { ev.preventDefault(); dispatch('undo:last'); return; }
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (!singleKeyShortcuts()) return; // desligados em Ajustes → Geral → Aparência
     if (ev.key === 'n') { ev.preventDefault(); E.openNewMenu(); }
     if (ev.key === '/') { ev.preventDefault(); palette(); }
     if (ev.key === 'd') { ev.preventDefault(); dispatch('discreet:toggle'); }
@@ -266,7 +273,16 @@ function bindEvents() {
   window.addEventListener('hashchange', () => {
     const id = location.hash.replace(/^#\/?/, '').split('?')[0];
     if (ALIASES[id]) { location.replace(`#/${ALIASES[id]}`); return; }
-    renderAll({ routeChanged: true });
+    // Só a aba (ou outro parâmetro) mudou, na mesma tela: não rola para o
+    // topo nem tira o foco da lista de abas (setas ← → do teclado)
+    const sameRoute = lastRendered.split('|')[0] === currentRoute();
+    const onTabs = document.activeElement?.closest?.('[data-tabs]');
+    renderAll({ routeChanged: !sameRoute });
+    if (sameRoute && onTabs) {
+      const tabEl = $('#view [data-tabs] [aria-selected="true"]');
+      tabEl?.focus({ preventScroll: true });
+      tabEl?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); // abas que rolam de lado
+    }
     handleRouteParams();
   });
 
@@ -554,8 +570,24 @@ async function start() {
 
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { applyTheme(); renderAll(); });
 
+  // Modo só leitura (dados de uma versão mais nova do app): aviso fixo no topo
+  const showReadOnly = () => {
+    let bar = document.getElementById('readonly-banner');
+    if (!store.readOnly) { bar?.remove(); return; }
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'readonly-banner';
+      bar.className = 'readonly-banner';
+      bar.setAttribute('role', 'alert');
+      document.getElementById('main')?.before(bar);
+    }
+    bar.textContent = store.readOnly;
+  };
+  showReadOnly();
+
   let frame = 0;
   store.subscribe((reason) => {
+    if (reason === 'readonly') showReadOnly();
     if (reason === 'silent') return;
     applyTheme();
     cancelAnimationFrame(frame);

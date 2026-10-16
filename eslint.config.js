@@ -14,14 +14,14 @@ export default [
       globals: { ...globals.browser, ...globals.serviceworker },
     },
     rules: {
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' }],
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' }],
       'no-empty': ['error', { allowEmptyCatch: true }],
       'no-control-regex': 'off',
       'no-irregular-whitespace': ['error', { skipRegExps: true, skipStrings: true, skipTemplates: true, skipComments: true }],
       'no-misleading-character-class': 'off',
       eqeqeq: ['error', 'smart'],
       'no-var': 'error',
-      'prefer-const': 'warn',
+      'prefer-const': 'error',
     },
   },
   {
@@ -32,6 +32,6 @@ export default [
   {
     files: ['tests/**/*.mjs', 'tests/**/*.js', 'tools/**/*.mjs', 'playwright.config.js', 'eslint.config.js'],
     languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: { ...globals.node, ...globals.browser } },
-    rules: { 'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }], 'no-irregular-whitespace': ['error', { skipRegExps: true, skipStrings: true, skipTemplates: true }] },
+    rules: { 'no-unused-vars': ['error', { argsIgnorePattern: '^_' }], eqeqeq: ['error', 'smart'], 'prefer-const': 'error', 'no-var': 'error', 'no-irregular-whitespace': ['error', { skipRegExps: true, skipStrings: true, skipTemplates: true }] },
   },
 ];

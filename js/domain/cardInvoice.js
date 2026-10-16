@@ -80,7 +80,11 @@ export function parseCardInvoice(text, { dueDate = null, includeFees = false } =
     const total = count > 1 ? cents * count : cents;
     rows.push({
       date: firstDate, statementDate: date, description: description.slice(0, 120), cents: total, parcelCents: cents, count, n, fee,
-      fingerprint: `cartao|${firstDate}|${total}|${count}|${cleanDescription(description).slice(0, 30)}`,
+      // Parcelada: sem o valor na impressão digital — o centavo do arredondamento
+      // muda de uma parcela para outra (1ª parcela maior) e a compra duplicava.
+      fingerprint: count > 1
+        ? `cartao|${firstDate}|parc${count}|${cleanDescription(description).slice(0, 30)}`
+        : `cartao|${firstDate}|${total}|${count}|${cleanDescription(description).slice(0, 30)}`,
     });
   }
   return { dueDate: due, rows };

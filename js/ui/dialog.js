@@ -2,7 +2,8 @@
 // dialog.js — Janelas modais usando o <dialog> nativo
 // -------------------------------------------------------------
 // O <dialog> nativo já resolve: foco preso dentro da janela,
-// tecla Esc, fundo escurecido e devolução do foco ao fechar.
+// fundo escurecido e devolução do foco ao fechar. O Esc fecha (em
+// formulário já alterado, pergunta antes de descartar).
 // Cada janela é criada na hora e removida ao fechar, então
 // nunca acumula listeners.
 // =============================================================
@@ -54,11 +55,32 @@ export function openDialog({ title, body, submitLabel = null, onSubmit = null, o
   dialog.addEventListener('click', (ev) => {
     if (ev.target.closest('[data-close]')) { ev.preventDefault(); close(); }
   });
-  // Só fecha pelos botões (X, Cancelar, Confirmar) ou com 2 cliques no fundo
-  // escurecido — um clique ou Esc sem querer não perde o que foi digitado.
+  // Fecha pelos botões (X, Cancelar, Confirmar), com 2 cliques no fundo
+  // escurecido ou com Esc. Em formulário já alterado, o Esc pergunta
+  // antes ("Descartar alterações?"): uma tecla sem querer não perde o
+  // que foi digitado.
   closeOnDoubleClickOutside(dialog, close);
-  dialog.addEventListener('cancel', (ev) => ev.preventDefault());
-  dialog.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') ev.preventDefault(); });
+  let dirty = false;
+  let asking = false;
+  form.addEventListener('input', () => { dirty = true; });
+  form.addEventListener('change', () => { dirty = true; });
+  const requestClose = async () => {
+    if (asking || !dialog.open) return;
+    if (!isForm || !dirty) { close(); return; }
+    asking = true;
+    const ok = await confirmDialog({ title: 'Descartar alterações?', message: 'O que você digitou nesta janela será perdido.', confirmLabel: 'Descartar', danger: true });
+    asking = false;
+    if (ok) close();
+  };
+  // 'cancel' também vem do botão "voltar" do Android
+  dialog.addEventListener('cancel', (ev) => { ev.preventDefault(); requestClose(); });
+  dialog.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape') return;
+    // listas abertas (ver select.js) tratam o Esc antes e cancelam o evento
+    if (ev.defaultPrevented) return;
+    ev.preventDefault();
+    requestClose();
+  });
 
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -141,6 +163,12 @@ function fillGridGaps(dialog) {
 
 function clearErrors(form) {
   for (const el of form.querySelectorAll('[aria-invalid]')) el.removeAttribute('aria-invalid');
+  // devolve a descrição original (dica do campo) que o erro complementou
+  for (const el of form.querySelectorAll('[data-describedby-orig]')) {
+    const orig = el.dataset.describedbyOrig;
+    if (orig) el.setAttribute('aria-describedby', orig); else el.removeAttribute('aria-describedby');
+    delete el.dataset.describedbyOrig;
+  }
   for (const el of form.querySelectorAll('.field__error')) el.remove();
   form.querySelector('.form-error')?.remove();
 }
@@ -152,7 +180,10 @@ export function showError(form, err) {
     field.setAttribute('aria-invalid', 'true');
     const msg = fragment(html`<p class="field__error" id="${field.id}-err">${err.message}</p>`);
     field.closest('.field')?.append(msg);
-    field.setAttribute('aria-describedby', `${field.id}-err`);
+    // acrescenta o erro à descrição (sem apagar a dica do campo)
+    const orig = field.getAttribute('aria-describedby') || '';
+    if (!('describedbyOrig' in field.dataset)) field.dataset.describedbyOrig = orig;
+    field.setAttribute('aria-describedby', `${field.id}-err ${orig}`.trim());
     field.focus();
   } else {
     const body = form.querySelector('.dialog__body');

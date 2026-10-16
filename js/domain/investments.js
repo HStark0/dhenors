@@ -169,6 +169,17 @@ export function positionAt(inv, investing, date = todayISO(), quotes = null) {
       weighted += m.cents * diffDays(m.date, date);
       if (m.qty) qty += m.qty;
     } else if (m.kind === 'resgate' || m.kind === 'venda') {
+      if (m.qty && qty > 0) {
+        // Venda com quantidade: custo = preço médio × cotas vendidas; o valor
+        // da posição cai na mesma proporção das cotas (o resto é lucro/prejuízo).
+        const frac = Math.min(1, m.qty / qty);
+        const cost = Math.round(principal * frac);
+        const out = frac >= 1 ? value : Math.round(value * frac);
+        realized += m.cents - cost;
+        principal -= cost; value = Math.max(0, value - out); withdrawn += m.cents;
+        qty = Math.max(0, qty - m.qty);
+        continue;
+      }
       if (m.qty) qty = Math.max(0, qty - m.qty);
       const out = Math.min(m.cents, value);
       const cost = value > 0 ? Math.round(principal * (out / value)) : 0;

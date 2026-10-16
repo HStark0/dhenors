@@ -41,7 +41,7 @@ function annualTax(baseCents, year) {
   const t = tablesFor(year);
   const base = baseCents / 100;
   for (const [upto, rate, ded] of t.irrf) {
-    if (base <= upto * 12) return Math.max(0, Math.round((base * rate - ded * 12) * 100));
+    if (base <= upto * 12) return Math.max(0, Math.round((Math.round(rate * 1e6) * baseCents - Math.round(ded * 12 * 1e6) * 100) / 1e6));
   }
   return 0;
 }
@@ -51,7 +51,8 @@ function annualReduction(taxable, tax, year) {
   const r = IRPF_LIMITS.reduction;
   let v = 0;
   if (taxable <= r.fullUpTo) v = r.fullMax;
-  else if (taxable <= r.partialUpTo) v = Math.max(0, Math.round(r.a - r.b * taxable));
+  // Em inteiros (b em milionésimos): b × centavos em ponto flutuante errava 1 centavo
+  else if (taxable <= r.partialUpTo) v = Math.max(0, Math.round((r.a * 1e6 - Math.round(r.b * 1e6) * taxable) / 1e6));
   return Math.min(tax, v);
 }
 

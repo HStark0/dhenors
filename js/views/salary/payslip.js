@@ -108,11 +108,11 @@ export const payslipActions = {
         message: `Remover "${line.description}" do salário a partir de ${formatMonth(store.ui.ym)}? Os meses anteriores não mudam.`,
         confirmLabel: 'Remover', danger: true,
       });
-      if (ok) { A.deletePayrollLine(store.ui.ym, el.dataset.kind, line.id); toast('Removido.'); }
+      if (ok) E.deleteWithUndo(() => A.deletePayrollLine(store.ui.ym, el.dataset.kind, line.id), 'Removido.');
     },
     'sal:history-del': async (el) => {
       const ok = await confirmDialog({ title: 'Remover registro', message: `Remover o salário cadastrado a partir de ${formatMonth(el.dataset.from)}?`, confirmLabel: 'Remover', danger: true });
-      if (ok) A.deleteSalaryEntry(el.dataset.from);
+      if (ok) E.deleteWithUndo(() => A.deleteSalaryEntry(el.dataset.from), 'Registro de salário removido.');
     },
     'sal:shift': () => E.editExtraIncome(),
     'sal:print': () => printPayslip(store.ui.ym),
@@ -127,12 +127,12 @@ export const payslipActions = {
     'oncall:hours': () => onCallDialog(store.ui.ym),
     'abs:new': () => absenceDialog(store.ui.ym, null),
     'abs:edit': (el) => absenceDialog(store.ui.ym, (store.data.settings.absences || []).find((a) => a.id === el.dataset.id)),
-    'abs:delete': (el) => { A.deleteAbsence(el.dataset.id); toast('Removido.'); },
+    'abs:delete': (el) => E.deleteWithUndo(() => A.deleteAbsence(el.dataset.id), 'Afastamento removido.'),
     'vac:new': () => vacationDialog(null),
     'vac:edit': (el) => vacationDialog((store.data.settings.vacations || []).find((v) => v.id === el.dataset.id)),
     'vac:delete': async (el) => {
       const ok = await confirmDialog({ title: 'Remover férias', message: 'Remover estas férias do planejamento?', confirmLabel: 'Remover', danger: true });
-      if (ok) { A.deleteVacation(el.dataset.id); toast('Férias removidas.'); }
+      if (ok) E.deleteWithUndo(() => A.deleteVacation(el.dataset.id), 'Férias removidas.');
     },
 };
 

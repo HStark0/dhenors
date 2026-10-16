@@ -172,7 +172,7 @@ async function clearText() {
 async function saveMeta() {
   try {
     const cache = await caches.open(CACHE);
-    const meta = { ...inbox.meta, files: inbox.files.map(({ key, name, type, size }) => ({ key, name, type, size })) };
+    const meta = { ...inbox.meta, files: inbox.files.map(({ key, name, type, size, at }) => ({ key, name, type, size, ...(at ? { at } : {}) })) };
     if (!meta.files.length && !meta.text && !meta.url) await caches.delete(CACHE);
     else await cache.put('./share/meta', new Response(JSON.stringify(meta), { headers: { 'Content-Type': 'application/json' } }));
   } catch { /* ignora */ }

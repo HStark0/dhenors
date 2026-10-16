@@ -5,7 +5,9 @@
 //   hora e funciona offline. A nuvem recebe uma cópia logo depois.
 // • Antes de sair do aparelho, os dados são CRIPTOGRAFADOS com a
 //   sua frase secreta (AES-GCM, chave PBKDF2). O Supabase só guarda
-//   envelopes ilegíveis.
+//   envelopes ilegíveis. Cada envelope é amarrado (AAD) ao usuário,
+//   à parte e à versão, e o hash de cada parte é conferido ao abrir
+//   (cloud/sync.js).
 // • Formato: o estado é dividido em PARTES (domain/chunks.js).
 //   Cada parte vai cifrada para `dhenors_chunks` com um id único
 //   (rev). A linha de `dhenors_state` guarda o ÍNDICE cifrado
@@ -21,7 +23,13 @@
 // • Tempo real: um WebSocket avisa quando outro aparelho salva
 //   (core/realtime.js); a consulta periódica fica como reserva.
 // • Aparelhos: cada aparelho se registra em `dhenors_devices`; dá para
-//   ver a lista e desconectar um aparelho remotamente.
+//   ver a lista e desconectar um aparelho remotamente (o que também
+//   encerra as sessões dos outros aparelhos no Supabase).
+//
+// Módulos:
+//   cloud/http.js     configuração, chamadas REST, erros traduzidos
+//   cloud/sync.js     envelopes (AAD + hash) e regras puras do envio
+//   cloud/devices.js  nome e id deste aparelho
 //
 // API REST usada (documentação pública do Supabase):
 //   Auth:  POST /auth/v1/signup · /auth/v1/token?grant_type=password|refresh_token · /auth/v1/logout
@@ -31,120 +39,58 @@
 
 import { store } from './store.js';
 import { getItem, setItem } from './storage.js';
-import { deriveKey, encryptJSON, decryptJSON, randomSalt, isEnvelope, exportRawKey, importRawKey, toB64, fromB64, PIN_KDF } from './crypto.js';
-import { CLOUD_CONFIG } from '../config.js';
+import { deriveKey, randomSalt, exportRawKey, importRawKey, toB64, fromB64, PIN_KDF, LEGACY_PASS_ITERATIONS } from './crypto.js';
 import { APP_VERSION } from '../version.js';
 import { mergeWithConflicts, setAtPath } from '../domain/merge.js';
 import { splitChunks, joinChunks, hashChunks, diffChunks, isManifest, chunkSize } from '../domain/chunks.js';
 import { RealtimeClient } from './realtime.js';
+import { CloudError, CONFIG_KEY, readConfig, request } from './cloud/http.js';
+import { device, deviceId, localDeviceName, saveDeviceName } from './cloud/devices.js';
+import {
+  sealPart, sealManifest, openManifest, openPart, assertNotRollback, assertSchema, settlePending,
+  conflictCopies, addConflictCopy,
+} from './cloud/sync.js';
+
+export { CloudError };
 
 const T = { state: 'dhenors_state', chunks: 'dhenors_chunks', versions: 'dhenors_versions', devices: 'dhenors_devices' };
-const CONFIG_KEY = 'dhenors:cloud-config';
-const DEVICE_KEY = 'dhenors:device-id';
 const PUSH_DELAY = 1500;
 const POLL_MS = 60_000;          // sem tempo real
 const POLL_LIVE_MS = 5 * 60_000; // com tempo real (só reserva)
-const LEGACY_PASS_ITERATIONS = 310_000;
 const KEEP_VERSIONS = 30;
 const MAX_CHUNK = 4.5 * 1024 * 1024;
 const PAUSE_DAYS = 7;            // projeto gratuito do Supabase pausa após 7 dias sem uso
-const IGNORE = new Set(['ui', 'remote', 'external', 'unlock', 'security', 'silent']);
+const ORPHAN_GRACE_MS = 86_400_000; // parte sem índice só é apagada depois de 1 dia (outro aparelho pode estar no meio de um envio)
+const IGNORE = new Set(['ui', 'remote', 'external', 'unlock', 'security', 'silent', 'reset', 'readonly']);
 
 const listeners = new Set();
 let session = null;   // { access_token, refresh_token, expires_at, user: { id, email } }
 let key = null;       // CryptoKey (frase secreta)
 const EMPTY_META = { salt: null, iterations: null, version: null, dirty: false, pending: 0, lastSync: null, lastContact: null, userId: null, linked: false, remember: 'always', rememberUntil: null, pushes: 0, deviceCheck: 0 };
 let meta = { ...EMPTY_META };
-let manifest = null;  // índice da última versão em comum { chunks: { nome: { rev, hash } } }
+let manifest = null;  // índice da última versão em comum { chunks: { nome: { rev, hash, a } } }
 let pushTimer = null;
 let busy = Promise.resolve();
 let wired = false;
 let realtime = null;
 let pollTimer = 0;
-
-export class CloudError extends Error {}
-
-const device = () => {
-  const ua = globalThis.navigator?.userAgent || '';
-  const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iPhone/iPad' : /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Navegador';
-  const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '';
-  return browser ? `${os} · ${browser}` : os;
-};
-
-function deviceId() {
-  try {
-    let id = localStorage.getItem(DEVICE_KEY);
-    if (!id) { id = crypto.randomUUID(); localStorage.setItem(DEVICE_KEY, id); }
-    return id;
-  } catch { return 'sem-id'; }
-}
+let upgradePass = null; // frase digitada numa conta com PBKDF2 antigo: recifra tudo depois de ligar
 
 const randomRev = () => (crypto.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).replace(/-/g, '').slice(0, 20);
+const uid = () => session.user.id;
 
-// ---------- Configuração ----------
+// ---------- HTTP (com a sessão) ----------
 
-function readConfig() {
-  let saved = {};
-  try { saved = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}'); } catch { /* ignora */ }
-  const url = (saved.url || CLOUD_CONFIG.url || '').trim().replace(/\/+$/, '');
-  const anonKey = (saved.anonKey || CLOUD_CONFIG.anonKey || '').trim();
-  return { url, anonKey, fromFile: Boolean(CLOUD_CONFIG.url && CLOUD_CONFIG.anonKey && !saved.url), vapidKey: CLOUD_CONFIG.vapidPublicKey || '' };
-}
-
-// ---------- HTTP ----------
-
-async function http(path, { method = 'GET', body, auth = true, headers = {} } = {}) {
-  const { url, anonKey } = readConfig();
-  if (!url || !anonKey) throw new CloudError('A nuvem ainda não foi configurada.');
+async function http(path, { auth = true, headers = {}, ...opts } = {}) {
   if (auth) await ensureFreshToken();
-  let res;
   try {
-    res = await fetch(`${url}${path}`, {
-      method,
-      headers: {
-        apikey: anonKey,
-        'Content-Type': 'application/json',
-        ...(auth && session ? { Authorization: `Bearer ${session.access_token}` } : {}),
-        ...headers,
-      },
-      body: body == null ? undefined : JSON.stringify(body),
-    });
-  } catch {
-    const err = new CloudError(globalThis.navigator?.onLine === false ? 'Sem conexão com a nuvem.' : 'Não foi possível falar com o Supabase. Se o projeto estiver pausado, abra o painel do Supabase e clique em "Restore".');
-    err.offline = true;
+    const json = await request(path, { ...opts, headers, token: auth ? session?.access_token : null });
+    meta.lastContact = Date.now();
+    return json;
+  } catch (err) {
+    if (err.status) meta.lastContact = Date.now(); // o servidor respondeu (com erro)
     throw err;
   }
-  meta.lastContact = Date.now();
-  const text = await res.text();
-  let json = null;
-  try { json = text ? JSON.parse(text) : null; } catch { json = text; }
-  if (!res.ok) {
-    const msg = json?.msg || json?.error_description || json?.message || json?.error || `Erro ${res.status}`;
-    const err = new CloudError(translate(msg, res.status));
-    err.status = res.status;
-    err.code = json?.code || json?.error_code;
-    err.paused = res.status === 540 || /paused|inactive/i.test(String(msg));
-    throw err;
-  }
-  return json;
-}
-
-function translate(msg, status) {
-  const m = String(msg);
-  if (status === 540 || /project.*paused|paused/i.test(m)) return 'O projeto do Supabase está pausado por falta de uso. Abra supabase.com → seu projeto → "Restore project" (os dados continuam lá).';
-  if (/Invalid login credentials/i.test(m)) return 'E-mail ou senha incorretos.';
-  if (/Email not confirmed/i.test(m)) return 'Confirme o e-mail (veja sua caixa de entrada) e entre de novo.';
-  if (/User already registered/i.test(m)) return 'Este e-mail já tem conta. Use "Entrar".';
-  if (/Password should be at least/i.test(m)) return 'A senha precisa ter pelo menos 6 caracteres.';
-  if (/rate limit/i.test(m)) return 'Muitas tentativas. Espere um pouco e tente de novo.';
-  if (/only request this after|security purposes/i.test(m)) return 'Por segurança, espere alguns segundos antes de pedir outro e-mail.';
-  if (/Error sending recovery email|Error sending .*email/i.test(m)) return 'O Supabase não conseguiu enviar o e-mail. Confira o limite de envios ou o SMTP no painel do Supabase.';
-  if (/should be different from the old password/i.test(m)) return 'A nova senha precisa ser diferente da anterior.';
-  if (/relation .* does not exist|Could not find the table/i.test(m)) return 'Faltam tabelas na nuvem. Rode de novo o arquivo supabase/schema.sql no SQL Editor do Supabase (veja docs/NUVEM.md).';
-  if (/JWT expired/i.test(m)) return 'Sessão expirada. Entre de novo.';
-  if (/Invalid API key/i.test(m)) return 'Chave do Supabase inválida. Confira em Ajustes → Nuvem.';
-  if (/dhenors_chunks_size|dhenors_state_size/i.test(m)) return 'Uma parte dos dados passou do limite de 5 MB da nuvem.';
-  return m;
 }
 
 // ---------- Sessão (cifrada com o PIN, se houver) ----------
@@ -193,15 +139,24 @@ const saveMeta = () => setItem('cloud:meta', { ...meta });
 
 // ---------- Chave da frase secreta ("lembrar neste aparelho") ----------
 // remember: 'session' (só enquanto o app estiver aberto) | '30d' | 'always'
-//  • com PIN: a chave vai cifrada pelo PIN ('cloud:keyraw')
 //  • sem PIN: a chave fica como CryptoKey no IndexedDB ('cloud:key')
+//  • com SENHA do app (letras e números): a chave vai cifrada por ela ('cloud:keyraw')
+//  • com PIN só de números: a chave fica SÓ NA MEMÓRIA. Um PIN de 4–8
+//    números pode ser testado inteiro fora do app por quem copiar o
+//    navegador; guardar a chave cifrada por ele entregaria a nuvem toda
+//    (inclusive o histórico). A frase é pedida de novo ao reabrir o app.
+
+/** A frase só pode ficar na memória neste aparelho (PIN numérico)? */
+const memoryOnly = () => store.pinEnabled && store.lockKind === 'pin';
 
 async function persistKey() {
   await setItem('cloud:key', undefined);
   await store.setSecure('cloud:keyraw', undefined);
   if (!key || meta.remember === 'session') return;
   if (store.pinEnabled) {
-    try { await store.setSecure('cloud:keyraw', toB64(await exportRawKey(key))); return; } catch { /* chave antiga não exportável */ }
+    if (memoryOnly()) return;
+    try { await store.setSecure('cloud:keyraw', toB64(await exportRawKey(key))); } catch { /* chave antiga não exportável: só na memória */ }
+    return; // com PIN/senha, NUNCA grava a CryptoKey sem cifra
   }
   await setItem('cloud:key', key);
 }
@@ -214,28 +169,27 @@ async function loadKey() {
     return null;
   }
   const raw = await store.getSecure('cloud:keyraw');
-  if (raw) { try { return await importRawKey(fromB64(raw), true); } catch { /* corrompido */ } }
+  if (raw) {
+    try {
+      const k = await importRawKey(fromB64(raw), true);
+      // Guardada por uma versão anterior com PIN numérico: usa agora, mas apaga a cópia
+      if (memoryOnly()) await store.setSecure('cloud:keyraw', undefined);
+      return k;
+    } catch { /* corrompido */ }
+  }
+  if (store.pinEnabled) { await setItem('cloud:key', undefined); return null; }
   return (await getItem('cloud:key')) || null;
 }
 
 // ---------- Linhas remotas ----------
 
 async function fetchRow() {
-  const rows = await http(`/rest/v1/${T.state}?select=version,data,updated_at,device&user_id=eq.${session.user.id}`);
+  const rows = await http(`/rest/v1/${T.state}?select=version,data,updated_at,device&user_id=eq.${uid()}`);
   return rows?.[0] || null;
 }
 
 /** Última versão em comum com a nuvem (base do merge de 3 vias) — cifrada com o PIN. */
 const saveBase = (data) => store.setSecure('cloud:base', structuredClone(data));
-
-async function decryptEnvelope(env) {
-  if (!isEnvelope(env)) throw new CloudError('Os dados da nuvem não estão no formato do Dhenors.');
-  try { return await decryptJSON(env, key); } catch {
-    const err = new CloudError('A frase secreta não abre os dados da nuvem. Ela foi trocada em outro aparelho? Digite a frase nova.');
-    err.badKey = true;
-    throw err;
-  }
-}
 
 /** Baixa as partes listadas no índice que ainda não temos e monta o estado. */
 async function loadManifest(man, baseState = null) {
@@ -245,26 +199,27 @@ async function loadManifest(man, baseState = null) {
   const baseHashes = baseState ? await hashChunks(baseParts) : {};
   for (const [name, info] of Object.entries(man.chunks)) {
     if (baseHashes[name] && baseHashes[name] === info.hash) parts[name] = baseParts[name];
-    else need.push([name, info.rev]);
+    else need.push([name, info]);
   }
   for (let i = 0; i < need.length; i += 40) {
     const slice = need.slice(i, i + 40);
-    const rows = await http(`/rest/v1/${T.chunks}?select=name,rev,data&user_id=eq.${session.user.id}&rev=in.(${slice.map(([, r]) => r).join(',')})`);
+    const rows = await http(`/rest/v1/${T.chunks}?select=name,rev,data&user_id=eq.${uid()}&rev=in.(${slice.map(([, info]) => info.rev).join(',')})`);
     const byRev = new Map((rows || []).map((r) => [r.rev, r]));
-    for (const [name, rev] of slice) {
-      const row = byRev.get(rev);
+    for (const [name, info] of slice) {
+      const row = byRev.get(info.rev);
       if (!row) throw new CloudError('Uma parte dos dados da nuvem não foi encontrada. Tente sincronizar de novo.');
-      parts[name] = await decryptEnvelope(row.data);
+      parts[name] = (await openPart(row.data, key, { userId: uid(), name, rev: info.rev, hash: info.hash })).value;
     }
   }
   return joinChunks(parts);
 }
 
-/** Linha remota → { state, manifest|null } (aceita o formato antigo: estado inteiro). */
+/** Linha remota → { remote, man|null } (aceita o formato antigo: estado inteiro). */
 async function readRemote(row, baseState) {
-  const dec = await decryptEnvelope(row.data);
-  if (isManifest(dec)) return { remote: await loadManifest(dec, baseState), man: dec };
-  return { remote: dec, man: null };
+  const dec = await openManifest(row.data, key, { userId: uid(), version: row.version });
+  const remote = isManifest(dec) ? await loadManifest(dec, baseState) : dec;
+  assertSchema(remote);
+  return { remote, man: isManifest(dec) ? dec : null };
 }
 
 /** Deixa só uma operação de rede por vez. */
@@ -275,6 +230,7 @@ const serial = (fn) => { busy = busy.then(fn, fn); return busy; };
 async function push() {
   if (!ready()) return;
   setStatus('syncing');
+  const gen = meta.pending || 0; // alterações feitas DURANTE o envio continuam pendentes
   const snapshot = structuredClone(store.data);
   const parts = splitChunks(snapshot);
   const hashes = await hashChunks(parts);
@@ -284,57 +240,58 @@ async function push() {
   const chunks = {};
   try {
     for (const name of Object.keys(parts)) {
-      if (!changed.includes(name)) { chunks[name] = prev[name]; continue; }
+      // partes antigas (sem AAD) são recifradas agora
+      if (!changed.includes(name) && prev[name]?.a) { chunks[name] = prev[name]; continue; }
       if (chunkSize(parts[name]) > MAX_CHUNK) throw new CloudError(`A parte "${name}" passou de 4,5 MB. Faça um backup e apague dados antigos.`);
       const rev = randomRev();
-      const env = await encryptJSON(parts[name], key, meta.salt, { it: meta.iterations });
-      await http(`/rest/v1/${T.chunks}`, { method: 'POST', headers: { Prefer: 'return=minimal' }, body: { user_id: session.user.id, name, rev, data: env } });
+      const env = await sealPart(parts[name], key, { salt: meta.salt, it: meta.iterations, userId: uid(), name, rev });
+      await http(`/rest/v1/${T.chunks}`, { method: 'POST', headers: { Prefer: 'return=minimal' }, body: { user_id: uid(), name, rev, data: env } });
       uploaded.push(rev);
-      chunks[name] = { rev, hash: hashes[name] };
+      chunks[name] = { rev, hash: hashes[name], a: 1 };
     }
   } catch (err) {
     await dropRevs(uploaded);
     throw err;
   }
 
-  const newManifest = { format: 'dhenors-manifest', v: 2, chunks, updatedAt: snapshot.updatedAt, device: device(), app: APP_VERSION };
-  const envM = await encryptJSON(newManifest, key, meta.salt, { it: meta.iterations });
+  const newManifest = { format: 'dhenors-manifest', v: 3, chunks, updatedAt: snapshot.updatedAt, device: device(), app: APP_VERSION };
+  const target = meta.version == null ? 1 : meta.version + 1;
+  const envM = await sealManifest(newManifest, key, { salt: meta.salt, it: meta.iterations, userId: uid(), version: target });
   const now = new Date().toISOString();
   let version;
   if (meta.version == null) {
     try {
       const rows = await http(`/rest/v1/${T.state}`, {
         method: 'POST', headers: { Prefer: 'return=representation' },
-        body: { user_id: session.user.id, data: envM, version: 1, device: device(), updated_at: now },
+        body: { user_id: uid(), data: envM, version: target, device: device(), updated_at: now },
       });
-      version = rows?.[0]?.version ?? 1;
+      version = rows?.[0]?.version ?? target;
     } catch (err) {
       await dropRevs(uploaded);
       if (err.status === 409 || err.code === '23505') return pull(); // já existe: baixa e resolve
       throw err;
     }
   } else {
-    const rows = await http(`/rest/v1/${T.state}?user_id=eq.${session.user.id}&version=eq.${meta.version}`, {
+    const rows = await http(`/rest/v1/${T.state}?user_id=eq.${uid()}&version=eq.${meta.version}`, {
       method: 'PATCH', headers: { Prefer: 'return=representation' },
-      body: { data: envM, version: meta.version + 1, device: device(), updated_at: now },
+      body: { data: envM, version: target, device: device(), updated_at: now },
     });
     if (!rows?.length) { await dropRevs(uploaded); return pull(); } // outro aparelho salvou antes
     version = rows[0].version;
   }
 
   meta.version = version;
-  manifest = newManifest;
-  meta.dirty = false;
-  meta.pending = 0;
+  manifest = { ...newManifest, version };
+  settlePending(meta, gen);
   meta.lastSync = Date.now();
   meta.pushes = (meta.pushes || 0) + 1;
   await store.setSecure('cloud:manifest', manifest);
   await saveBase(snapshot);
   await saveMeta();
-  setStatus('idle');
+  setStatus(meta.dirty ? 'pending' : 'idle');
   // Histórico de versões (falhar aqui não atrapalha a sincronização)
   try {
-    await http(`/rest/v1/${T.versions}`, { method: 'POST', headers: { Prefer: 'return=minimal' }, body: { user_id: session.user.id, version, manifest: envM, device: device() } });
+    await http(`/rest/v1/${T.versions}`, { method: 'POST', headers: { Prefer: 'return=minimal' }, body: { user_id: uid(), version, manifest: envM, device: device() } });
   } catch { /* tabela antiga: sem histórico */ }
   if (meta.pushes % 10 === 1) collectGarbage().catch(() => {});
 }
@@ -342,24 +299,26 @@ async function push() {
 /** Apaga partes enviadas por um envio que não foi aceito. */
 async function dropRevs(revs) {
   if (!revs.length) return;
-  try { await http(`/rest/v1/${T.chunks}?user_id=eq.${session.user.id}&rev=in.(${revs.join(',')})`, { method: 'DELETE' }); } catch { /* fica para a limpeza */ }
+  try { await http(`/rest/v1/${T.chunks}?user_id=eq.${uid()}&rev=in.(${revs.join(',')})`, { method: 'DELETE' }); } catch { /* fica para a limpeza */ }
 }
 
 /**
  * Limpeza: mantém as últimas KEEP_VERSIONS versões e só as partes
- * usadas por elas. O resto é apagado.
+ * usadas por elas. Partes sem índice só saem depois de 1 dia: podem
+ * ser de outro aparelho que ainda está no meio de um envio.
  */
 async function collectGarbage() {
-  const versions = await http(`/rest/v1/${T.versions}?select=version,manifest&user_id=eq.${session.user.id}&order=version.desc`);
+  const versions = await http(`/rest/v1/${T.versions}?select=version,manifest&user_id=eq.${uid()}&order=version.desc`);
   const keep = (versions || []).slice(0, KEEP_VERSIONS);
   const drop = (versions || []).slice(KEEP_VERSIONS);
-  if (drop.length) await http(`/rest/v1/${T.versions}?user_id=eq.${session.user.id}&version=lt.${keep[keep.length - 1].version}`, { method: 'DELETE' });
+  if (drop.length) await http(`/rest/v1/${T.versions}?user_id=eq.${uid()}&version=lt.${keep[keep.length - 1].version}`, { method: 'DELETE' });
   const used = new Set(Object.values(manifest?.chunks || {}).map((c) => c.rev));
   for (const v of keep) {
-    try { const m = await decryptJSON(v.manifest, key); for (const c of Object.values(m.chunks || {})) used.add(c.rev); } catch { /* frase antiga */ }
+    try { const m = await openManifest(v.manifest, key, { userId: uid(), version: v.version }); for (const c of Object.values(m.chunks || {})) used.add(c.rev); } catch { /* frase antiga */ }
   }
-  const all = await http(`/rest/v1/${T.chunks}?select=rev&user_id=eq.${session.user.id}`);
-  const orphan = (all || []).map((r) => r.rev).filter((r) => !used.has(r));
+  const before = new Date(Date.now() - ORPHAN_GRACE_MS).toISOString();
+  const old = await http(`/rest/v1/${T.chunks}?select=rev&user_id=eq.${uid()}&created_at=lt.${encodeURIComponent(before)}`);
+  const orphan = (old || []).map((r) => r.rev).filter((r) => !used.has(r));
   for (let i = 0; i < orphan.length; i += 50) await dropRevs(orphan.slice(i, i + 50));
 }
 
@@ -378,6 +337,7 @@ async function pull() {
     await saveMeta();
     return push();
   }
+  assertNotRollback(meta.version, row.version);
   if (row.version === meta.version) {
     if (meta.dirty) return push();
     meta.lastSync = Date.now();
@@ -390,22 +350,22 @@ async function pull() {
     if (base) {
       // Mudanças dos dois lados: junta item a item usando a última versão em comum
       const { state: merged, conflicts } = mergeWithConflicts(base, store.data, remote);
-      if (conflicts.length) await addConflicts(conflicts, row.device);
-      await saveBase(remote);
+      await store.applyRemote(merged); // logo após juntar: nada digitado no meio se perde
       manifest = man;
-      await store.applyRemote(merged);
       meta.version = row.version;
+      await saveBase(remote);
+      if (conflicts.length) await addConflicts(conflicts, row.device);
       return push(); // envia o resultado juntado
     }
     const localTime = Date.parse(store.data.updatedAt || 0) || 0;
     const remoteTime = Date.parse(remote.updatedAt || row.updated_at || 0) || 0;
     if (localTime > remoteTime) {
-      keepBackup(remote, 'nuvem');
+      await keepBackup(remote, 'nuvem');
       meta.version = row.version;
       manifest = man;
       return push(); // as mudanças deste aparelho ganham
     }
-    keepBackup(store.data, 'este aparelho');
+    await keepBackup(store.data, 'este aparelho');
     notify(`Havia mudanças em dois aparelhos ao mesmo tempo. Ficou a mais recente (${row.device || 'outro aparelho'}); a outra foi guardada em Nuvem → Conflitos.`);
   }
   await store.applyRemote(remote);
@@ -420,8 +380,10 @@ async function pull() {
   setStatus('idle');
 }
 
-function keepBackup(data, origin) {
-  store.setSecure('cloud:conflict', { at: Date.now(), origin, data });
+/** Guarda uma cópia completa (até 3, as mais recentes). */
+async function keepBackup(data, origin) {
+  const saved = await store.getSecure('cloud:conflict');
+  await store.setSecure('cloud:conflict', addConflictCopy(saved, { at: Date.now(), origin, data: structuredClone(data) }));
 }
 
 // ---------- Conflitos ----------
@@ -459,15 +421,16 @@ async function checkDevice(force = false) {
   meta.deviceCheck = Date.now();
   try {
     const id = deviceId();
-    const rows = await http(`/rest/v1/${T.devices}?select=revoked&user_id=eq.${session.user.id}&device_id=eq.${id}`);
+    const rows = await http(`/rest/v1/${T.devices}?select=revoked&user_id=eq.${uid()}&device_id=eq.${encodeURIComponent(id)}`);
     if (rows?.[0]?.revoked) {
       await cloud.signOut({ remote: false });
       notify('Este aparelho foi desconectado da nuvem por outro aparelho. Os dados continuam aqui; para voltar, entre de novo.');
       throw new CloudError('Aparelho desconectado da nuvem.');
     }
+    // `revoked` não vai no corpo: só o banco (e "Desconectar") mexe nele
     await http(`/rest/v1/${T.devices}?on_conflict=user_id,device_id`, {
       method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: { user_id: session.user.id, device_id: id, name: localDeviceName(), app_version: APP_VERSION, last_seen: new Date().toISOString(), revoked: false },
+      body: { user_id: uid(), device_id: id, name: localDeviceName(), app_version: APP_VERSION, last_seen: new Date().toISOString() },
     });
   } catch (err) {
     if (err.message === 'Aparelho desconectado da nuvem.') throw err;
@@ -475,19 +438,29 @@ async function checkDevice(force = false) {
   }
 }
 
-function localDeviceName() {
-  try { return localStorage.getItem('dhenors:device-name') || device(); } catch { return device(); }
+/**
+ * Entrou de novo com e-mail e senha num aparelho que tinha sido
+ * desconectado: tira a marca antiga (quem sabe a senha pode entrar).
+ */
+async function rejoinDevice() {
+  try { await http(`/rest/v1/${T.devices}?user_id=eq.${uid()}&device_id=eq.${encodeURIComponent(deviceId())}&revoked=is.true`, { method: 'DELETE' }); } catch { /* tabela antiga */ }
+  meta.deviceCheck = 0;
 }
 
 /** Modo exemplo (ui/onboarding.js): dados de mentira nunca vão para a nuvem. */
 const demoMode = () => { try { return localStorage.getItem('dhenors:demo') === '1'; } catch { return false; } };
 
-const ready = () => Boolean(session && key && meta.linked && readConfig().url && !demoMode());
+const ready = () => Boolean(session && key && meta.linked && readConfig().url && !demoMode() && !store.readOnly);
 
 function run(fn) {
   return serial(async () => {
     try { await fn(); } catch (err) {
-      if (err.paused) setStatus('paused', err.message);
+      if (err.tooNew) {
+        // Nuvem com dados de uma versão mais nova: não aplica, não envia, não grava
+        store.setReadOnly(err.message);
+        notify(err.message);
+        setStatus('error', err.message);
+      } else if (err.paused) setStatus('paused', err.message);
       else if (err.offline) setStatus('offline', err.message);
       else if (err.badKey) { key = null; await persistKey(); setStatus('locked', err.message); } else setStatus(session ? 'error' : 'signedout', err.message);
     }
@@ -507,7 +480,7 @@ function startRealtime() {
   const { url, anonKey } = readConfig();
   realtime?.stop();
   realtime = new RealtimeClient({
-    url, apiKey: anonKey, userId: session.user.id,
+    url, apiKey: anonKey, userId: uid(),
     token: () => session?.access_token || anonKey,
     onChange: () => { clearTimeout(startRealtime.t); startRealtime.t = setTimeout(() => run(() => pull()), 400); },
     onStatus: () => { setStatus(state.status, state.error); schedulePoll(); },
@@ -519,6 +492,29 @@ function schedulePoll() {
   clearInterval(pollTimer);
   pollTimer = setInterval(() => { if (ready() && document.visibilityState === 'visible') run(() => pull()); }, realtime?.live ? POLL_LIVE_MS : POLL_MS);
 }
+
+/**
+ * Recifra TUDO com uma frase (nova ou a mesma) num sal novo e com as
+ * iterações atuais. Os outros aparelhos vão pedir a frase de novo.
+ */
+async function rekeyCloud(passphrase) {
+  await pull(); // garante a versão mais recente antes de recriptografar
+  const salt = randomSalt();
+  key = await deriveKey(passphrase, salt, PIN_KDF.iterations, { extractable: true });
+  meta.salt = salt;
+  meta.iterations = PIN_KDF.iterations;
+  manifest = null; // todas as partes são enviadas de novo, com a chave nova
+  meta.dirty = true;
+  await push();
+  try { await http(`/rest/v1/${T.versions}?user_id=eq.${uid()}&version=lt.${meta.version}`, { method: 'DELETE' }); } catch { /* ignora */ }
+  await persistKey();
+  await saveMeta();
+  collectGarbage().catch(() => {});
+}
+
+// "Apagar todos os dados" / apagar após tentativas erradas: este aparelho sai da
+// nuvem ANTES (sem chamar o servidor), senão o estado vazio seria enviado.
+store.onReset(({ wipe = false } = {}) => cloud.signOut({ remote: false, quiet: wipe }));
 
 // ---------- API pública ----------
 
@@ -533,6 +529,8 @@ export const cloud = {
   get deviceId() { return deviceId(); },
   get deviceName() { return localDeviceName(); },
   get remember() { return meta.remember || 'always'; },
+  /** Com PIN numérico a frase só fica na memória (pede de novo ao reabrir). */
+  get rememberLimited() { return memoryOnly(); },
 
   /** Requisição autenticada (usada por push.js, aparelhos etc.). */
   request: (path, opts) => http(path, opts),
@@ -548,7 +546,7 @@ export const cloud = {
   },
 
   setDeviceName(name) {
-    try { localStorage.setItem('dhenors:device-name', String(name).trim().slice(0, 40)); } catch { /* ignora */ }
+    saveDeviceName(name);
     meta.deviceCheck = 0;
     if (ready()) run(() => checkDevice(true));
   },
@@ -557,12 +555,13 @@ export const cloud = {
   async init() {
     session = (await store.getSecure('cloud:session')) || null;
     meta = { ...EMPTY_META, ...((await getItem('cloud:meta')) || {}) };
-    key = await loadKey();
+    key = key || await loadKey(); // com PIN numérico a chave pode estar só na memória
     manifest = (await store.getSecure('cloud:manifest')) || null;
     state.conflicts = ((await store.getSecure('cloud:conflicts')) || []).length;
     if (!this.configured) return setStatus('off');
     if (!session) return setStatus('signedout');
     if (!key || !meta.linked) return setStatus('locked');
+    if (store.readOnly) return setStatus('error', store.readOnly);
 
     if (!wired) {
       wired = true;
@@ -580,7 +579,14 @@ export const cloud = {
     startRealtime();
     schedulePoll();
     setStatus(meta.dirty ? 'pending' : 'idle');
-    return run(() => pull());
+    await run(() => pull());
+    if (upgradePass) {
+      // Conta antiga (PBKDF2 com menos iterações): recifra tudo com a proteção atual
+      const p = upgradePass;
+      upgradePass = null;
+      await run(() => rekeyCloud(p));
+    }
+    return undefined;
   },
 
   async signIn(email, password) {
@@ -588,6 +594,7 @@ export const cloud = {
     await saveSession(s);
     if (meta.userId && meta.userId !== s.user?.id) await this.forgetLink(); // outra conta: começa do zero
     meta.userId = s.user?.id;
+    await rejoinDevice();
     await saveMeta();
     setStatus('locked');
   },
@@ -631,12 +638,13 @@ export const cloud = {
     await saveSession({ ...recovery, expires_in: Number(recovery.expires_in) || 3600, user });
     if (meta.userId && meta.userId !== user?.id) await this.forgetLink();
     meta.userId = user?.id;
+    await rejoinDevice();
     await saveMeta();
     await this.init();
   },
 
   async forgetLink() {
-    key = null; manifest = null;
+    key = null; manifest = null; upgradePass = null;
     meta = { ...EMPTY_META, remember: meta.remember };
     await persistKey();
     await store.setSecure('cloud:manifest', undefined);
@@ -678,6 +686,7 @@ export const cloud = {
     meta.remember = ['session', '30d', 'always'].includes(remember) ? remember : 'always';
     meta.rememberUntil = meta.remember === '30d' ? Date.now() + 30 * 86_400_000 : null;
     manifest = man;
+    upgradePass = row && iterations < PIN_KDF.iterations ? String(passphrase) : null;
     await persistKey();
     await saveMeta();
     return { remote, version: row?.version ?? null };
@@ -724,38 +733,26 @@ export const cloud = {
     const check = await deriveKey(current, meta.salt, meta.iterations || LEGACY_PASS_ITERATIONS);
     const row = await fetchRow();
     if (row) {
-      try { await decryptJSON(row.data, check); } catch { throw new CloudError('A frase secreta atual está incorreta.'); }
+      try { await openManifest(row.data, check, { userId: uid(), version: row.version }); } catch { throw new CloudError('A frase secreta atual está incorreta.'); }
     }
-    return serial(async () => {
-      // Garante que temos a versão mais recente antes de recriptografar
-      await pull();
-      const salt = randomSalt();
-      key = await deriveKey(next, salt, PIN_KDF.iterations, { extractable: true });
-      meta.salt = salt;
-      meta.iterations = PIN_KDF.iterations;
-      manifest = null; // todas as partes são enviadas de novo, com a chave nova
-      meta.dirty = true;
-      await push();
-      try { await http(`/rest/v1/${T.versions}?user_id=eq.${session.user.id}&version=lt.${meta.version}`, { method: 'DELETE' }); } catch { /* ignora */ }
-      await persistKey();
-      await saveMeta();
-      collectGarbage().catch(() => {});
-    });
+    return serial(() => rekeyCloud(next));
   },
 
   // ---------- Histórico de versões ----------
 
   async listVersions() {
-    const rows = await http(`/rest/v1/${T.versions}?select=version,device,created_at&user_id=eq.${session.user.id}&order=version.desc&limit=${KEEP_VERSIONS}`);
+    const rows = await http(`/rest/v1/${T.versions}?select=version,device,created_at&user_id=eq.${uid()}&order=version.desc&limit=${KEEP_VERSIONS}`);
     return rows || [];
   },
 
   /** Estado de uma versão antiga (para pré-visualizar ou restaurar). */
   async loadVersion(version) {
-    const rows = await http(`/rest/v1/${T.versions}?select=manifest&user_id=eq.${session.user.id}&version=eq.${version}`);
+    const rows = await http(`/rest/v1/${T.versions}?select=manifest&user_id=eq.${uid()}&version=eq.${Number(version)}`);
     if (!rows?.[0]) throw new CloudError('Versão não encontrada.');
-    const man = await decryptEnvelope(rows[0].manifest);
-    return loadManifest(man, await store.getSecure('cloud:base'));
+    const man = await openManifest(rows[0].manifest, key, { userId: uid(), version: Number(version) });
+    const old = await loadManifest(man, await store.getSecure('cloud:base'));
+    assertSchema(old);
+    return old;
   },
 
   /** Restaura uma versão: vira uma alteração nova (as outras versões continuam no histórico). */
@@ -791,23 +788,36 @@ export const cloud = {
     setStatus(state.status, state.error);
   },
 
-  async conflictBackup() { return store.getSecure('cloud:conflict'); },
-  async clearConflict() { return store.setSecure('cloud:conflict', undefined); },
+  /** Cópias completas guardadas (até 3, mais nova primeiro): [{ at, origin, data }] */
+  async conflictBackups() { return conflictCopies(await store.getSecure('cloud:conflict')); },
+  /** A cópia mais recente (ou undefined). */
+  async conflictBackup() { return (await this.conflictBackups())[0]; },
+  /** Descarta uma cópia (pelo `at`) ou todas (sem argumento). */
+  async clearConflict(at) {
+    const rest = at == null ? [] : (await this.conflictBackups()).filter((c) => c.at !== at);
+    return store.setSecure('cloud:conflict', rest.length ? rest : undefined);
+  },
 
   // ---------- Aparelhos ----------
 
   async listDevices() {
-    const rows = await http(`/rest/v1/${T.devices}?select=device_id,name,app_version,last_seen,revoked&user_id=eq.${session.user.id}&order=last_seen.desc`);
+    const rows = await http(`/rest/v1/${T.devices}?select=device_id,name,app_version,last_seen,revoked&user_id=eq.${uid()}&order=last_seen.desc`);
     return (rows || []).map((r) => ({ ...r, current: r.device_id === deviceId() }));
   },
 
-  /** Desconecta um aparelho: na próxima sincronização ele sai da nuvem. */
+  /**
+   * Desconecta um aparelho: marca no banco (ele sai da nuvem na próxima
+   * sincronização) e ENCERRA as sessões dos outros aparelhos no
+   * Supabase — sem isso, o aparelho desconectado ainda teria um token
+   * válido. Os aparelhos que continuam precisam entrar de novo.
+   */
   async revokeDevice(id) {
-    await http(`/rest/v1/${T.devices}?user_id=eq.${session.user.id}&device_id=eq.${id}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: { revoked: true } });
+    await http(`/rest/v1/${T.devices}?user_id=eq.${uid()}&device_id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: { revoked: true } });
+    await this.signOutOthers();
   },
 
   async forgetDevice(id) {
-    await http(`/rest/v1/${T.devices}?user_id=eq.${session.user.id}&device_id=eq.${id}`, { method: 'DELETE' });
+    await http(`/rest/v1/${T.devices}?user_id=eq.${uid()}&device_id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
   /** Encerra as sessões de TODOS os outros aparelhos (precisarão entrar de novo). */
@@ -824,7 +834,8 @@ export const cloud = {
     return { days, warn: days >= PAUSE_DAYS - 2, paused: state.status === 'paused', left: Math.max(0, PAUSE_DAYS - days) };
   },
 
-  async signOut({ remote = true } = {}) {
+  /** quiet: sem avisar as telas (dados sendo apagados). */
+  async signOut({ remote = true, quiet = false } = {}) {
     clearTimeout(pushTimer);
     clearInterval(pollTimer);
     realtime?.stop();
@@ -833,6 +844,6 @@ export const cloud = {
     await saveSession(null);
     await this.forgetLink();
     await saveMeta();
-    setStatus(this.configured ? 'signedout' : 'off');
+    if (!quiet) setStatus(this.configured ? 'signedout' : 'off');
   },
 };

@@ -11,6 +11,10 @@
 //  • listas com `id` (contas, parcelas, metas…) → junta item a item:
 //    itens novos dos dois lados entram; item apagado de um lado e não
 //    alterado do outro sai; alterado dos dois lados → campo a campo
+//  • listas de valores simples (parcelas pagas, etiquetas) → conjunto
+//    de 3 vias: o que um lado tirou sai, o que um lado pôs entra
+//  • chaves de objeto (pagamentos de recorrentes, faturas pagas…)
+//    apagadas de um lado e não alteradas do outro saem
 //  • mudou dos dois lados no mesmo valor simples → fica o da nuvem,
 //    MAS a mudança deste aparelho é registrada como CONFLITO, para
 //    você escolher depois (tela "Conflitos" na Nuvem). Nada some
@@ -55,6 +59,8 @@ function mergeList(base, local, remote, c) {
     }
     if (!inL && inR) {
       if (inB && same(r.get(k), b.get(k))) return undefined; // apagado aqui
+      // apagado aqui mas alterado na nuvem: fica a nuvem, e a exclusão vira conflito (dá para refazer)
+      if (inB) c.conflicts.push({ kind: 'deleted-local', path: [...c.path, k], itemPath: [...c.path, k], local: null, remote: r.get(k), localItem: null, remoteItem: r.get(k) });
       return r.get(k);
     }
     return undefined;
@@ -67,6 +73,19 @@ function mergeList(base, local, remote, c) {
     if (v !== undefined) out.push(v);
   }
   return out;
+}
+
+/**
+ * Listas de valores simples (ex.: parcelas pagas [1, 2, 3]) como
+ * CONJUNTOS, olhando a base: o que um lado tirou sai (desmarcar uma
+ * parcela não volta sozinha) e o que um lado pôs entra.
+ */
+function mergeSet(base, local, remote) {
+  const b = new Set(base);
+  const l = new Set(local);
+  const r = new Set(remote);
+  const keep = (x) => (b.has(x) ? l.has(x) && r.has(x) : true);
+  return [...new Set([...remote, ...local])].filter(keep);
 }
 
 function mergeObject(base, local, remote, c) {
@@ -89,7 +108,7 @@ export function merge(base, local, remote, c = ctx()) {
   if (base !== undefined && same(remote, base)) return local; // só este aparelho mudou
   if (isKeyedList(local, remote)) return mergeList(Array.isArray(base) ? base : [], local, remote, c);
   if (Array.isArray(local) && Array.isArray(remote) && [...local, ...remote].every((x) => typeof x !== 'object')) {
-    return [...new Set([...remote, ...local])]; // ex.: impressões de importação
+    return mergeSet(Array.isArray(base) ? base : [], local, remote); // ex.: parcelas pagas, etiquetas, impressões de importação
   }
   if (isObj(local) && isObj(remote)) return mergeObject(isObj(base) ? base : {}, local, remote, c);
   // Mudou dos dois lados: fica a nuvem, mas registra o conflito

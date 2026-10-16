@@ -48,7 +48,7 @@ export function parseOFX(text) {
     // No OFX, saída é negativa. Aqui invertemos: saída = positivo (é uma despesa)
     out.push({ date, description: description.slice(0, 120), cents: -Math.round(amount * 100), id: tag(b, 'FITID') });
   }
-  return out;
+  return withOccurrences(out);
 }
 
 // ---------- CSV ----------
@@ -99,27 +99,32 @@ export function parseCSV(text, { invert = null } = {}) {
   }
 
   const rows = [];
+  const byColumns = !(iValue >= 0 || start === 0); // colunas Débito/Crédito separadas
+  const amount = (cell) => toCents(String(cell || '').replace(/[^\d,.()-]/g, ''));
   for (const line of lines.slice(start)) {
     const c = splitCSVLine(line, sep);
     const date = parseAnyDate(c[iDate]);
     if (!date) continue;
     let cents;
-    if (iValue >= 0 || start === 0) {
-      cents = toCents(String(c[iValue >= 0 ? iValue : 2] || '').replace(/[^\d,.-]/g, ''));
+    if (!byColumns) {
+      cents = amount(c[iValue >= 0 ? iValue : 2]);
     } else {
-      const debit = toCents(String(c[iDebit] || '').replace(/[^\d,.-]/g, ''));
-      const credit = toCents(String(c[iCredit] || '').replace(/[^\d,.-]/g, ''));
-      cents = (Number.isFinite(credit) && credit ? credit : 0) - (Number.isFinite(debit) && debit ? Math.abs(debit) : 0);
+      // A coluna já diz o lado: débito = saída (positivo aqui), crédito = entrada
+      const debit = amount(c[iDebit]);
+      const credit = iCredit >= 0 ? amount(c[iCredit]) : NaN;
+      cents = (Number.isFinite(debit) && debit ? Math.abs(debit) : 0) - (Number.isFinite(credit) && credit ? Math.abs(credit) : 0);
     }
     if (!Number.isFinite(cents) || cents === 0) continue;
     rows.push({ date, description: (c[iDesc] || 'Lançamento').slice(0, 120), cents });
   }
 
+  // Com colunas Débito/Crédito o sinal já está certo: nunca inverte.
+  if (byColumns) return withOccurrences(rows);
   // Extrato de conta: saída negativa → vira positiva (despesa).
   // Fatura de cartão: gastos positivos. Detecta pela maioria, se não informado.
   const positives = rows.filter((r) => r.cents > 0).length;
   const spendIsPositive = invert ?? positives > rows.length / 2;
-  return rows.map((r) => ({ ...r, cents: spendIsPositive ? r.cents : -r.cents }));
+  return withOccurrences(rows.map((r) => ({ ...r, cents: spendIsPositive ? r.cents : -r.cents })));
 }
 
 /** Escolhe o leitor pelo conteúdo do arquivo. */
@@ -176,5 +181,29 @@ export function suggestCategory(state, description) {
   return null;
 }
 
-/** Identidade de uma transação para não importar duas vezes. */
-export const fingerprint = (t) => `${t.date}|${t.cents}|${cleanDescription(t.description).slice(0, 40)}`;
+/**
+ * Identidade de uma transação para não importar duas vezes:
+ * "data|valor|descrição". Lançamentos IDÊNTICOS no mesmo arquivo (duas
+ * corridas de Uber iguais no dia) ganham "#2", "#3"… pela ordem
+ * (`occurrence`), para não virarem um só. A 1ª ocorrência mantém o formato
+ * antigo, então extratos já importados continuam reconhecidos.
+ */
+export const fingerprint = (t) => `${t.date}|${t.cents}|${cleanDescription(t.description).slice(0, 40)}${t.occurrence > 1 ? `#${t.occurrence}` : ''}`;
+
+/**
+ * Numera as repetições idênticas do arquivo (campo `occurrence`). No OFX,
+ * o FITID decide: mesmo FITID = mesma transação repetida pelo banco.
+ */
+export function withOccurrences(rows) {
+  const count = new Map();
+  const byId = new Map();
+  return rows.map((r) => {
+    const base = fingerprint({ ...r, occurrence: 1 });
+    const idKey = r.id ? `${base}|${r.id}` : null;
+    if (idKey && byId.has(idKey)) return { ...r, occurrence: byId.get(idKey) };
+    const occurrence = (count.get(base) || 0) + 1;
+    count.set(base, occurrence);
+    if (idKey) byId.set(idKey, occurrence);
+    return { ...r, occurrence };
+  });
+}

@@ -39,7 +39,7 @@ export function renderInstallments() {
       </dl>
       <button type="button" class="btn btn--primary" data-action="inst:new">${icon('plus')} Novo parcelamento</button>
     </div>
-    ${(d.cards || []).length ? html`<p class="muted small">Compras parceladas no <strong>cartão de crédito</strong> ficam dentro das faturas, em <a href="#/carteira?aba=cartoes">Cartões e contas</a>.</p>` : ''}
+    ${(d.cards || []).length ? html`<p class="muted small">Compras parceladas no <strong>cartão de crédito</strong> ficam dentro das faturas, em <a href="#/carteira?aba=cartoes">Cartões e contas bancárias</a>.</p>` : ''}
 
     <div class="segmented" role="group" aria-label="Mostrar">
       <button type="button" class="segmented__btn" data-action="inst:filter" data-filter="active" aria-pressed="${show === 'active'}">Em andamento (${active.length})</button>

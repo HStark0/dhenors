@@ -5,9 +5,9 @@
 
 import { store } from '../../core/store.js';
 import { MAX_CENTS } from '../../core/money.js';
-import { isValidYM, ymOf, todayISO, currentYM, monthsBetween } from '../../core/dates.js';
+import { isValidYM, ymOf, todayISO, currentYM, monthsBetween, addMonthsYM } from '../../core/dates.js';
 import { newId } from '../schema.js';
-import { planInstallment, installmentInMonth, FREQ_DAYS } from '../ledger.js';
+import { planInstallment, installmentInMonth, FREQ_DAYS, recurringDates } from '../ledger.js';
 import { invoiceKey } from '../cards.js';
 import {
   ValidationError, text, cents, date, intRange, refs, splits, assertOpen, findOrThrow, entry, cleanupEntry, tags,
@@ -78,7 +78,73 @@ export function setExpenseAttachments(id, attachments) {
 const FREQS = ['monthly', 'weekly', 'biweekly', 'bimonthly', 'quarterly', 'semiannual', 'annual'];
 
 export function saveRecurring(input) {
+  return store.commit((d) => applyRecurring(d, input));
+}
+
+/**
+ * Cadastra várias recorrentes de uma vez, num commit só: se uma
+ * falhar, nenhuma é salva (o erro leva `index` = posição na lista).
+ */
+export function saveRecurringMany(inputs) {
+  return store.commit((d) => inputs.map((input, index) => {
+    try { return applyRecurring(d, input); } catch (err) { err.index = index; throw err; }
+  }));
+}
+
+/**
+ * Edita uma recorrente cujo VALOR mudou, escolhendo o alcance:
+ *   'month'  → só no mês `ym`: o cadastro fica com o valor antigo e o mês
+ *              ganha o valor novo (como "Ajustar este mês")
+ *   'future' → de `ym` em diante: meses anteriores ainda em aberto
+ *              continuam com o valor antigo
+ *   'open'   → todos os meses em aberto (não pagos) passam ao valor
+ *              novo, inclusive os que tinham um valor ajustado à mão
+ * Meses pagos nunca mudam (o valor pago fica fixado); meses fechados
+ * também não.
+ */
+export function saveRecurringScoped(input, scope, ym) {
   return store.commit((d) => {
+    const current = findOrThrow(d.recurring, input.id, 'Recorrente');
+    const oldCents = current.cents;
+    const newCents = cents(input.cents, 'cents');
+    if (!isValidYM(ym)) throw new ValidationError('Mês inválido.', 'cents');
+    if (scope === 'month') {
+      const saved = applyRecurring(d, { ...input, cents: oldCents });
+      if (FREQ_DAYS[saved.freq]) throw new ValidationError('Nas semanais/quinzenais, ajuste o valor de cada data na lista de contas.', 'cents');
+      if (!recurringDates(saved, ym).length) throw new ValidationError(`Esta recorrente não vence em ${ym.slice(5)}/${ym.slice(0, 4)}.`, 'cents');
+      assertOpen(d, ym, 'cents');
+      const [key, e] = entry(d, saved.id, ym);
+      if (!e.paidAt) e.cents = newCents;
+      cleanupEntry(d, key);
+      return saved;
+    }
+    const saved = applyRecurring(d, input);
+    const prefix = `${saved.id}|`;
+    if (scope === 'future') {
+      // fixa o valor antigo nos meses anteriores ainda sem valor próprio
+      let guard = 0;
+      for (let m = saved.startYM; m < ym && guard < 600; m = addMonthsYM(m, 1), guard++) {
+        if (d.closedMonths[m]) continue;
+        for (const due of recurringDates(saved, m)) {
+          const [key, e] = entry(d, saved.id, FREQ_DAYS[saved.freq] ? due : m);
+          if (!e.paidAt && !e.skipped && e.cents == null) e.cents = oldCents;
+          cleanupEntry(d, key);
+        }
+      }
+    } else if (scope === 'open') {
+      for (const [key, e] of Object.entries(d.recurringEntries)) {
+        if (!key.startsWith(prefix) || e.paidAt || e.cents == null) continue;
+        if (d.closedMonths[key.slice(prefix.length, prefix.length + 7)]) continue;
+        e.cents = null;
+        cleanupEntry(d, key);
+      }
+    }
+    return saved;
+  });
+}
+
+function applyRecurring(d, input) {
+  {
     const freq = FREQS.includes(input.freq) ? input.freq : 'monthly';
     const item = {
       description: text(input.description, 'description', 'a descrição'),
@@ -110,7 +176,7 @@ export function saveRecurring(input) {
     const created = { id: newId(), ...item, priceHistory: [{ date: todayISO(), cents: item.cents }] };
     d.recurring.push(created);
     return created;
-  });
+  }
 }
 
 /** Encerra a recorrente: deixa de aparecer a partir do mês seguinte a `lastYM`. */

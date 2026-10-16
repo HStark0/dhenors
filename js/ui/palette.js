@@ -21,6 +21,7 @@ import { suggestCategory } from '../domain/importer.js';
 import { INVEST_TYPES } from '../domain/investments.js';
 import * as A from '../domain/actions.js';
 import { speechSupported, listen } from './voice.js';
+import { withSnapshot } from './undo.js';
 
 const norm = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -97,9 +98,15 @@ export function openPalette({ nav, commands, openEditor, voice = false }) {
         group: 'Lançar agora', icon: quick.income ? 'trending-up' : quick.type === 'recurring' ? 'repeat' : quick.type === 'installment' || quick.card ? 'credit-card' : 'zap',
         label: `${quick.card ? `Cartão ${quick.card}` : KIND_TEXT[quick.type]}${quick.type === 'expense' && quick.paid ? ' paga' : ''}: ${quick.description} · ${formatBRL(quick.cents)}${extra}`,
         hint: `${formatDateBR(quick.date)} (${relativeDays(quick.date)})${cat ? ` · ${cat.name}` : ''}`,
-        run: () => toast(launch(quick, sug)),
+        // Sempre com "Desfazer": um Enter sem querer não deixa lançamento órfão
+        run: () => {
+          const { result, restore } = withSnapshot(() => launch(quick, sug));
+          toast(result, { action: { label: 'Desfazer', run: () => { restore(); toast('Lançamento desfeito.', { type: 'info' }); } } });
+        },
       });
     }
+    // Com "uber 2026", procura também só pela descrição ("uber")
+    const qDesc = quick ? norm(quick.description || '') : '';
     const match = (t) => !q || norm(t).includes(q);
     for (const c of commands) if (match(c.label)) out.push({ group: 'Ações', ...c });
     for (const n of nav) if (match(n.label)) out.push({ group: 'Ir para', icon: n.icon, label: n.label, run: () => { location.hash = `#/${n.id}`; } });
@@ -111,13 +118,19 @@ export function openPalette({ nav, commands, openEditor, voice = false }) {
         ...(d.cardPurchases || []).map((x) => ({ kind: 'purchase', x, label: x.description, hint: `${formatBRL(Math.abs(x.cents))} · ${formatDateBR(x.date)}`, icon: 'credit-card', date: x.date })),
         ...d.goals.map((x) => ({ kind: 'goal', x, label: x.description, hint: `meta ${formatBRL(x.targetCents)}`, icon: 'target', date: '' })),
         ...(d.investments || []).map((x) => ({ kind: 'investment', x, label: x.name, hint: [INVEST_TYPES[x.type]?.label, x.institution].filter(Boolean).join(' · '), icon: 'coins', date: '' })),
-      ].filter((r) => norm(r.label).includes(q) || (r.x.tags || []).some((t) => norm(t).includes(q.replace('#', ''))))
+      ].filter((r) => norm(r.label).includes(q) || (qDesc.length >= 2 && norm(r.label).includes(qDesc)) || (r.x.tags || []).some((t) => norm(t).includes(q.replace('#', ''))))
         .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
         .slice(0, 8);
       for (const r of found) out.push({ group: 'Lançamentos', icon: r.icon, label: r.label, hint: r.hint, run: () => openEditor(r.kind, r.x) });
       out.push({ group: 'Busca', icon: 'filter', label: `Buscar "${input.value.trim()}" com filtros`, hint: 'Valor, data, categoria, etiqueta e buscas salvas', run: () => { location.hash = `#/busca?q=${encodeURIComponent(input.value.trim())}`; } });
     }
     results = out.slice(0, 30);
+    // Ao digitar (active < 0): se há resultados de busca, o Enter abre o
+    // primeiro deles — "Lançar agora" só fica pré-selecionado sozinho.
+    if (active < 0) {
+      const found = quick ? results.findIndex((r) => r.group !== 'Lançar agora' && r.group !== 'Busca') : -1;
+      active = found >= 0 ? found : 0;
+    }
     active = Math.min(active, Math.max(0, results.length - 1));
     let lastGroup = '';
     list.innerHTML = results.length ? results.map((r, i) => {
@@ -139,7 +152,7 @@ export function openPalette({ nav, commands, openEditor, voice = false }) {
     try { r.run(); } catch (err) { toast(err.message || 'Não foi possível.', { type: 'error' }); }
   };
 
-  input.addEventListener('input', () => { active = 0; build(); });
+  input.addEventListener('input', () => { active = -1; build(); });
   input.addEventListener('keydown', (ev) => {
     if (ev.key === 'ArrowDown') { ev.preventDefault(); active = Math.min(results.length - 1, active + 1); build(); }
     if (ev.key === 'ArrowUp') { ev.preventDefault(); active = Math.max(0, active - 1); build(); }
@@ -156,7 +169,7 @@ export function openPalette({ nav, commands, openEditor, voice = false }) {
     input.placeholder = 'Ouvindo… fale, por exemplo: gastei 50 no mercado';
     try {
       const said = await listen();
-      if (said) { input.value = said; active = 0; build(); }
+      if (said) { input.value = said; active = -1; build(); }
     } catch (err) { toast(err.message, { type: 'error' }); } finally {
       mic?.classList.remove('is-listening');
       input.placeholder = 'Buscar ou lançar: “mercado 120 ontem”…';

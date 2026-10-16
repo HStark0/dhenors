@@ -77,7 +77,13 @@ export async function installApp() {
 export function initServiceWorker() {
   if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
   let reloading = false;
+  // Só recarrega quando uma versão NOVA assume o lugar de outra. Na 1ª
+  // visita não havia service worker controlando a página: se ele passar
+  // a controlar (navegador, extensão, outra aba), recarregar ali só
+  // piscaria a tela e perderia o que estava sendo digitado.
+  let hadController = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController) { hadController = true; return; } // 1º controle: as próximas trocas são atualizações
     if (reloading) return;
     reloading = true;
     location.reload();

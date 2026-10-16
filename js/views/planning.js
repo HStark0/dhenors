@@ -268,7 +268,7 @@ function cashflow() {
       <header class="card__header"><h2 class="card__title">${icon('activity')} Saldo dia a dia até ${formatDateBR(days[days.length - 1].date)}</h2></header>
       ${lineChart(days.map((p) => `${p.date.slice(8)}/${p.date.slice(5, 7)}`), [{ name: 'Saldo previsto', values: days.map((p) => p.balance), className: 'is-balance' }],
         { label: 'Fluxo de caixa diário', width: chartWidth(1), area: true, marks: [{ index: days.indexOf(flow.min), label: 'aperta' }, ...(days.findIndex((p) => p.date === room.nextPay) >= 0 ? [{ index: days.findIndex((p) => p.date === room.nextPay), label: 'salário' }] : [])] })}
-      ${room.source === 'estimate' ? html`<p class="field__hint">Para um fluxo exato, cadastre suas contas com o saldo de hoje em <a href="#/carteira?aba=contas">Cartões e contas</a>.</p>` : ''}
+      ${room.source === 'estimate' ? html`<p class="field__hint">Para um fluxo exato, cadastre suas contas bancárias com o saldo de hoje em <a href="#/carteira?aba=contas">Cartões e contas bancárias</a>.</p>` : ''}
     </article>
     <article class="card">
       <h2 class="card__title">${icon('calendar')} O que entra e sai</h2>

@@ -28,6 +28,8 @@ Tempo: uns 15 minutos. Tudo nos planos **gratuitos**.
 5. **Authentication → Sign In / Providers → Email**:
    - Deixe *Email* ligado.
    - **Confirm email**: pode deixar ligado (mais seguro: você confirma pelo e-mail uma vez) ou desligar (entra direto).
+   - **Feche o cadastro depois de criar a sua conta** (importante): com o cadastro aberto, qualquer pessoa que descubra a URL e a chave pública (elas ficam no site) pode criar contas e ocupar o espaço gratuito do projeto (500 MB). Depois da Parte 3 (conta criada e funcionando), vá em **Authentication → Sign In / Providers** e desligue **Allow new users to sign up**. Para usar em outro aparelho, basta *entrar* com a mesma conta. Precisa de outra conta (ex.: da família)? Ligue por um minuto, crie e desligue de novo — ou crie em **Authentication → Users → Add user**.
+   - O `schema.sql` também põe uma **cota por conta** (50 MB de partes + histórico). Passou disso, o app avisa e para de enviar até você apagar dados antigos. Para mudar o limite, edite `dhenors_quota_bytes()` no arquivo e rode de novo.
 6. (Depois da Parte 2) **Authentication → URL Configuration**:
    - **Site URL**: cole o endereço do seu site (`https://SEU-USUARIO.github.io/dhenors/`). É para onde o link de confirmação de e-mail leva.
    - **Redirect URLs** → *Add URL*: cole o mesmo endereço (`https://SEU-USUARIO.github.io/dhenors/`). Sem isso, o link de **"Esqueci minha senha"** não volta para o app.
@@ -67,7 +69,7 @@ O plano gratuito do Supabase **pausa** o projeto depois de 7 dias sem uso. O app
 2. Cole a URL e a chave (se não estiverem no `config.js`).
 3. **Criar conta** com e-mail e senha (confirme o e-mail se o Supabase pedir e depois **Entrar**).
 4. **Crie a frase secreta** (mín. 8 caracteres). **Anote em lugar seguro**: sem ela, ninguém recupera os dados da nuvem.
-5. Escolha se o aparelho deve **lembrar a frase**: só nesta sessão, por 30 dias ou sempre (guardada cifrada pelo PIN/senha do app, se houver).
+5. Escolha se o aparelho deve **lembrar a frase**: só nesta sessão, por 30 dias ou sempre. Com **senha** no app (letras e números), a frase lembrada fica cifrada por ela. Com **PIN só de números**, a frase fica lembrada **só enquanto o app estiver aberto** e é pedida de novo ao reabrir: um PIN curto pode ser testado inteiro por quem copiar o navegador, e isso não pode abrir a nuvem.
 6. Pronto: o botão de nuvem mostra "Sincronizado há X min".
 
 > Seus dados estão hoje em outro endereço (ex.: o arquivo `dhenors.html` ou `localhost`)? Cada endereço tem o próprio armazenamento. Lá, faça **Ajustes → Baixar backup**; no site novo, **Ajustes → Restaurar** e depois ligue a nuvem.
@@ -100,7 +102,9 @@ Esqueceu a frase secreta? Os dados continuam a salvo **nos aparelhos que já est
 | Sem internet | Continua funcionando; o botão mostra "Offline" e envia quando a conexão voltar. |
 | Mexeu em dois aparelhos ao mesmo tempo | O app **junta as mudanças item a item**. Se o MESMO campo do mesmo item foi alterado nos dois, vira um **conflito**: Ajustes → Nuvem → Conflitos mostra as duas versões e você escolhe. |
 | Errou feio | **Histórico de versões** (Ajustes → Nuvem): volte o estado inteiro para uma cópia de dias atrás. |
-| Perdeu o celular | **Aparelhos conectados** (Ajustes → Nuvem): veja onde a conta está aberta e desconecte. Troque a frase secreta se precisar: os dados são recriptografados. |
+| Perdeu o celular | **Aparelhos conectados** (Ajustes → Nuvem): veja onde a conta está aberta e desconecte. Desconectar também **encerra no servidor as sessões de todos os outros aparelhos** (os seus precisam entrar de novo com e-mail e senha); o banco não deixa o aparelho desconectado se "religar" sozinho. Troque a **senha da conta** e, se precisar, a frase secreta: os dados são recriptografados. |
+| Apagou todos os dados neste aparelho | O aparelho **sai da nuvem antes** de apagar (o estado vazio não é enviado). A nuvem e os outros aparelhos continuam como estavam; para voltar, entre de novo. |
+| App desatualizado | Se a nuvem tiver dados salvos por uma versão mais nova do Dhenors, este aparelho **não aplica nem envia nada** e fica só leitura até você atualizar (recarregar a página). |
 
 ## (Opcional) Lembretes com o app fechado (push)
 
@@ -117,12 +121,14 @@ Privacidade: cada aparelho envia só **quantas** contas vencem em cada dia — n
 Vai contra o princípio "nada sai do aparelho", por isso fica **desligado** até você ligar.
 
 1. Crie uma conta em **pluggy.ai** e pegue `CLIENT_ID` e `CLIENT_SECRET`.
-2. `supabase functions deploy open-finance` e `supabase secrets set PLUGGY_CLIENT_ID=... PLUGGY_CLIENT_SECRET=...`.
+2. `supabase functions deploy open-finance` e `supabase secrets set PLUGGY_CLIENT_ID=... PLUGGY_CLIENT_SECRET=...`. Publique de novo ao atualizar o app: a função confere que cada conexão e conta da Pluggy pertence a quem pede (`clientUserId` = sua conta).
 3. No app: Ajustes → Dados → **Open Finance** → Ligar → Conectar banco. As transações abrem na tela de importação (com conciliação): nada é lançado sem a sua revisão.
 
 ## Segurança, em resumo
 
 - **Criptografia de ponta a ponta:** AES-256-GCM com chave derivada da sua frase (PBKDF2-SHA256, 600 mil iterações). O Supabase só guarda blocos ilegíveis.
-- **Isolamento:** as regras do banco (RLS) só deixam cada conta ler e alterar as próprias linhas; tamanhos máximos evitam abuso.
+- **Integridade:** cada bloco é amarrado (AAD do AES-GCM) à conta, ao nome e à versão, e o hash é conferido depois de abrir. O servidor não consegue trocar blocos de lugar nem devolver um índice antigo como se fosse novo. Blocos de versões anteriores do app são recifrados no próximo envio.
+- **Isolamento:** as regras do banco (RLS) só deixam cada conta ler e alterar as próprias linhas; tamanhos máximos por linha e a **cota por conta** evitam abuso. Feche o cadastro aberto (Parte 1, passo 5).
+- **Contas antigas** (frase criada com 310 mil iterações): na próxima vez que você digitar a frase, tudo é recifrado com 600 mil; os outros aparelhos pedem a frase (a mesma) uma vez.
 - **Sem dependências externas:** o app fala com o Supabase pela API REST e pelo WebSocket oficiais, sem bibliotecas de terceiros.
 - Detalhes em [SEGURANCA.md](SEGURANCA.md) e [PRIVACIDADE.md](PRIVACIDADE.md).

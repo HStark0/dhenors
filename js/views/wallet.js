@@ -20,7 +20,7 @@ import * as A from '../domain/actions.js';
 
 const TABS = [
   { id: 'cartoes', label: 'Cartões de crédito', icon: 'credit-card' },
-  { id: 'contas', label: 'Contas e carteiras', icon: 'wallet' },
+  { id: 'contas', label: 'Contas bancárias e carteiras', icon: 'wallet' },
 ];
 
 const salaryFn = (state) => (ym) => {
@@ -30,7 +30,7 @@ const salaryFn = (state) => (ym) => {
 
 export default {
   id: 'carteira',
-  title: 'Cartões e contas',
+  title: 'Cartões e contas bancárias',
   shortTitle: 'Carteira',
 
   render() {
@@ -148,7 +148,7 @@ function accounts() {
       </dl>
       <div class="page-head__actions">
         <button type="button" class="btn btn--ghost" data-action="acc:transfer">${icon('arrow-left-right')} Transferir</button>
-        <button type="button" class="btn btn--primary" data-action="acc:new">${icon('plus')} Nova conta</button>
+        <button type="button" class="btn btn--primary" data-action="acc:new">${icon('plus')} Nova conta bancária</button>
       </div>
     </div>
     <div class="cards-grid">

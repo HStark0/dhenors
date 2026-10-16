@@ -19,6 +19,7 @@ import { formatBRL, toCents } from '../core/money.js';
 import { todayISO, formatDateBR } from '../core/dates.js';
 import { motionReduced } from '../core/theme.js';
 import * as A from '../domain/actions.js';
+import { withSnapshot } from './undo.js';
 
 /** Vibração curta (se o aparelho e a preferência permitirem). */
 export function buzz(pattern = 18) {
@@ -40,11 +41,12 @@ function celebrate(key) {
 /** Paga hoje (ou desfaz) direto, com "Desfazer". */
 export function quickToggle(item) {
   const paid = item.status !== 'paid';
-  A.setItemPaid(item, paid, todayISO());
+  // Fotografia do estado: o "Desfazer" volta data, valor pago e conta exatamente como estavam
+  const { restore } = withSnapshot(() => A.setItemPaid(item, paid, todayISO()));
   if (paid) { buzz(); celebrate(item.key); }
   const msg = paid ? `${item.description} marcada como paga.` : `Pagamento de ${item.description} desfeito.`;
   announce(msg);
-  toast(msg, { action: { label: 'Desfazer', run: () => A.setItemPaid({ ...item, status: paid ? 'paid' : item.status }, !paid, item.paidAt || todayISO()) } });
+  toast(msg, { action: { label: 'Desfazer', run: restore } });
 }
 
 /** Janela de pagamento com data, valor e conta. */
@@ -74,12 +76,12 @@ export function payDialog(item) {
       const paidAt = form.paidAt.value;
       const cents = valueEditable ? toCents(form.cents.value) : null;
       if (valueEditable && (!Number.isFinite(cents) || cents <= 0)) throw new A.ValidationError('Informe o valor pago.', 'cents');
-      A.setItemPaid(item, true, paidAt, { cents, accountId: form.accountId ? form.accountId.value || null : undefined });
+      const { restore } = withSnapshot(() => A.setItemPaid(item, true, paidAt, { cents, accountId: form.accountId ? form.accountId.value || null : undefined }));
       buzz();
       celebrate(item.key);
       const msg = `${item.description} paga em ${formatDateBR(paidAt)}${cents && cents !== item.cents ? ` (${formatBRL(cents)})` : ''}.`;
       announce(msg);
-      toast(msg, { action: { label: 'Desfazer', run: () => A.setItemPaid({ ...item, status: 'paid' }, false) } });
+      toast(msg, { action: { label: 'Desfazer', run: restore } });
     },
   });
 }

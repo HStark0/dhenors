@@ -632,3 +632,6 @@
   body.is-printing .payslip-doc { color: #000; }
   body.is-printing .payslip__net { background: #eee; }
 }
+
+/* Aviso fixo: dados de uma versão mais nova (só leitura) */
+.readonly-banner { margin: 8px 16px 0; padding: 10px 14px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-weight: 600; }

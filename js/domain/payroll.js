@@ -42,7 +42,7 @@
 // =============================================================
 
 import { tablesFor } from './taxTables.js';
-import { addMonthsYM, monthsBetween, daysInMonth, parseISO, dateInMonth, ymOf, todayISO } from '../core/dates.js';
+import { addMonthsYM, monthsBetween, daysInMonth, parseISO, dateInMonth, ymOf, todayISO, addDaysISO, diffDays } from '../core/dates.js';
 import { nthBusinessDay, dsrDaysIn } from '../core/calendar.js';
 
 const toCents = (reais) => Math.round(reais * 100);
@@ -156,10 +156,16 @@ function pensionFor(taxableCents, table, employment) {
 
 // ---------- Imposto de Renda ----------
 
+// Coeficientes em milionésimos para fazer as contas em INTEIROS: a taxa ×
+// centavos em ponto flutuante errava 1 centavo nos casos de meio centavo.
+const micro = (x) => Math.round(x * 1e6);
+/** a − b × centavos (a em reais, b decimal) → centavos, arredondado. */
+export const linearCents = (aReais, b, cents) => Math.round((micro(aReais) * 100 - micro(b) * cents) / 1e6);
+
 function tableTax(baseCents, table) {
   const base = toReais(baseCents);
   for (const [upper, rate, deduct] of table.irrf) {
-    if (base <= upper) return Math.max(0, toCents(base * rate - deduct));
+    if (base <= upper) return Math.max(0, Math.round((micro(rate) * baseCents - micro(deduct) * 100) / 1e6));
   }
   return 0;
 }
@@ -169,10 +175,10 @@ export function irReductionFor(taxableCents, taxCents, table) {
   const r = table.reduction;
   if (!r || taxCents <= 0) return 0;
   const income = toReais(taxableCents);
-  let value = 0;
-  if (income <= r.fullUpTo) value = r.fullMax;
-  else if (income <= r.partialUpTo) value = Math.max(0, r.a - r.b * income);
-  return Math.min(taxCents, toCents(value));
+  let value = 0; // centavos (conta em inteiros: ver linearCents)
+  if (income <= r.fullUpTo) value = toCents(r.fullMax);
+  else if (income <= r.partialUpTo) value = Math.max(0, linearCents(r.a, r.b, taxableCents));
+  return Math.min(taxCents, value);
 }
 
 /** IRRF mensal: escolhe o mais vantajoso entre deduções legais e o desconto simplificado. */
@@ -411,9 +417,9 @@ export function onCallLinesFor(settings, ym) {
 /** Dias pagos pela empresa no mês e afastamentos (férias, INSS, atestado, faltas). */
 export function daysFor(settings, ym) {
   const abs = absencesIn(settings, ym);
-  const vacation = vacationIn(settings, ym);
   return {
-    workedDays: Math.max(0, 30 - (vacation ? vacation.days : 0) - abs.inss),
+    // Férias que atravessam o mês: cada mês desconta só os SEUS dias
+    workedDays: Math.max(0, 30 - vacationDaysIn(settings, ym) - abs.inss),
     absence: { sick: abs.sick, falta: abs.falta },
   };
 }
@@ -514,11 +520,35 @@ export function thirteenthFor(settings, ym, extrasFor = () => 0) {
 // Estimativa no mês de início:
 //   férias   = (salário + adicionais fixos) ÷ 30 × dias + 1/3
 //   abono    = mesma base ÷ 30 × dias vendidos + 1/3  (sem INSS e sem IR)
-//   INSS/IR  calculados sobre férias + 1/3 (IR em separado do salário)
-//   O salário do mês passa a pagar só os dias trabalhados.
+//   INSS     sobre salário + férias + 1/3 de cada mês (o recibo desconta a diferença)
+//   IR       sobre férias + 1/3, em separado do salário
+//   O salário de cada mês paga só os dias trabalhados (férias que atravessam
+//   o mês descontam os dias de cada mês).
 
 /** Férias que começam no mês `ym` (ou null). */
 export const vacationIn = (settings, ym) => (settings.vacations || []).find((v) => v.start.slice(0, 7) === ym) || null;
+
+/** Dias de descanso das férias em cada mês do calendário: [{ ym, days }]. */
+export function vacationSplit(v) {
+  const out = [];
+  if (!v?.start || !(v.days > 0)) return out;
+  const end = addDaysISO(v.start, v.days - 1);
+  for (let cur = v.start; cur <= end;) {
+    const ym = ymOf(cur);
+    const monthEnd = dateInMonth(ym, 31);
+    const last = end < monthEnd ? end : monthEnd;
+    out.push({ ym, days: diffDays(cur, last) + 1 });
+    cur = addDaysISO(last, 1);
+  }
+  return out;
+}
+
+/** Dias de férias que caem no mês `ym` (somando todas as férias; no máximo 30). */
+export function vacationDaysIn(settings, ym) {
+  let total = 0;
+  for (const v of settings.vacations || []) total += vacationSplit(v).find((x) => x.ym === ym)?.days || 0;
+  return Math.min(30, total);
+}
 
 export function vacationFor(settings, ym) {
   const v = vacationIn(settings, ym);
@@ -536,7 +566,21 @@ export function vacationFor(settings, ym) {
   const abonoPay = Math.round(perDay * (v.sellDays || 0));
   const abono = abonoPay + Math.round(abonoPay / 3);
   const taxable = pay + third;
-  const pension = pensionFor(taxable, table, emp);
+  // INSS: incide sobre a remuneração TOTAL de cada competência (salário + férias
+  // + 1/3 dos dias daquele mês). O recibo de férias desconta a diferença entre
+  // o INSS do conjunto e o que o contracheque do salário já desconta.
+  let inss = 0;
+  let given = 0;
+  const parts = vacationSplit(v);
+  parts.forEach(({ ym: m, days }, i) => {
+    const share = i === parts.length - 1 ? taxable - given : Math.round((taxable * days) / v.days);
+    given += share;
+    const salary = payrollFor(settings, m);
+    const joint = pensionFor(salary.bases.inss + share, tablesFor(Number(m.slice(0, 4))), emp).value;
+    inss += Math.max(0, joint - salary.inss);
+  });
+  const pension = { value: inss };
+  // IR das férias: em separado do salário (tributação própria no recibo)
   const ir = irrfFor({ taxableCents: taxable, inssCents: pension.value, dependents: profile.dependents || 0 }, table);
 
   let advance = 0;

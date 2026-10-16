@@ -18,6 +18,7 @@
 
 import { splitCents, sumCents } from '../core/money.js';
 import { addMonthsYM, dateInMonth, ymOf, todayISO, diffDays } from '../core/dates.js';
+import { recurringDates, entryKey, FREQ_DAYS } from './recurrence.js';
 
 export const invoiceKey = (cardId, ym) => `${cardId}|${ym}`;
 
@@ -53,12 +54,15 @@ export function invoiceLines(state, card, ym) {
       if (parcel.ym === ym) lines.push({ purchase: p, n: parcel.n, count: parcel.count, cents: parcel.cents });
     }
   }
-  // Recorrentes cobradas no cartão (assinaturas): entram na fatura do mês
+  // Recorrentes cobradas no cartão (assinaturas): entram na fatura do mês em
+  // que VENCEM, respeitando o ritmo (anual, trimestral, semanal…)
   for (const r of state.recurring || []) {
-    if (r.cardId !== card.id || r.startYM > ym || (r.endYM && ym > r.endYM)) continue;
-    const entry = state.recurringEntries?.[`${r.id}|${ym}`] || {};
-    if (entry.skipped) continue;
-    lines.push({ purchase: { id: `rec-${r.id}`, description: r.description, categoryId: r.categoryId, subcategoryId: r.subcategoryId, date: dateInMonth(ym, r.dueDay), recurringId: r.id }, n: 1, count: 1, cents: entry.cents ?? r.cents });
+    if (r.cardId !== card.id) continue;
+    for (const date of recurringDates(r, ym)) {
+      const entry = state.recurringEntries?.[entryKey(r.id, FREQ_DAYS[r.freq] ? date : ym)] || {};
+      if (entry.skipped) continue;
+      lines.push({ purchase: { id: FREQ_DAYS[r.freq] ? `rec-${r.id}-${date}` : `rec-${r.id}`, description: r.description, categoryId: r.categoryId, subcategoryId: r.subcategoryId, date, recurringId: r.id }, n: 1, count: 1, cents: entry.cents ?? r.cents });
+    }
   }
   return lines.sort((a, b) => a.purchase.date.localeCompare(b.purchase.date));
 }

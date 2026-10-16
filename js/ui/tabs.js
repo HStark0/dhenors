@@ -40,6 +40,7 @@ globalThis.document?.addEventListener('keydown', (ev) => {
   const i = list.indexOf(tab);
   const next = ev.key === 'Home' ? 0 : ev.key === 'End' ? list.length - 1 : (i + (ev.key === 'ArrowRight' ? 1 : -1) + list.length) % list.length;
   ev.preventDefault();
-  list[next].focus();
+  // Sem rolar a página; ao redesenhar, main.js devolve o foco à aba ativa
+  list[next].focus({ preventScroll: true });
   list[next].click();
 });

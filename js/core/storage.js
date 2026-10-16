@@ -90,11 +90,47 @@ export async function setItem(key, value) {
   }
 }
 
+/**
+ * Grava de uma vez (UMA transação do IndexedDB) o estado, itens
+ * auxiliares e anexos. Usado na troca do PIN: ou tudo passa para a
+ * chave nova, ou nada muda — nunca metade cifrada com cada chave.
+ *   items: { nome: valor | undefined (apaga) } · files: [[id, registro]]
+ */
+export async function saveAtomic({ state, items = {}, files = [] }) {
+  let db;
+  try { db = await openDB(); } catch {
+    // Sem IndexedDB: não há anexos; grava em sequência no localStorage
+    if (state !== undefined) await saveState(state);
+    for (const [k, v] of Object.entries(items)) await setItem(k, v);
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE, FILES], 'readwrite');
+    const kv = tx.objectStore(STORE);
+    const fs = tx.objectStore(FILES);
+    if (state !== undefined) kv.put(state, KEY);
+    for (const [k, v] of Object.entries(items)) { if (v === undefined) kv.delete(k); else kv.put(v, k); }
+    for (const [id, rec] of files) fs.put(rec, id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Transação abortada'));
+  });
+  try { localStorage.removeItem(LS_KEY); } catch { /* sem acesso */ }
+}
+
 /** Apaga tudo deste aparelho (inclusive anexos). */
 export async function clearState() {
   try { await idbRequest('readwrite', (s) => s.delete(KEY)); } catch { /* ignora */ }
   try { await idbRequest('readwrite', (s) => s.clear(), FILES); } catch { /* ignora */ }
   try { localStorage.removeItem(LS_KEY); } catch { /* ignora */ }
+}
+
+/** Apaga itens auxiliares (IndexedDB e a cópia no localStorage, se houver). */
+export async function removeItems(keys) {
+  for (const k of keys) {
+    await setItem(k, undefined);
+    try { localStorage.removeItem(`dhenors:${k}`); } catch { /* sem acesso */ }
+  }
 }
 
 // ---------- Anexos (arquivos) ----------

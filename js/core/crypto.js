@@ -16,6 +16,8 @@
 // =============================================================
 
 export const LEGACY_ITERATIONS = 250_000;
+/** Frase secreta da nuvem em contas antigas (antes do `it` no envelope). */
+export const LEGACY_PASS_ITERATIONS = 310_000;
 export const PIN_KDF = { name: 'PBKDF2', hash: 'SHA-256', iterations: 600_000 };
 
 const enc = new TextEncoder();
@@ -57,16 +59,35 @@ export async function exportRawKey(key) {
   return new Uint8Array(await crypto.subtle.exportKey('raw', key));
 }
 
-/** Objeto → envelope { enc: 1, salt, iv, data, ...extra } (base64). */
-export async function encryptJSON(obj, key, salt, extra = {}) {
+/**
+ * Objeto → envelope { enc: 1, salt, iv, data, ...extra } (base64).
+ * `aad` (opcional): texto "amarrado" ao envelope sem ir junto (ex.:
+ * "usuário|parte|rev"). Quem abrir precisa informar o MESMO texto —
+ * assim um envelope não pode ser trocado de lugar por outro válido.
+ * Envelopes com AAD levam `a: 1`.
+ * @param {{ aad?: string }} [opts]
+ */
+export async function encryptJSON(obj, key, salt, extra = {}, opts = {}) {
+  const { aad } = opts;
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(obj)));
-  return { enc: 1, salt, iv: toB64(iv), data: toB64(data), ...extra };
+  const params = aad == null ? { name: 'AES-GCM', iv } : { name: 'AES-GCM', iv, additionalData: enc.encode(String(aad)) };
+  const data = await crypto.subtle.encrypt(params, key, enc.encode(JSON.stringify(obj)));
+  return { enc: 1, salt, iv: toB64(iv), data: toB64(data), ...extra, ...(aad == null ? {} : { a: 1 }) };
 }
 
-/** Envelope → objeto. Lança erro se o PIN (chave) estiver errado. */
-export async function decryptJSON(envelope, key) {
-  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(envelope.iv) }, key, fromB64(envelope.data));
+/**
+ * Envelope → objeto. Lança erro se o PIN (chave) estiver errado, se o
+ * conteúdo foi adulterado ou se o `aad` não for o usado ao cifrar.
+ * Envelope sem `a` (formato antigo) abre sem AAD.
+ * @param {{ aad?: string }} [opts]
+ */
+export async function decryptJSON(envelope, key, opts = {}) {
+  const { aad } = opts;
+  if (envelope.a && aad == null) throw new Error('Envelope amarrado: falta o contexto (AAD).');
+  const params = envelope.a
+    ? { name: 'AES-GCM', iv: fromB64(envelope.iv), additionalData: enc.encode(String(aad)) }
+    : { name: 'AES-GCM', iv: fromB64(envelope.iv) };
+  const plain = await crypto.subtle.decrypt(params, key, fromB64(envelope.data));
   return JSON.parse(dec.decode(plain));
 }
 

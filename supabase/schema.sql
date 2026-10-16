@@ -11,6 +11,11 @@
 --   dhenors_versions  histórico (últimos 30 índices) para restaurar
 --   dhenors_devices   aparelhos conectados (desconectar remotamente)
 --   dhenors_push      inscrição de notificações (sem valores)
+--
+-- Proteções extras (mais abaixo): aparelho desconectado não volta a
+-- "revoked = false" sozinho, e cada conta tem uma cota de espaço.
+-- Depois de criar a SUA conta, desligue o cadastro aberto (Authentication
+-- → Sign In / Providers → "Allow new users to sign up"): veja docs/NUVEM.md.
 -- =============================================================
 
 -- ---------- Estado (índice) ----------
@@ -89,6 +94,49 @@ alter table public.dhenors_chunks drop constraint if exists dhenors_chunks_size;
 alter table public.dhenors_chunks add constraint dhenors_chunks_size check (pg_column_size(data) < 5 * 1024 * 1024);
 alter table public.dhenors_versions drop constraint if exists dhenors_versions_size;
 alter table public.dhenors_versions add constraint dhenors_versions_size check (pg_column_size(manifest) < 512 * 1024);
+
+-- ---------- Aparelho desconectado não se "reconecta" sozinho ----------
+-- Pelas regras acima, o próprio aparelho poderia trocar revoked de
+-- true para false. Este gatilho recusa isso. Para voltar, a pessoa
+-- entra de novo com e-mail e senha: o app apaga a linha marcada e
+-- cria outra (apagar continua permitido para o dono).
+create or replace function public.dhenors_devices_keep_revoked()
+returns trigger language plpgsql as $$
+begin
+  if old.revoked and not new.revoked then
+    raise exception 'dhenors_revoked: aparelho desconectado' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+drop trigger if exists dhenors_devices_keep_revoked on public.dhenors_devices;
+create trigger dhenors_devices_keep_revoked before update on public.dhenors_devices
+  for each row execute function public.dhenors_devices_keep_revoked();
+
+-- ---------- Cota por pessoa (evita que alguém encha o projeto) ----------
+-- Soma partes + histórico de cada conta. O plano gratuito do Supabase
+-- tem 500 MB no total; 50 MB por conta é muito mais do que anos de uso.
+-- Mude o número em dhenors_quota_bytes() se precisar.
+create or replace function public.dhenors_quota_bytes() returns bigint
+language sql immutable as $$ select 50::bigint * 1024 * 1024 $$;
+
+create or replace function public.dhenors_check_quota()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare used bigint;
+begin
+  select coalesce((select sum(pg_column_size(data)) from public.dhenors_chunks where user_id = new.user_id), 0)
+       + coalesce((select sum(pg_column_size(manifest)) from public.dhenors_versions where user_id = new.user_id), 0)
+    into used;
+  if used + pg_column_size(to_jsonb(new)) > public.dhenors_quota_bytes() then
+    raise exception 'dhenors_quota: limite de espaço desta conta atingido' using errcode = '54000';
+  end if;
+  return new;
+end $$;
+drop trigger if exists dhenors_chunks_quota on public.dhenors_chunks;
+create trigger dhenors_chunks_quota before insert on public.dhenors_chunks
+  for each row execute function public.dhenors_check_quota();
+drop trigger if exists dhenors_versions_quota on public.dhenors_versions;
+create trigger dhenors_versions_quota before insert on public.dhenors_versions
+  for each row execute function public.dhenors_check_quota();
 
 -- ---------- Tempo real: avisa os aparelhos quando o estado muda ----------
 do $$

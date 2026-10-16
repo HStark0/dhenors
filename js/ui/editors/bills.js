@@ -111,23 +111,34 @@ export async function pixDialog(onRead) {
 
 // ---------- Menu "Novo" ----------
 
+/**
+ * Menu "Novo": os 6 mais usados primeiro e "Mais…" com o resto
+ * (nada some — só fica um toque mais longe).
+ */
 export function openNewMenu() {
   const hasCards = (data().cards || []).some((c) => !c.archived);
+  const installment = { label: 'Parcelamento (carnê, empréstimo)', hint: 'Fora do cartão de crédito', icon: 'calendar-range', run: () => editInstallment() };
+  const main = [
+    { label: 'Gasto já pago', hint: 'Registrar algo que você já pagou', icon: 'circle-check', run: () => editExpense(null, { paid: true }) },
+    { label: 'Conta a pagar', hint: 'Boleto, Pix ou conta com vencimento', icon: 'receipt', run: () => editExpense() },
+    hasCards ? { label: 'Compra no cartão', hint: 'Entra na fatura certa sozinha', icon: 'credit-card', run: () => import('./wallet.js').then((m) => m.editPurchase()) } : installment,
+    { label: 'Despesa recorrente', hint: 'Aluguel, internet, assinaturas, IPVA…', icon: 'repeat', run: () => editRecurring() },
+    { label: 'Receita', hint: 'Plantão, freela, reembolso, venda, presente…', icon: 'trending-up', run: () => import('./income.js').then((m) => m.editExtraIncome()) },
+    { label: 'Lançamento rápido', hint: 'Escreva "mercado 120 ontem" · Ctrl+K', icon: 'zap', run: () => document.dispatchEvent(new CustomEvent('dhenors:palette')) },
+  ];
+  const more = [
+    ...(hasCards ? [installment] : []),
+    { label: 'Marcar plantão', hint: 'Na escala de plantões', icon: 'stethoscope', run: () => { location.hash = '#/salario?aba=plantoes&novo=1'; } },
+    { label: 'Transferência entre contas bancárias', icon: 'arrow-left-right', run: () => import('./wallet.js').then((m) => m.transferDialog()) },
+    { label: 'Alguém me deve', hint: 'Empréstimo para amigo, valor a receber', icon: 'hand-coins', run: () => import('./people.js').then((m) => m.editReceivable()) },
+    { label: 'Aporte em investimento', hint: 'CDB, Tesouro, ações, FII, cripto…', icon: 'coins', run: () => import('../investEditors.js').then((m) => m.quickMovement('aporte')) },
+    { label: 'Importar extrato ou fatura', hint: 'OFX, CSV ou PDF do cartão', icon: 'file-up', run: () => { location.hash = '#/importar'; } },
+  ];
   actionSheet({
     title: 'Novo lançamento',
     actions: [
-      { label: 'Gasto já pago', hint: 'Registrar algo que você já pagou', icon: 'circle-check', run: () => editExpense(null, { paid: true }) },
-      { label: 'Conta a pagar', hint: 'Boleto, Pix ou conta com vencimento', icon: 'receipt', run: () => editExpense() },
-      ...(hasCards ? [{ label: 'Compra no cartão', hint: 'Entra na fatura certa sozinha', icon: 'credit-card', run: () => import('./wallet.js').then((m) => m.editPurchase()) }] : []),
-      { label: 'Despesa recorrente', hint: 'Aluguel, internet, assinaturas, IPVA…', icon: 'repeat', run: () => editRecurring() },
-      { label: 'Parcelamento (carnê, empréstimo)', hint: 'Fora do cartão de crédito', icon: 'calendar-range', run: () => editInstallment() },
-      { label: 'Receita', hint: 'Plantão, freela, reembolso, venda, presente…', icon: 'trending-up', run: () => import('./income.js').then((m) => m.editExtraIncome()) },
-      { label: 'Marcar plantão', hint: 'Na escala de plantões', icon: 'stethoscope', run: () => { location.hash = '#/salario?aba=plantoes&novo=1'; } },
-      { label: 'Transferência entre contas', icon: 'arrow-left-right', run: () => import('./wallet.js').then((m) => m.transferDialog()) },
-      { label: 'Alguém me deve', hint: 'Empréstimo para amigo, valor a receber', icon: 'hand-coins', run: () => import('./people.js').then((m) => m.editReceivable()) },
-      { label: 'Aporte em investimento', hint: 'CDB, Tesouro, ações, FII, cripto…', icon: 'coins', run: () => import('../investEditors.js').then((m) => m.quickMovement('aporte')) },
-      { label: 'Importar extrato ou fatura', hint: 'OFX, CSV ou PDF do cartão', icon: 'file-up', run: () => { location.hash = '#/importar'; } },
-      { label: 'Lançamento rápido', hint: 'Escreva "mercado 120 ontem" · Ctrl+K', icon: 'zap', run: () => document.dispatchEvent(new CustomEvent('dhenors:palette')) },
+      ...main,
+      { label: 'Mais…', hint: more.map((a) => a.label.split(' (')[0]).join(', '), icon: 'ellipsis', run: () => actionSheet({ title: 'Novo lançamento · mais opções', actions: more }) },
     ],
   });
 }
@@ -350,16 +361,59 @@ export function editRecurring(rec = null, { preset = {} } = {}) {
       form.freq.addEventListener('change', () => { dlg.querySelector('[data-anchor]').hidden = !FREQ_DAYS[form.freq.value]; });
       form.subscription.addEventListener('change', () => { dlg.querySelector('[data-renewal]').hidden = !form.subscription.checked; });
     },
-    onSubmit: (form) => {
+    onSubmit: async (form) => {
       const v = readForm(form);
       const pct = Math.round(parseFloat(String(v.adjustPct || '0').replace(',', '.')) * 100) || 0;
-      A.saveRecurring({
+      const input = {
         ...v, id: rec?.id, cents: toCents(v.cents), dueDay: Number(v.dueDay), endYM: v.endYM || null,
         anchorDate: FREQ_DAYS[v.freq] ? v.anchorDate : null, renewal: v.subscription ? v.renewal || null : null,
         adjust: v.adjustIndex ? { index: v.adjustIndex, month: Number(v.adjustMonth), pctBp: pct, lastYM: rec?.adjust?.lastYM || null } : null,
-      });
+      };
+      // Valor mudou numa recorrente já existente (de valor fixo): pergunta o alcance
+      if (rec?.id && !rec.variable && !v.variable && Number.isInteger(input.cents) && input.cents > 0 && input.cents !== rec.cents) {
+        const ym = store.ui.ym;
+        const scope = await askRecurringScope(rec, input.cents, ym, { perDate: Boolean(FREQ_DAYS[v.freq]) });
+        if (!scope) return true; // desistiu: a janela de edição continua aberta
+        A.saveRecurringScoped(input, scope, ym);
+        toast(scope === 'month' ? `Valor de ${formatMonth(ym)} ajustado.` : scope === 'future' ? `Recorrente atualizada a partir de ${formatMonth(ym)}.` : 'Recorrente atualizada em todos os meses em aberto.');
+        return undefined;
+      }
+      A.saveRecurring(input);
       toast(rec ? 'Recorrente atualizada.' : 'Recorrente adicionada.');
+      return undefined;
     },
+  });
+}
+
+/**
+ * Pergunta o alcance da mudança de valor de uma recorrente.
+ * → Promise<'month' | 'future' | 'open' | null> (null = cancelou)
+ */
+function askRecurringScope(rec, newCents, ym, { perDate = false } = {}) {
+  return new Promise((resolve) => {
+    let chosen = null;
+    const opts = [
+      ...(perDate ? [] : [{ id: 'month', label: `Só em ${formatMonth(ym)}`, hint: `O cadastro continua com ${formatBRL(rec.cents)}.`, icon: 'calendar-days' }]),
+      { id: 'future', label: `De ${formatMonth(ym)} em diante`, hint: 'Meses anteriores em aberto ficam com o valor antigo.', icon: 'arrow-right' },
+      { id: 'all', label: 'Todos os meses em aberto', hint: 'Inclusive atrasados e ajustes feitos à mão. Os já pagos não mudam.', icon: 'repeat' },
+    ];
+    const { dialog, close } = openDialog({
+      title: 'Aplicar o novo valor onde?',
+      size: 'sm',
+      body: html`
+        <p class="dialog__text">${rec.description}: ${formatBRL(rec.cents)} → <strong>${formatBRL(newCents)}</strong></p>
+        <ul class="sheet-list">
+          ${opts.map((o) => html`
+            <li><button type="button" class="sheet-item" data-scope="${o.id}">${icon(o.icon)}<span>${o.label}<small>${o.hint}</small></span></button></li>`)}
+        </ul>`,
+    });
+    dialog.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('[data-scope]');
+      if (!btn) return;
+      chosen = btn.dataset.scope === 'all' ? 'open' : btn.dataset.scope;
+      close();
+    });
+    dialog.addEventListener('close', () => resolve(chosen));
   });
 }
 

@@ -1,7 +1,7 @@
 // Gerado por tools/sync-version.mjs — não edite à mão.
 // Versão e arquivos que o service worker (sw.js) guarda para uso offline.
-self.DHENORS_VERSION = '1.0.0';
-self.DHENORS_BUILD = 'd3cbaf62bf73';
+self.DHENORS_VERSION = '3.3.0';
+self.DHENORS_BUILD = 'f44f540176ab';
 self.DHENORS_ASSETS = [
   './',
   './assets/fonts/InterVariable-ext.woff2',
@@ -29,6 +29,9 @@ self.DHENORS_ASSETS = [
   './js/core/biometric.js',
   './js/core/calendar.js',
   './js/core/cloud.js',
+  './js/core/cloud/devices.js',
+  './js/core/cloud/http.js',
+  './js/core/cloud/sync.js',
   './js/core/crypto.js',
   './js/core/dates.js',
   './js/core/errors.js',
@@ -73,9 +76,15 @@ self.DHENORS_ASSETS = [
   './js/domain/planning.js',
   './js/domain/quickadd.js',
   './js/domain/reconcile.js',
+  './js/domain/recurrence.js',
   './js/domain/sample.js',
+  './js/domain/sanitizeInvest.js',
+  './js/domain/sanitizePayroll.js',
+  './js/domain/sanitizeState.js',
+  './js/domain/sanitizeUtil.js',
   './js/domain/schema.js',
   './js/domain/shifts.js',
+  './js/domain/stateShape.js',
   './js/domain/taxTables.js',
   './js/domain/termination.js',
   './js/domain/yearplan.js',
@@ -111,12 +120,14 @@ self.DHENORS_ASSETS = [
   './js/ui/payrollEditor.js',
   './js/ui/payslipImport.js',
   './js/ui/pinpad.js',
+  './js/ui/prefs.js',
   './js/ui/pwa.js',
   './js/ui/scan.js',
   './js/ui/scrollHint.js',
   './js/ui/select.js',
   './js/ui/tabs.js',
   './js/ui/toast.js',
+  './js/ui/undo.js',
   './js/ui/voice.js',
   './js/version.js',
   './js/views/agenda.js',

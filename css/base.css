@@ -86,13 +86,25 @@ a { color: var(--primary-text); text-decoration-thickness: 1px; text-underline-o
 }
 
 /* ---------- Barras de rolagem ----------
-   Nenhuma barra aparece no app (página, janelas, listas, tabelas).
+   No toque, nenhuma barra aparece (página, janelas, listas, tabelas);
+   com mouse/trackpad aparecem barras finas.
    A rolagem continua funcionando com roda do mouse, toque e teclado.
    Para avisar que há mais conteúdo (ui/scrollHint.js):
    • áreas internas com [data-scroll-more] ganham um esmaecido com seta;
    • a página ganha um botão flutuante com seta (.page-cue).          */
 html, * { scrollbar-width: none; -ms-overflow-style: none; }
 ::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* Mouse/trackpad (pointer: fine): barras FINAS de volta, para quem
+   arrasta a barra ou não usa roda (acessibilidade). No toque, seguem
+   escondidas. As tabelas e listas horizontais continuam com o esmaecido. */
+@media (pointer: fine) {
+  html, * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; -ms-overflow-style: auto; }
+  ::-webkit-scrollbar { display: block; width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  ::-webkit-scrollbar-track { background: transparent; }
+}
 
 :root {
   --cue-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A94A6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");

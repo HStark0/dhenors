@@ -13,6 +13,12 @@
     "noEmit": true,
     "strict": false,
     "noImplicitAny": false,
+    // Rigor parcial (o "strict" completo ainda acusa centenas de pontos):
+    "strictFunctionTypes": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "resolveJsonModule": true
   },

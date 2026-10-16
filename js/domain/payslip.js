@@ -33,6 +33,24 @@ function refNumber(token) {
 const MONTHS = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const plain = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
+// Descontos inconfundíveis (vêm antes: "INSS S/ 13º SALÁRIO" é desconto)
+const SIDE_DESC_STRONG = /^desc|i\.?\s?n\.?\s?s\.?\s?s|previd[eê]ncia social|contrib.*inss|irrf|i\.r\.r\.f|imposto|falta|atraso|empr[eé]stimo|consignado|cr[eé]dito do trabalhador|financiamento|pens[aã]o|adiantamento/;
+const SIDE_PROV = /atestado|aux.*doen|licen[cç]a m[eé]dica|sal[aá]rio|horas? normais|dias trabalhados|hora|extra|d\.?\s?s\.?\s?r|noturn|sobreaviso|periculosidade|insalubridade|gratifica|anu[eê]nio|quinqu[eê]nio|tri[eê]nio|adicional|f[eé]rias|abono|pr[eê]mio|comiss|reembolso|devolu|ajuda de custo|13/;
+const SIDE_DESC = /mensalidade|sindic|plano|sa[uú]de|odonto|seguro|associa|vale|contribui|coparticipa|farm[aá]cia|previd[eê]ncia priv/;
+
+/**
+ * Lado da verba pela descrição — para linhas sem "-" nas colunas vazias,
+ * em que a posição do valor não diz se é provento ou desconto.
+ * → 'provento' | 'desconto' (na dúvida, provento).
+ */
+export function sideOf(description) {
+  const d = plain(description);
+  if (SIDE_DESC_STRONG.test(d)) return 'desconto';
+  if (SIDE_PROV.test(d)) return 'provento';
+  if (SIDE_DESC.test(d)) return 'desconto';
+  return 'provento';
+}
+
 /** Texto do holerite → dados estruturados. */
 export function parsePayslipText(text) {
   const lines = String(text).replace(/ /g, ' ').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -85,10 +103,25 @@ export function parsePayslipText(text) {
     const tokens = lm[2].split(/\s+/);
     const tail = [];
     while (tokens.length > 1 && tail.length < 3 && REFISH.test(tokens[tokens.length - 1])) tail.unshift(tokens.pop());
-    if (tail.length < 2) continue;
-    const [ref, prov, desc] = tail.length === 3 ? tail : [null, ...tail];
-    const description = tokens.join(' ').trim();
-    if (!description || seen.has(lm[1])) continue;
+    let description = tokens.join(' ').trim();
+    if (!description) continue;
+    let ref = null, prov = null, desc = null;
+    const last = tail[tail.length - 1];
+    const prev = tail[tail.length - 2];
+    const money2 = tail.length >= 2 && MONEY.test(last) && MONEY.test(prev);
+    if (tail.includes('-') || (tail.length === 3 && money2) || (money2 && (!moneyCents(last) || !moneyCents(prev)))) {
+      // Colunas posicionais: "-" ou "0,00" marcam a coluna vazia
+      if (tail.length === 3) [ref, prov, desc] = tail;
+      else if (tail.length === 2) [prov, desc] = tail;
+      else continue;
+    } else if (MONEY.test(last)) {
+      // Sem "-" nas colunas vazias: o PDF só traz (referência) + valor. O lado
+      // (provento × desconto) vem da classificação da verba, não da posição.
+      if (tail.length === 3) description = `${description} ${tail[0]}`; // "HORAS EXTRAS 50%"
+      ref = tail.length >= 2 ? prev : null;
+      if (sideOf(description) === 'desconto') desc = last; else prov = last;
+    } else continue;
+    if (seen.has(lm[1])) continue;
     seen.add(lm[1]);
     const provento = moneyCents(prov);
     const desconto = moneyCents(desc);

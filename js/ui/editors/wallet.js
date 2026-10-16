@@ -170,7 +170,7 @@ export function invoiceDetails(cardId, ym) {
 export function editAccount(account = null) {
   const a = account || { name: '', kind: 'corrente', institution: '', color: '#0891B2', anchor: { cents: null, date: todayISO() } };
   openDialog({
-    title: account ? 'Editar conta' : 'Nova conta ou carteira',
+    title: account ? 'Editar conta bancária' : 'Nova conta bancária ou carteira',
     submitLabel: 'Salvar',
     body: html`
       <div class="form-grid">

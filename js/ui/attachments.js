@@ -60,25 +60,37 @@ export async function attachmentURL(id) {
 
 export const removeAttachment = (id) => deleteFile(id);
 
-// PIN trocado/ligado/desligado: recifra os anexos com a chave nova
-store.onRekey(async (oldKey, newKey) => {
-  for (const id of await listFileIds()) {
+/**
+ * PIN trocado/ligado/desligado: prepara os anexos recifrados com a chave
+ * nova. NÃO grava aqui: a store grava tudo (estado + anexos) numa única
+ * transação, para nunca sobrar anexo cifrado com uma chave que sumiu.
+ */
+store.onRekeyFiles(async (oldKey, newKey) => {
+  const out = [];
+  let ids = [];
+  try { ids = await listFileIds(); } catch { return out; } // sem IndexedDB não há anexos
+  for (const id of ids) {
     const rec = await getFile(id);
     if (!rec) continue;
-    let bytes;
+    let bytes = null;
     if (rec.enc) {
-      if (!oldKey) continue;
-      bytes = await decryptBytes({ iv: rec.iv, data: rec.data }, oldKey);
+      // Tenta a chave antiga; se não abrir, pode já estar com a nova (troca interrompida antes)
+      for (const k of [oldKey, newKey]) {
+        if (!k || bytes) continue;
+        try { bytes = await decryptBytes({ iv: rec.iv, data: rec.data }, k); } catch { /* tenta a próxima */ }
+      }
+      if (!bytes) { console.warn('[anexos] não abriu com nenhuma chave; mantido como está', id); continue; }
     } else {
       bytes = new Uint8Array(await rec.data.arrayBuffer());
     }
     if (newKey) {
       const { iv, data } = await encryptBytes(bytes, newKey);
-      await putFile(id, { name: rec.name, type: rec.type, size: rec.size, iv, data, enc: true });
+      out.push([id, { name: rec.name, type: rec.type, size: rec.size, iv, data, enc: true }]);
     } else {
-      await putFile(id, { name: rec.name, type: rec.type, size: rec.size, data: new Blob([bytes], { type: rec.type }) });
+      out.push([id, { name: rec.name, type: rec.type, size: rec.size, data: new Blob([bytes], { type: rec.type }) }]);
     }
   }
+  return out;
 });
 
 /** Abre o seletor de arquivos (câmera no celular). */

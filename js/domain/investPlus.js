@@ -107,7 +107,11 @@ export function stockSalesTax(state, year) {
       if (m.kind !== 'venda' && !(m.kind === 'resgate' && k)) continue;
       if (!m.date.startsWith(String(year))) continue;
       const before = positionAt({ ...inv, movements: movs.filter((x) => x.date < m.date || (x.date === m.date && x.id !== m.id && x.kind !== 'venda' && x.kind !== 'resgate')) }, investing, m.date);
-      const cost = before.value > 0 ? Math.round(before.principal * Math.min(1, m.cents / before.value)) : 0;
+      // Com quantidade: custo = preço médio × cotas vendidas (o valor da posição
+      // sem atualização de saldo é o próprio custo, o que zerava o lucro).
+      const cost = m.qty && before.qty > 0
+        ? Math.round(before.principal * Math.min(1, m.qty / before.qty))
+        : before.value > 0 ? Math.round(before.principal * Math.min(1, m.cents / before.value)) : 0;
       sales.push({ ym: ymOf(m.date), kind: k, value: m.cents, gain: m.cents - cost, inv: inv.name });
     }
   }

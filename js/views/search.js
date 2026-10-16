@@ -1,8 +1,10 @@
 // =============================================================
 // Busca — encontra qualquer lançamento por texto, valor, período,
-// categoria, tag ou situação. Buscas frequentes podem ser salvas
+// categoria, etiqueta ou situação. Buscas frequentes podem ser salvas
 // ("Uber em 2026", "Tudo #viagem-natal").
 // Abre também por #/busca?q=texto (a paleta Ctrl+K leva para cá).
+// Digitar não recalcula a cada tecla: espera ~200 ms, e o resultado
+// fica guardado enquanto os dados e a busca forem os mesmos.
 // =============================================================
 
 import { html } from '../ui/dom.js';
@@ -13,6 +15,7 @@ import { itemList } from '../ui/items.js';
 import { catIcon } from '../ui/catIcon.js';
 import { routeParams } from '../ui/tabs.js';
 import { toast } from '../ui/toast.js';
+import { runWithUndo } from '../ui/undo.js';
 import { store } from '../core/store.js';
 import { formatBRL, plural, toCents } from '../core/money.js';
 import { formatDateBR, currentYM, addMonthsYM, ymOf, todayISO } from '../core/dates.js';
@@ -32,7 +35,10 @@ export default {
   render() {
     syncFromHash();
     const d = store.data;
-    const results = runSearch(d, query);
+    const results = cachedSearch(d, query);
+    const minBad = badMoney(query.min);
+    const maxBad = badMoney(query.max);
+    const rangeBad = !minBad && !maxBad && query.min && query.max && toCents(query.min) > toCents(query.max);
     const total = results.items.reduce((s, i) => s + i.cents, 0) + results.purchases.reduce((s, p) => s + p.cents, 0);
     const tags = [...new Set([...d.expenses, ...d.recurring, ...d.installments, ...(d.cardPurchases || [])].flatMap((x) => x.tags || []))].sort();
     const saved = d.settings.savedSearches || [];
@@ -56,14 +62,14 @@ export default {
           </div>
           ${tags.length ? html`
             <div class="field field--sm">
-              <label class="field__label" for="s-tag">Tag</label>
+              <label class="field__label" for="s-tag">Etiqueta</label>
               <select id="s-tag" class="input select" data-filter="tag">
                 <option value="">Todas</option>
                 ${tags.map((t) => html`<option value="${t}" ${t === query.tag ? 'selected' : ''}>#${t}</option>`)}
               </select>
             </div>` : ''}
-          <div class="field field--sm"><label class="field__label" for="s-min">Valor de</label><input id="s-min" class="input" inputmode="decimal" placeholder="0,00" value="${query.min}" data-filter="min"></div>
-          <div class="field field--sm"><label class="field__label" for="s-max">até</label><input id="s-max" class="input" inputmode="decimal" placeholder="—" value="${query.max}" data-filter="max"></div>
+          <div class="field field--sm"><label class="field__label" for="s-min">Valor de</label><input id="s-min" class="input" inputmode="decimal" placeholder="0,00" value="${query.min}" data-filter="min" ${minBad || rangeBad ? html`aria-invalid="true" aria-describedby="s-val-err"` : ''}></div>
+          <div class="field field--sm"><label class="field__label" for="s-max">até</label><input id="s-max" class="input" inputmode="decimal" placeholder="—" value="${query.max}" data-filter="max" ${maxBad || rangeBad ? html`aria-invalid="true" aria-describedby="s-val-err"` : ''}></div>
           <div class="field field--sm">
             <label class="field__label" for="s-st">Situação</label>
             <select id="s-st" class="input select" data-filter="status">
@@ -71,6 +77,7 @@ export default {
             </select>
           </div>
         </div>
+        ${minBad || maxBad || rangeBad ? html`<p class="field__error" id="s-val-err" role="alert">${rangeBad ? 'O valor mínimo é maior que o máximo.' : `Valor ${minBad ? 'mínimo' : 'máximo'} inválido: use números, como 120 ou 1.250,90. Esse filtro está sendo ignorado.`}</p>` : ''}
         <div class="card__actions">
           <button type="button" class="btn btn--ghost btn--sm" data-action="search:save" ${any ? '' : 'disabled'}>${icon('bookmark-plus', 'icon--xs')} Salvar esta busca</button>
           <button type="button" class="btn btn--ghost btn--sm" data-action="search:clear" ${any ? '' : 'disabled'}>${icon('x', 'icon--xs')} Limpar</button>
@@ -113,7 +120,7 @@ export default {
       const s = (store.data.settings.savedSearches || []).find((x) => x.id === el.dataset.id);
       if (s) { query = { ...EMPTY, ...s.query }; store.setUI({}); }
     },
-    'search:delete': (el) => { A.deleteSearch(el.dataset.id); toast('Busca removida.'); },
+    'search:delete': (el) => runWithUndo(() => A.deleteSearch(el.dataset.id), 'Busca removida.'),
     'search:save': () => openDialog({
       title: 'Salvar busca',
       size: 'sm',
@@ -126,9 +133,30 @@ export default {
   onFilter(name, value) {
     if (!(name in EMPTY)) return;
     query = { ...query, [name]: value };
-    store.setUI({});
+    // Campos de texto: espera a pessoa parar de digitar; listas: na hora
+    clearTimeout(typingTimer);
+    if (name === 'q' || name === 'min' || name === 'max') typingTimer = setTimeout(() => store.setUI({}), 200);
+    else store.setUI({});
   },
 };
+
+let typingTimer = 0;
+
+/** Texto de valor preenchido mas que não vira centavos (ex.: "abc", "1,2,3"). */
+function badMoney(text) {
+  if (!String(text || '').trim()) return false;
+  const c = toCents(text);
+  return !Number.isFinite(c) || c < 0;
+}
+
+// Último resultado: só recalcula se os dados (novo objeto a cada
+// alteração), a busca ou o dia mudarem. monthItems já guarda cada mês.
+let cache = { state: null, key: '', value: null };
+function cachedSearch(state, qy) {
+  const key = `${todayISO()}|${JSON.stringify(qy)}`;
+  if (cache.state !== state || cache.key !== key) cache = { state, key, value: runSearch(state, qy) };
+  return cache.value;
+}
 
 function syncFromHash() {
   if (location.hash === lastHash) return;
@@ -145,8 +173,10 @@ export function runSearch(state, qy, today = todayISO()) {
   const from = qy.from || addMonthsYM(currentYM(), -12);
   const to = qy.to || addMonthsYM(currentYM(), 3);
   const words = norm(qy.q).split(/\s+/).filter(Boolean);
-  const min = qy.min ? toCents(qy.min) : null;
-  const max = qy.max ? toCents(qy.max) : null;
+  // Valor inválido não zera a busca em silêncio: o filtro é ignorado (a tela avisa)
+  const money = (t) => { const c = t ? toCents(t) : NaN; return Number.isFinite(c) && c >= 0 ? c : null; };
+  const min = money(qy.min);
+  const max = money(qy.max);
   const textOk = (x) => {
     if (!words.length) return true;
     const cat = state.categories.find((c) => c.id === x.categoryId);

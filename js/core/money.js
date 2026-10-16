@@ -24,11 +24,17 @@ export function toCents(input) {
   }
   if (typeof input !== 'string') return NaN;
 
-  let s = input.trim().replace(/[R$\s]/g, '').replace(/^−/, '-');
+  let s = input.trim().replace(/[R$\s]/g, '').replace(/^−|−$/g, '-');
   if (!s) return NaN;
 
-  const negative = s.startsWith('-');
-  s = s.replace(/^[-+]/, '').replace(/[.,]$/, ''); // "10," → "10"
+  // Negativo: "-50", "50-" (extratos e holerites) ou "(50,00)" (contábil)
+  let negative = false;
+  const paren = /^\((.*)\)$/.exec(s);
+  if (paren) { negative = true; s = paren[1]; }
+  if (paren && /^-|-$/.test(s)) return NaN; // "(-5)": ambíguo
+  if (/^-/.test(s)) { negative = true; s = s.slice(1); } else if (/-$/.test(s)) { negative = true; s = s.slice(0, -1); }
+  if (/^[-(]|[-()]$/.test(s)) return NaN; // sinal duplicado ou parêntese solto
+  s = s.replace(/^\+/, '').replace(/[.,]$/, ''); // "10," → "10"
 
   const lastComma = s.lastIndexOf(',');
   const lastDot = s.lastIndexOf('.');

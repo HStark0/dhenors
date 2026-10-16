@@ -14,6 +14,7 @@ import { enableNotifications, togglePush } from '../ui/notify.js';
 import { cloudSettingsSection } from '../ui/cloudUI.js';
 import { toast, toastError } from '../ui/toast.js';
 import { GLOSSARY } from '../ui/help.js';
+import { singleKeyShortcuts, setSingleKeyShortcuts } from '../ui/prefs.js';
 import { canInstall, isStandalone } from '../ui/pwa.js';
 import { startDemo, stopDemo, isDemo } from '../ui/onboarding.js';
 import { catText } from '../ui/forms.js';
@@ -115,6 +116,7 @@ export default {
       store.setUI({});
     },
     'discreet:set': () => { setDiscreet(!isDiscreet()); store.setUI({}); },
+    'keys:toggle': () => { setSingleKeyShortcuts(!singleKeyShortcuts()); toast(singleKeyShortcuts() ? 'Atalhos de uma tecla ligados.' : 'Atalhos de uma tecla desligados.', { type: 'info' }); store.setUI({}); },
     'rem:days': (el) => { const r = store.data.settings.reminders || {}; A.setReminders({ ...r, daysBefore: Number(el.dataset.days) }); },
     'rem:mode': (el) => { const r = store.data.settings.reminders || {}; A.setReminders({ ...r, mode: el.dataset.mode }); },
     'agenda:notify': () => enableNotifications(),
@@ -208,6 +210,10 @@ function geral() {
           </div>
           <p class="muted small">"Calmos" tira o brilho da logo e os cortes diagonais em movimento; "Desligados" tira todas as animações. O "reduzir movimento" do sistema continua valendo.</p>
         </div>
+        <div class="setting">
+          <div><strong>Atalhos de uma tecla</strong><p class="muted small">N (novo), / (buscar) e D (modo discreto). Desligue se usa comando de voz ou esbarra no teclado; Ctrl+K e Ctrl+Z continuam. Vale só neste aparelho.</p></div>
+          <button type="button" class="btn ${singleKeyShortcuts() ? 'btn--primary' : 'btn--ghost'} btn--sm" data-action="keys:toggle" aria-pressed="${singleKeyShortcuts()}">${singleKeyShortcuts() ? 'Ligados' : 'Desligados'}</button>
+        </div>
       </section>
 
       <section class="card">
@@ -235,7 +241,7 @@ function geral() {
 }
 
 function tabbarDialog() {
-  const opts = [['painel', 'Painel'], ['agenda', 'Agenda'], ['contas', 'Contas'], ['carteira', 'Cartões e contas'], ['salario', 'Salário'], ['metas', 'Metas'], ['investimentos', 'Investimentos'], ['planejamento', 'Planejamento'], ['analise', 'Análise'], ['ajustes', 'Ajustes']];
+  const opts = [['painel', 'Painel'], ['agenda', 'Agenda'], ['contas', 'Contas a pagar'], ['carteira', 'Cartões e contas bancárias'], ['salario', 'Salário'], ['metas', 'Metas'], ['investimentos', 'Investimentos'], ['planejamento', 'Planejamento'], ['analise', 'Análise'], ['ajustes', 'Ajustes']];
   const cur = store.data.settings.tabbar || ['painel', 'agenda', 'contas'];
   openDialog({
     title: 'Atalhos da barra do celular',

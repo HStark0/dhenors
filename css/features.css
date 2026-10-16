@@ -322,6 +322,9 @@ kbd {
 /* ---------- Gráficos interativos ---------- */
 .chart__hit { fill: transparent; cursor: pointer; }
 .chart__hit:hover + *, .is-hover { opacity: 1; }
+/* Ponto focado pelo teclado (← → no gráfico de linha): faixa destacada */
+.chart__hit:focus { outline: none; }
+.chart__hit:focus-visible { fill: color-mix(in srgb, var(--primary) 12%, transparent); stroke: var(--primary); stroke-width: calc(2px * var(--k, 1)); }
 .is-clickable { cursor: pointer; }
 .chart__area { opacity: .16; }
 .chart__mark line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }

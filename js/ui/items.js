@@ -24,8 +24,10 @@ import { formatDayMonth, relativeDays, formatMonth, ymOf, formatDateBR, todayISO
 import * as A from '../domain/actions.js';
 import * as E from './editors.js';
 
-/** Registro das linhas desenhadas (chave → item), usado pelos cliques. */
+/** Registro das linhas desenhadas (chave → item), usado pelos cliques.
+ *  Limitado: as chaves mais antigas saem (o Map guarda a ordem de inserção). */
 const registry = new Map();
+const REGISTRY_MAX = 2000;
 export const itemByKey = (key) => registry.get(key);
 
 const KIND_LABEL = { expense: 'Avulsa', recurring: 'Recorrente', installment: 'Parcela', invoice: 'Fatura do cartão' };
@@ -43,7 +45,9 @@ function statusText(item, today = todayISO()) {
 }
 
 export function itemRow(item, { showMonth = false, selectable = false, selected = false, first = false } = {}) {
+  registry.delete(item.key);
   registry.set(item.key, item);
+  if (registry.size > REGISTRY_MAX) registry.delete(registry.keys().next().value);
   const d = store.data;
   const cat = d.categories.find((c) => c.id === item.categoryId);
   const sub = cat?.subcategories.find((s) => s.id === item.subcategoryId);

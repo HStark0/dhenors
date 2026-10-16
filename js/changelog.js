@@ -7,6 +7,26 @@
 
 export const CHANGELOG = [
   {
+    version: '3.3.0',
+    date: '2026-10-16',
+    title: 'Mais confiável e mais seguro',
+    groups: [
+      { title: 'Correções', items: [
+        'Nuvem: a sincronização não sobrescreve nem perde mais alterações feitas em outro aparelho.',
+        'IR na venda de ações: preço médio, isenção mensal e compensação de prejuízo revisados.',
+        'Salário: cálculos da folha e das férias revisados.',
+        'Importação de extratos, faturas e holerites mais robusta, sem lançamentos duplicados.',
+        'Esc fecha diálogos e menus, desfazer mais confiável, melhor foco e leitura de tela.',
+        'Telas com muitos lançamentos ficaram mais rápidas.',
+        'Offline: a página de apresentação, a política de privacidade e as Novidades voltam a abrir; a primeira visita não recarrega mais sozinha.',
+      ] },
+      { title: 'Segurança', items: [
+        'Arquivos recebidos pelo "Compartilhar" ficam no aparelho no máximo 24 horas se não forem usados.',
+        'Atualizações não misturam arquivos de versões diferentes.',
+      ] },
+    ],
+  },
+  {
     version: '1.0.0',
     date: '2026-10-15',
     title: 'Dhenors 1.0',

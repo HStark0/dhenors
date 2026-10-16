@@ -11,9 +11,11 @@
 
 import { html, raw, escapeHTML } from './dom.js';
 import { formatBRL, formatCompactBRL } from '../core/money.js';
+import { isDiscreet } from '../core/theme.js';
 
 const fmt = (n) => (Math.round(n * 100) / 100).toString();
-const tipAttr = (text) => `data-tip="${escapeHTML(text)}"`;
+/** Dica com valores; `label` (sem valores) é o que aparece no modo discreto. */
+const tipAttr = (text, label) => `data-tip="${escapeHTML(text)}" data-tip-label="${escapeHTML(label ?? String(text).split('\n')[0])}"`;
 
 /**
  * Largura de desenho do gráfico ≈ largura real na tela, para que o
@@ -107,7 +109,7 @@ export function donutChart(segments, { center = '', centerSub = '', max = 6, lab
       ? `M${cx} ${cy - r}a${r} ${r} 0 1 1 0 ${2 * r}a${r} ${r} 0 1 1 0 ${-2 * r}`
       : arc(cx, cy, r, start, Math.max(start + 0.001, end));
     const clickable = action && s.id !== undefined && s.id !== null;
-    return `<path d="${d}" pathLength="1" fill="none" stroke-width="${stroke}" style="stroke:${escapeHTML(s.color)};--s:${si}" ${tipAttr(`${s.label}: ${formatBRL(s.value)} (${pct}%)`)} ${clickable ? `data-action="${escapeHTML(action)}" data-id="${escapeHTML(s.id)}" class="is-clickable" tabindex="0" role="button" aria-label="Filtrar ${escapeHTML(s.label)}"` : ''}></path>`;
+    return `<path d="${d}" pathLength="1" fill="none" stroke-width="${stroke}" style="stroke:${escapeHTML(s.color)};--s:${si}" ${tipAttr(`${s.label}: ${formatBRL(s.value)} (${pct}%)`, s.label)} ${clickable ? `data-action="${escapeHTML(action)}" data-id="${escapeHTML(s.id)}" class="is-clickable" tabindex="0" role="button" aria-label="Filtrar ${escapeHTML(s.label)}"` : ''}></path>`;
   }).join('');
 
   const summary = data.map((s) => `${s.label} ${((s.value / total) * 100).toFixed(0)}%`).join(', ');
@@ -237,14 +239,16 @@ export function lineChart(labels, series, { label = 'Gráfico de linha', height 
     const left = i === 0 ? padL : (x(i - 1) + x(i)) / 2;
     const right = i === labels.length - 1 ? W - padR : (x(i) + x(i + 1)) / 2;
     const tip = [lab, ...series.map((s) => `${s.name}: ${format(s.values[i])}`)].join('\n');
-    return `<rect x="${fmt(left)}" y="${padT}" width="${fmt(Math.max(1, right - left))}" height="${fmt(plotH)}" class="chart__hit" ${tipAttr(tip)} ${action && keys ? `data-action="${escapeHTML(action)}" data-key="${escapeHTML(keys[i])}"` : ''}></rect>`;
+    // Teclado: um só ponto na ordem do Tab; ← → Home End andam entre eles (ver initChartTips)
+    const a11y = `data-point tabindex="${i === 0 ? 0 : -1}" role="${action && keys ? 'button' : 'img'}" aria-label="${escapeHTML(tip.replace(/\n/g, ', '))}"`;
+    return `<rect x="${fmt(left)}" y="${padT}" width="${fmt(Math.max(1, right - left))}" height="${fmt(plotH)}" class="chart__hit" ${tipAttr(tip)} ${a11y} ${action && keys ? `data-action="${escapeHTML(action)}" data-key="${escapeHTML(keys[i])}"` : ''}></rect>`;
   }).join('');
 
   const markSVG = marks.map((m) => `<g class="chart__mark"><line x1="${fmt(x(m.index))}" x2="${fmt(x(m.index))}" y1="${padT}" y2="${padT + plotH}"/><text x="${fmt(x(m.index))}" y="${padT + 10}" text-anchor="middle">${escapeHTML(m.label)}</text></g>`).join('');
 
   return html`
     <figure class="chart">
-      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}" preserveAspectRatio="xMidYMid meet">
+      <svg viewBox="0 0 ${W} ${H}" role="group" aria-label="${label} (use as setas para ver cada ponto)" preserveAspectRatio="xMidYMid meet">
         ${raw(grid)}${raw(markSVG)}${raw(lines)}${raw(hits)}
       </svg>
       ${series.length > 1 ? legendInline(series) : ''}
@@ -306,7 +310,9 @@ export function initChartTips() {
   tipEl.hidden = true;
   document.body.append(tipEl);
   const show = (target, x, y) => {
-    tipEl.textContent = target.getAttribute('data-tip');
+    // Modo discreto: só o rótulo (mês/categoria), sem os valores
+    tipEl.textContent = isDiscreet() ? (target.getAttribute('data-tip-label') || '') : target.getAttribute('data-tip');
+    if (!tipEl.textContent) { hide(); return; }
     tipEl.hidden = false;
     const r = tipEl.getBoundingClientRect();
     tipEl.style.left = `${Math.max(8, Math.min(innerWidth - r.width - 8, x - r.width / 2))}px`;
@@ -330,5 +336,16 @@ export function initChartTips() {
     show(t, r.left + r.width / 2, r.top);
   });
   document.addEventListener('focusout', hide);
+  // Pontos do gráfico de linha: ← → Home End (foco "itinerante")
+  document.addEventListener('keydown', (ev) => {
+    const t = ev.target.closest?.('.chart [data-point]');
+    if (!t || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)) return;
+    const list = [...t.parentNode.querySelectorAll('[data-point]')];
+    const i = list.indexOf(t);
+    const next = ev.key === 'Home' ? 0 : ev.key === 'End' ? list.length - 1 : Math.max(0, Math.min(list.length - 1, i + (ev.key === 'ArrowRight' ? 1 : -1)));
+    ev.preventDefault();
+    list.forEach((n, k) => n.setAttribute('tabindex', k === next ? '0' : '-1'));
+    list[next].focus();
+  });
   document.addEventListener('scroll', hide, { passive: true, capture: true });
 }

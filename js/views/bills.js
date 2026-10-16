@@ -25,7 +25,8 @@ const TABS = [
 
 export default {
   id: 'contas',
-  title: 'Contas',
+  title: 'Contas a pagar',
+  shortTitle: 'Contas',
   get monthNav() { return currentTab(TABS) === 'mes'; },
 
   render() {

@@ -56,9 +56,23 @@ export function toast(message, { type = 'success', action = null, duration = 450
   while (container.children.length > 3) container.firstElementChild.remove();
 
   if (!persist) {
-    let timer = setTimeout(close, action ? duration + 2500 : duration);
-    el.addEventListener('mouseenter', () => clearTimeout(timer));
-    el.addEventListener('mouseleave', () => { timer = setTimeout(close, 2000); });
+    // Com "Desfazer" o aviso fica mais tempo (dá tempo de ler e agir).
+    // Pausa enquanto o mouse está em cima, o foco está dentro (teclado/
+    // leitor de tela) ou o dedo encostou; volta a contar ao sair.
+    let timer = setTimeout(close, action ? Math.max(duration, 4500) + 5500 : duration);
+    let hover = false;
+    const pause = () => clearTimeout(timer);
+    const resume = () => {
+      clearTimeout(timer);
+      if (hover || el.contains(document.activeElement)) return;
+      timer = setTimeout(close, action ? 4000 : 2000);
+    };
+    el.addEventListener('mouseenter', () => { hover = true; pause(); });
+    el.addEventListener('mouseleave', () => { hover = false; resume(); });
+    el.addEventListener('focusin', pause);
+    el.addEventListener('focusout', () => setTimeout(resume, 0));
+    el.addEventListener('pointerdown', pause);
+    el.addEventListener('pointerup', (ev) => { if (ev.pointerType !== 'mouse') resume(); });
   }
   return close;
 }

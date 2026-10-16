@@ -8,10 +8,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Mínimo para todos; só o job de publicação recebe pages/id-token.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -21,12 +20,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - name: Versão sincronizada (index, manifest, service worker)
         run: npm run sync && git diff --exit-code -- js/version.js sw-assets.js || (echo "::error::Rode 'npm run sync' e envie js/version.js e sw-assets.js" && exit 1)
       - name: Lint
@@ -37,7 +36,7 @@ jobs:
         run: npm test
       - name: Testes no navegador
         run: npx playwright install --with-deps chromium && npm run e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: relatorio-e2e
@@ -48,12 +47,12 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - name: Gera o arquivo único (dist/dhenors.html)
         run: npm run build
       - name: Monta o site
@@ -62,16 +61,19 @@ jobs:
           cp -r index.html manifest.webmanifest sw.js sw-assets.js css js assets dist site docs CHANGELOG.md _site/
           [ -f landing.html ] && cp landing.html _site/ || true
           touch _site/.nojekyll
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: _site
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

@@ -19,7 +19,16 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFile(join(root, p), 'utf8');
 const dataURI = async (p, type = 'image/png') => `data:${type};base64,${(await readFile(join(root, p))).toString('base64')}`;
 
-const CSS = ['tokens', 'base', 'layout', 'components', 'views', 'brand', 'features', 'design'];
+/** Folhas de estilo na MESMA ordem do index.html (sem lista manual). */
+function stylesheetsOf(indexHtml) {
+  const out = [];
+  for (const [tag] of indexHtml.matchAll(/<link\b[^>]*>/gi)) {
+    if (!/\brel=["']?stylesheet\b/i.test(tag)) continue;
+    const href = tag.match(/\bhref=["']([^"']+)["']/i)?.[1];
+    if (href && !/^[a-z]+:|^\/\//i.test(href)) out.push(href.replace(/^\.\//, ''));
+  }
+  return out;
+}
 const FONTS = ['InterVariable.woff2', 'InterVariable-ext.woff2'];
 
 const js = await build({
@@ -32,7 +41,9 @@ const js = await build({
   legalComments: 'none',
 });
 
-let css = (await Promise.all(CSS.map((n) => read(`css/${n}.css`)))).join('\n');
+const CSS = stylesheetsOf(await read('index.html'));
+if (!CSS.length) throw new Error('index.html sem <link rel="stylesheet">');
+let css = (await Promise.all(CSS.map((p) => read(p)))).join('\n');
 // Fonte Inter embutida: o arquivo único não tem a pasta assets/
 for (const font of FONTS) {
   const uri = await dataURI(`assets/fonts/${font}`, 'font/woff2');

@@ -137,15 +137,32 @@ export function onboardingWizard() {
         const labels = ['Aluguel', 'Condomínio', 'Luz', 'Internet', 'Celular', 'Plano de saúde'];
         const mor = store.data.categories.find((c) => c.name === 'Moradia');
         const sau = store.data.categories.find((c) => c.name === 'Saúde e bem-estar');
-        let n = 0;
+        // Valida TODAS antes e salva num commit só: um erro na 3ª conta
+        // não deixa as duas primeiras salvas (que duplicariam ao reenviar).
+        const list = [];
+        const rows = [];
         labels.forEach((label, i) => {
-          const cents = toCents(v[`bill${i}`] || '');
-          if (!Number.isFinite(cents) || cents <= 0) return;
-          A.saveRecurring({ description: label, cents, dueDay: Number(v[`day${i}`] || 10), startYM: currentYM(), categoryId: i === 5 ? sau?.id : mor?.id, variable: label === 'Luz' });
-          n++;
+          const raw = String(v[`bill${i}`] || '').trim();
+          if (!raw) return;
+          const cents = toCents(raw);
+          if (!Number.isFinite(cents) || cents <= 0) throw new A.ValidationError(`Valor de ${label} inválido.`, `bill${i}`);
+          const day = Number(v[`day${i}`] || 10);
+          if (!Number.isInteger(day) || day < 1 || day > 31) throw new A.ValidationError('O dia deve ser entre 1 e 31.', `day${i}`);
+          list.push({ description: label, cents, dueDay: day, startYM: currentYM(), categoryId: i === 5 ? sau?.id : mor?.id, variable: label === 'Luz' });
+          rows.push(i);
         });
+        if (list.length) {
+          try {
+            A.saveRecurringMany(list);
+          } catch (err) {
+            // o erro da ação vem com o nome do campo da ação (cents, dueDay…):
+            // traduz para o campo desta etapa (bill0, day0…)
+            if (Number.isInteger(err.index)) err.field = `${err.field === 'dueDay' ? 'day' : 'bill'}${rows[err.index]}`;
+            throw err;
+          }
+        }
         A.setOnboardingStep('bills', true);
-        if (n) toast(`${n} conta(s) fixa(s) cadastrada(s).`);
+        if (list.length) toast(`${list.length} conta(s) fixa(s) cadastrada(s).`);
       } else if (step === 3) {
         if (v.card?.trim()) A.saveCard({ name: v.card, closingDay: Number(v.closing || 3), dueDay: Number(v.due || 10), limitCents: v.limit ? toCents(v.limit) : 0 });
         A.setOnboardingStep('card', true);

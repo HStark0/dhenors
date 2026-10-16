@@ -13,7 +13,7 @@
 // O arquivo é lido no próprio aparelho e não é enviado a lugar nenhum.
 // =============================================================
 
-import { html } from '../ui/dom.js';
+import { html, render } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { toast, toastError } from '../ui/toast.js';
 import { catText } from '../ui/forms.js';
@@ -60,18 +60,42 @@ export default {
     'imp:confirm': () => (session.kind === 'invoice' ? confirmInvoice() : confirmStatement()),
   },
 
+  // Cada clique atualiza SÓ a linha mudada e o resumo do topo: redesenhar
+  // a tabela inteira recriava centenas de listas de categoria a cada clique.
   onFilter(name, value, el) {
     if (!session) return;
     const r = el.dataset.index != null ? session.rows[Number(el.dataset.index)] : null;
-    if (name === 'row') r.include = el.checked;
-    if (name === 'all') for (const x of session.rows) if (!x.closed) x.include = el.checked;
+    const tableEl = el.closest('.table--import');
+    if (name === 'row') { r.include = el.checked; el.closest('tr')?.classList.toggle('is-off', !r.include); }
+    if (name === 'all') {
+      for (const x of session.rows) if (!x.closed) x.include = el.checked;
+      tableEl?.querySelectorAll('tbody [data-filter="row"]').forEach((box) => {
+        const row = session.rows[Number(box.dataset.index)];
+        box.checked = row.include;
+        box.closest('tr')?.classList.toggle('is-off', !row.include);
+      });
+    }
     if (name === 'learn') session.learn = el.checked;
     if (name === 'account') session.accountId = value || null;
     if (name === 'card') session.cardId = value || null;
-    if (name === 'cat') { r.categoryId = value || null; r.subcategoryId = null; r.source = ''; }
-    store.setUI({});
+    if (name === 'cat') {
+      r.categoryId = value || null; r.subcategoryId = null; r.source = '';
+      el.closest('tr')?.querySelector('.table__desc .badge--info')?.remove(); // "auto" não vale mais
+    }
+    if (name === 'row' || name === 'all') refreshSummary(tableEl);
   },
 };
+
+/** Redesenha só o cabeçalho (botão "Importar N") e os números do topo. */
+function refreshSummary(tableEl) {
+  const box = document.querySelector('[data-imp-summary]');
+  if (!box) { store.setUI({}); return; }
+  const rows = session.rows;
+  const chosen = rows.filter((r) => r.include);
+  render(box, session.kind === 'invoice' ? invoiceSummary(rows, chosen) : statementSummary(rows, chosen));
+  const all = tableEl?.querySelector('[data-filter="all"]');
+  if (all) all.checked = chosen.length === rows.filter((r) => !r.closed).length;
+}
 
 // ---------- Passo 1 ----------
 
@@ -107,22 +131,27 @@ function pickStep() {
 
 // ---------- Extrato ----------
 
-function statementStep() {
-  const d = store.data;
-  const rows = session.rows;
-  const chosen = rows.filter((r) => r.include);
+function statementSummary(rows, chosen) {
   const matched = chosen.filter((r) => r.match && !r.ignoreMatch);
   const fresh = chosen.filter((r) => !(r.match && !r.ignoreMatch));
   const out = fresh.filter((r) => r.cents > 0).reduce((s, r) => s + r.cents, 0);
   const inn = fresh.filter((r) => r.cents < 0).reduce((s, r) => s - r.cents, 0);
-  const accounts = (d.accounts || []).filter((a) => !a.archived);
   return html`
     ${head(rows, chosen, true)}
     <section class="grid grid--kpis grid--kpis-3">
       ${stat('Contas reconhecidas', String(matched.length), `${formatBRL(matched.reduce((s, r) => s + r.cents, 0))} → marcadas como pagas`)}
       ${stat('Gastos novos', formatBRL(out), `${fresh.filter((r) => r.cents > 0).length} → contas pagas`)}
       ${stat('Entradas', formatBRL(inn), `${fresh.filter((r) => r.cents < 0).length} → renda extra`)}
-    </section>
+    </section>`;
+}
+
+function statementStep() {
+  const d = store.data;
+  const rows = session.rows;
+  const chosen = rows.filter((r) => r.include);
+  const accounts = (d.accounts || []).filter((a) => !a.archived);
+  return html`
+    <div data-imp-summary>${statementSummary(rows, chosen)}</div>
     <article class="card">
       <div class="form-grid">
         ${accounts.length ? html`
@@ -150,11 +179,7 @@ function confirmStatement() {
 
 // ---------- Fatura do cartão ----------
 
-function invoiceStep() {
-  const d = store.data;
-  const rows = session.rows;
-  const chosen = rows.filter((r) => r.include);
-  const cards = (d.cards || []).filter((c) => !c.archived);
+function invoiceSummary(rows, chosen) {
   const total = chosen.reduce((s, r) => s + Math.round(r.cents / (r.count || 1)), 0);
   return html`
     ${head(rows, chosen, false)}
@@ -162,7 +187,16 @@ function invoiceStep() {
       ${stat('Vencimento', session.dueDate ? formatDateBR(session.dueDate) : '—', session.dueDate ? 'lido da fatura' : 'não encontrado: usa a data das compras')}
       ${stat('Nesta fatura', formatBRL(total), `${chosen.length} compras selecionadas`)}
       ${stat('Parceladas', String(chosen.filter((r) => r.count > 1).length), 'entram com o valor total')}
-    </section>
+    </section>`;
+}
+
+function invoiceStep() {
+  const d = store.data;
+  const rows = session.rows;
+  const chosen = rows.filter((r) => r.include);
+  const cards = (d.cards || []).filter((c) => !c.archived);
+  return html`
+    <div data-imp-summary>${invoiceSummary(rows, chosen)}</div>
     <article class="card">
       ${cards.length ? html`
         <div class="form-grid">
@@ -173,7 +207,7 @@ function invoiceStep() {
             </select>
           </div>
           ${learnSwitch()}
-        </div>` : html`<div class="note note--warn">${icon('triangle-alert')}<span>Cadastre o cartão antes (Cartões e contas → Novo cartão) para importar a fatura. <a href="#/carteira">Abrir</a></span></div>`}
+        </div>` : html`<div class="note note--warn">${icon('triangle-alert')}<span>Cadastre o cartão antes (Cartões e contas bancárias → Novo cartão) para importar a fatura. <a href="#/carteira">Abrir</a></span></div>`}
       ${table(rows, chosen, false)}
     </article>`;
 }

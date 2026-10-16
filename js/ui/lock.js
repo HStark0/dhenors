@@ -17,7 +17,6 @@ import { html, fragment } from './dom.js';
 import { icon } from './icons.js';
 import { pinPad, bindPinPad } from './pinpad.js';
 import { store } from '../core/store.js';
-import { clearState } from '../core/storage.js';
 import { biometricEnabled, unlockWithBiometric } from '../core/biometric.js';
 
 const AUTO_KEY = 'dhenors:autolock';
@@ -92,6 +91,7 @@ export function showLock(mode = 'unlock') {
     document.body.classList.add('is-locked');
 
     let busy = false;
+    let dead = false; // dados apagados: nada mais a fazer até recarregar
     let pad = null;
     const errorEl = el.querySelector('.pinpad__error');
     const waitEl = el.querySelector('[data-wait]');
@@ -118,7 +118,7 @@ export function showLock(mode = 'unlock') {
     if (fails().until > Date.now()) startWait();
 
     const attempt = async (secret) => {
-      if (busy) return;
+      if (busy || dead) return;
       if (fails().until > Date.now()) { startWait(); return; }
       if (!isPassword && secret.length < 4) { showError('O PIN tem de 4 a 8 números.'); return; }
       if (isPassword && secret.length < 1) return;
@@ -133,8 +133,12 @@ export function showLock(mode = 'unlock') {
         const f = registerFail();
         const limit = wipeAfter();
         if (limit && f.count >= limit) {
-          await clearState();
-          localStorage.removeItem(FAILS_KEY);
+          // Apaga TUDO (estado, anexos, base/sessão/chave da nuvem, biometria),
+          // tira a chave da memória e impede que o "pagehide" grave de novo
+          await store.wipe();
+          try { localStorage.removeItem(FAILS_KEY); } catch { /* ignora */ }
+          dead = true;
+          el.querySelectorAll('button, input').forEach((b) => { b.disabled = true; });
           showError('Dados deste aparelho apagados após tentativas demais. Restaure um backup ou entre na nuvem.');
           setTimeout(() => location.reload(), 3500);
           return;

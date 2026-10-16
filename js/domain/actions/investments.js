@@ -69,7 +69,8 @@ export function addInvestmentMovement(investmentId, input) {
     const qty = Number(input.qty);
     if (input.kind === 'resgate' || input.kind === 'venda') {
       const { value: available, qty: held } = positionAt(inv, investingOf(d.settings), when, d.settings.quotes);
-      if (value > available + 1) throw new ValidationError(`O valor é maior que o saldo nessa data (${brl(available)}).`, 'cents');
+      // Com quantidade, o limite é a quantidade: o valor da posição pode estar sem cotação atual
+      if (!(qty > 0 && held) && value > available + 1) throw new ValidationError(`O valor é maior que o saldo nessa data (${brl(available)}).`, 'cents');
       if (qty > 0 && held && qty > held + 1e-9) throw new ValidationError(`Você tem ${held.toLocaleString('pt-BR')} cotas nessa data.`, 'qty');
     }
     const mov = {

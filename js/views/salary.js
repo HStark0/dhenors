@@ -9,6 +9,7 @@
 import { html } from '../ui/dom.js';
 import { tabsNav, currentTab, routeParams } from '../ui/tabs.js';
 import { store } from '../core/store.js';
+import { todayISO } from '../core/dates.js';
 import { renderPayslip, payslipActions } from './salary/payslip.js';
 import { renderShifts, shiftActions } from './salary/shifts.js';
 import { renderIrpf, renderExit, renderBenefits, renderCareer, renderTables, moreSalaryActions, onExitFilter } from './salary/more.js';
@@ -33,7 +34,7 @@ export default {
     // Atalho "Lançar plantão" (ícone do app): abre a escala já com o dia de hoje
     if (active === 'plantoes' && routeParams().get('novo') && !store.ui.filters.shiftHint) {
       store.ui.filters.shiftHint = true;
-      setTimeout(() => document.querySelector(`[data-action="shift:day"][data-date="${new Date().toISOString().slice(0, 10)}"]`)?.focus(), 200);
+      setTimeout(() => document.querySelector(`[data-action="shift:day"][data-date="${todayISO()}"]`)?.focus(), 200);
     }
     return html`
       ${tabsNav('salario', TABS, active)}

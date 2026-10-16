@@ -106,18 +106,19 @@ Abra o site no celular e use **"Adicionar à tela inicial"** (Chrome: menu ⋮ �
 Sem framework e sem dependências em produção: HTML, CSS e módulos ES. As ferramentas abaixo são só para desenvolver.
 
 ```bash
-npm install            # ESLint, Prettier, TypeScript (tipos via JSDoc), Playwright, esbuild
-npm start              # servidor local em http://localhost:5173
+npm ci                 # ESLint, Prettier, TypeScript (tipos via JSDoc), Playwright, esbuild
+npm start              # servidor local em http://127.0.0.1:5173 (HOST=0.0.0.0 npm start para abrir no celular da rede)
 npm test               # testes dos cálculos (node --test)
-npm run e2e            # testes no navegador com capturas (npx playwright install chromium antes)
+npm run e2e            # testes no navegador com capturas + uso offline com service worker (npx playwright install chromium antes)
 npm run check          # lint + tipos + testes  (npm run format formata o código)
 npm run build          # gera dist/dhenors.html (arquivo único, abre sem servidor)
 ```
 
-- **Versão**: altere só o `version` do `package.json` e rode `npm run sync` — atualiza `js/version.js` e o cache do service worker (`sw-assets.js`). Registre a mudança no `CHANGELOG.md` e em `js/changelog.js`.
+- **Versão**: altere só o `version` do `package.json` e rode `npm run sync` — atualiza `js/version.js` e o cache do service worker (`sw-assets.js`). Registre a mudança no `CHANGELOG.md` e em `js/changelog.js`. A versão só sobe (nunca abaixo da última publicada), senão quem já tem o app não vê as Novidades; `tests/version.test.mjs` confere tudo isso.
 - **Estrutura**: `js/core` (armazenamento, criptografia, nuvem), `js/domain` (cálculos puros e testados), `js/ui` (componentes), `js/views` (telas).
 - **CI**: cada envio para a `main` passa por lint, tipos, testes e testes no navegador antes de publicar; cada pull request ganha uma prévia (arquivo único + capturas).
 - Site de apresentação: [landing.html](landing.html).
+- **Cabeçalhos de segurança**: o GitHub Pages não permite cabeçalhos próprios, e `frame-ancestors` (impedir que o app seja aberto dentro de um iframe de outro site) só funciona como cabeçalho HTTP — a CSP na `<meta>` ignora essa diretiva. O servidor de desenvolvimento já envia `Content-Security-Policy: frame-ancestors 'none'` e `X-Frame-Options: DENY`; ao publicar atrás de um CDN/proxy (Cloudflare, Netlify, Vercel), configure os mesmos cabeçalhos lá.
 
 ---
 

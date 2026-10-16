@@ -4,6 +4,23 @@ Todas as mudanças importantes do projeto. O app mostra o mesmo conteúdo em **A
 
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem [SemVer](https://semver.org/lang/pt-BR/). A versão vem do `package.json` e é espalhada por `npm run sync` (app, service worker e testes).
 
+## [3.3.0] — 2026-10-16
+
+Revisão completa de qualidade: correções de perda de dados, de cálculos e de segurança. A versão volta a subir a partir da 3.2.0 (a 1.0.0 publicada antes foi um retrocesso de numeração), para que quem estava na 3.2.0 veja estas Novidades.
+
+### Corrigido
+- **Nuvem**: casos em que a sincronização podia sobrescrever ou perder alterações feitas em outro aparelho.
+- **Investimentos**: IR na venda de ações (preço médio, isenção mensal e compensação de prejuízo).
+- **Salário**: cálculos da folha e das férias (1/3, médias e descontos).
+- **Importação**: extratos, faturas e holerites com formatos que antes falhavam ou duplicavam lançamentos.
+- **Acessibilidade e uso**: Esc fecha diálogos e menus de forma consistente, desfazer mais confiável, foco e anúncios para leitores de tela.
+- **Desempenho**: telas com muitos lançamentos abrem e atualizam mais rápido.
+- **Offline e atualização**: a página de apresentação, a política de privacidade, as Novidades e o arquivo único voltam a abrir normalmente depois de instalar o app; a instalação não mistura arquivos de versões diferentes; a primeira visita não recarrega mais a página sozinha.
+
+### Segurança
+- Arquivos recebidos pelo "Compartilhar" ficam no aparelho no máximo 24 horas se não forem usados.
+- Ações do GitHub fixadas, permissões mínimas na publicação e servidor de desenvolvimento só em 127.0.0.1.
+
 ## [1.0.0] — 2026-10-15
 
 Primeira versão.
