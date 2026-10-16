@@ -1,3 +1,4 @@
+// @ts-check
 // =============================================================
 // payslip.js — Lê o texto de um holerite e monta um "plano" de
 // importação (o que vira salário base, adicional, horas, consignado,
@@ -236,3 +237,53 @@ export function friendlyName(desc) {
 }
 const COMMON_SHORT = new Set(['vale', 'plano', 'base', 'horas', 'hora', 'dias', 'sobre', 'folha', 'extra', 'pago', 'juros', 'taxa', 'multa', 'aviso', 'bonus', 'vida', 'fixo', 'renda', 'total', 'falta', 'mes', 'ano', 'para', 'saldo', 'seguro', 'premio', 'ajuda', 'custo', 'outro', 'outros', 'trab', 'abono', 'prev', 'adic', 'desc', 'sal']);
 export { norm as normalizeName };
+
+// ---------- Conferência linha a linha ----------
+
+const words = (s) => new Set(plain(String(s)).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length >= 3));
+
+/**
+ * Compara cada verba do holerite com a linha que o app calculou.
+ * `items`: verbas do holerite ({ description, provento, desconto });
+ * `p`: resultado de payrollFor (domain/payroll.js).
+ * → [{ label, payslip, app, diff, sign: 1|-1 }] — `diff` = app − holerite
+ *   (null quando um dos lados não tem a linha).
+ */
+export function compareLines(items, p) {
+  const app = [
+    { label: 'Salário base', cents: p.base, sign: 1, re: /^sal[aá]rio( contratual| base| mensal|$)|horas normais|dias trabalhados/i },
+    ...(p.additions || []).map((a) => ({ label: a.description, cents: a.cents, sign: 1 })),
+    { label: p.inssLabel || 'INSS', cents: p.inss, sign: -1, re: /i\.?\s?n\.?\s?s\.?\s?s|previd[eê]ncia/i },
+    { label: 'IRRF', cents: p.ir?.value || 0, sign: -1, re: /irrf|i\.r\.r\.f|imposto de renda/i },
+    ...(p.deductions || []).map((d) => ({ label: d.description, cents: d.cents, sign: -1 })),
+  ];
+  const used = new Set();
+  const rows = [];
+  for (const it of items) {
+    const value = it.provento || it.desconto;
+    if (!value) continue;
+    const sign = it.provento ? 1 : -1;
+    let best = -1;
+    let bestScore = 0;
+    app.forEach((a, i) => {
+      if (used.has(i) || a.sign !== sign) return;
+      let score = 0;
+      if (a.re?.test(it.description)) score = 2;
+      else {
+        const wa = words(a.label);
+        const wb = words(it.description);
+        let common = 0;
+        for (const w of wb) if (wa.has(w)) common++;
+        score = wa.size && wb.size ? common / Math.min(wa.size, wb.size) : 0;
+        if (score < 0.5 && a.cents === value) score = 0.5; // mesmo valor, nomes diferentes
+      }
+      if (score > bestScore) { bestScore = score; best = i; }
+    });
+    if (best >= 0 && bestScore >= 0.5) {
+      used.add(best);
+      rows.push({ label: it.description, payslip: value, app: app[best].cents, diff: app[best].cents - value, sign });
+    } else rows.push({ label: it.description, payslip: value, app: null, diff: null, sign });
+  }
+  app.forEach((a, i) => { if (!used.has(i) && a.cents) rows.push({ label: a.label, payslip: null, app: a.cents, diff: null, sign: a.sign }); });
+  return rows;
+}

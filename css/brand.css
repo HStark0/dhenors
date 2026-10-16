@@ -1,213 +1,64 @@
 /* =============================================================
-   brand.css — Identidade da logo + animações
+   brand.css — Marca e movimento
    -------------------------------------------------------------
-   A logo tem duas marcas: o degradê verde-limão → turquesa → azul
-   e os CORTES DIAGONAIS (a barra que corta o "D"). Elas se repetem:
-   • filete em degradê no topo das janelas e na base do destaque;
-   • barras diagonais no cartão de saldo e nos cards de destaque;
-   • traço inclinado antes do título da página;
-   • brilho diagonal que atravessa os botões principais.
-   Animações de entrada só rodam com body.route-enter (ver
-   ui/motion.js), para não repetir a cada pequena mudança.
+   O degradê verde-limão → turquesa → azul é EXCLUSIVO da logo.
+   Movimento: curto, com desaceleração suave (--ease-out) e uma
+   mola discreta só no toque (--spring). Nada de brilhos, giros
+   ou elementos que chamem atenção sem motivo.
+   As entradas só rodam com body.route-enter (ver ui/motion.js),
+   para não repetir a cada pequena mudança.
    ============================================================= */
 
-/* Degradê dos ícones de título (sprite #g-brand, em ui/icons.js) */
+/* Degradê usado SÓ pela logo (sprite #g-brand, em ui/icons.js) */
 :root { --icon-g1: #16A34A; --icon-g2: #0D9488; --icon-g3: #1D4ED8; }
 [data-theme="dark"] { --icon-g1: #86EF6F; --icon-g2: #2DD4BF; --icon-g3: #4C9BF0; }
 
-/* ---------- Marca no menu ---------- */
-.brand span {
-  background: var(--brand-grad); -webkit-background-clip: text; background-clip: text; color: transparent;
+/* ---------- Toque e hover ---------- */
+.btn, .icon-btn, .segmented__btn, .tabs__tab, .nav-link, .tabbar__item, .pay-btn, .chip, .legend__btn, .sheet-item {
+  transition:
+    background-color var(--dur) var(--ease), border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+    transform 220ms var(--spring), opacity var(--dur) var(--ease);
 }
-[data-theme="light"] .brand span { background: var(--brand-grad-deep); -webkit-background-clip: text; background-clip: text; }
-.brand img { animation: logo-glow 6s ease-in-out infinite; }
-@keyframes logo-glow {
-  0%, 100% { filter: drop-shadow(0 0 0 rgb(45 212 191 / 0)); }
-  50% { filter: drop-shadow(0 0 8px rgb(45 212 191 / .55)); }
-}
-.brand:hover img { animation: logo-spin 700ms var(--spring); }
-@keyframes logo-spin { 40% { transform: rotate(-8deg) scale(1.08); } }
+:is(.btn, .icon-btn, .tabbar__new, .pay-btn, .segmented__btn, .tabs__tab):active:not(:disabled) { transform: scale(.97); }
 
-/* Item ativo do menu: barra com o corte inclinado da logo */
-.nav-link[aria-current="page"]::before {
-  width: 5px; border-radius: 2px; transform: skewY(-24deg);
-  background: var(--brand-grad); box-shadow: 0 0 12px rgb(45 212 191 / .55);
-  animation: nav-in 380ms var(--spring) both;
+/* Cards clicáveis: elevam um pouco no hover (sem mudar de cor) */
+.card { transition: box-shadow var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out); }
+@media (hover: hover) {
+  .kpi:hover, .entity:hover { box-shadow: var(--shadow-md); }
 }
-@keyframes nav-in { from { transform: skewY(-24deg) scaleY(0); } }
-.nav-link .icon { transition: transform var(--dur) var(--spring); }
-.nav-link:hover .icon { transform: translateX(2px) scale(1.08); }
-.nav-link[aria-current="page"] .icon { stroke: url(#g-brand); }
 
-/* Barra do celular: item ativo com o filete da marca */
-.tabbar__item { position: relative; transition: color var(--dur) var(--ease); }
-.tabbar__item.is-active::before {
-  content: ''; position: absolute; top: 2px; left: 50%; width: 22px; height: 3px; margin-left: -11px;
-  border-radius: 3px; background: var(--brand-grad-h); animation: tab-in 300ms var(--spring) both;
+/* ---------- Entrada da tela ---------- */
+.card { animation: none; }
+.route-enter #view > *, .route-enter #view .card {
+  animation: rise var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 30ms);
 }
-@keyframes tab-in { from { transform: scaleX(0); } }
-.tabbar__item.is-active .icon { stroke: url(#g-brand); }
-.tabbar__new { background: var(--btn-grad); box-shadow: var(--shadow-glow), 0 0 0 1px rgb(134 239 111 / .25) inset; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+.route-enter .page-title { animation: fade 240ms var(--ease-out) both; }
+@keyframes fade { from { opacity: 0; } }
 
-/* ---------- Título da página: o corte diagonal da logo ---------- */
-.page-title { display: flex; align-items: center; gap: 12px; }
-.page-title::before {
-  content: ''; flex: none; width: 7px; height: 1.05em; border-radius: 2px;
-  background: var(--brand-grad); transform: skewX(-20deg);
-  box-shadow: 0 0 14px rgb(45 212 191 / .45);
-}
-.route-enter .page-title { animation: title-in 520ms var(--ease) both; }
-.route-enter .page-title::before { animation: slash-in 620ms var(--spring) both; }
-@keyframes title-in { from { opacity: 0; transform: translateX(-10px); } }
-@keyframes slash-in { from { transform: skewX(-20deg) scaleY(0); } }
-
-/* ---------- Ícones dos títulos dos cards com o degradê da logo ---------- */
-.card__title .icon { color: var(--icon-g2); stroke: url(#g-brand); }
-.card--alert .card__title .icon, .card--danger .card__title .icon { stroke: currentColor; }
-
-/* ---------- Botões ---------- */
-.btn { transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease), transform var(--dur) var(--spring), box-shadow var(--dur) var(--ease); }
-.btn--primary, .tabbar__new { position: relative; overflow: hidden; isolation: isolate; }
-/* Brilho diagonal (o corte da logo) que atravessa o botão */
-.btn--primary::after, .tabbar__new::after {
-  content: ''; position: absolute; z-index: -1; top: -10%; bottom: -10%; left: -70%; width: 45%;
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / .38), transparent);
-  transform: skewX(-24deg); pointer-events: none;
-}
-.btn--primary:hover:not(:disabled)::after, .tabbar__new:hover::after { animation: shine 750ms var(--ease); }
-@keyframes shine { to { left: 130%; } }
-.btn--primary:hover:not(:disabled) { transform: translateY(-1px); }
-.btn--secondary:hover:not(:disabled), .btn--ghost:hover:not(:disabled) { transform: translateY(-1px); }
-.icon-btn { transition: background var(--dur) var(--ease), color var(--dur) var(--ease), transform var(--dur) var(--spring); }
-.icon-btn:hover:not(:disabled) { transform: scale(1.08); }
-.icon-btn:active:not(:disabled) { transform: scale(.94); }
-.segmented__btn { transition: background var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
-.segmented__btn[aria-pressed="true"] { box-shadow: var(--shadow-sm), inset 0 -2px 0 var(--logo-2); }
-
-/* ---------- Cards ---------- */
-/* Sem animação a cada redesenho: a entrada fica com .route-enter */
-.card { animation: none; transition: transform 260ms var(--spring), box-shadow 260ms var(--ease), border-color 260ms var(--ease); }
-.route-enter #view .card {
-  animation: card-rise 560ms var(--spring) both;
-  animation-delay: calc(var(--i, 0) * 55ms);
-}
-@keyframes card-rise { from { opacity: 0; transform: translateY(18px) scale(.985); } }
-
-/* Cards interativos levantam e ganham o brilho da marca */
-.kpi:hover, .entity:hover {
-  transform: translateY(-3px);
-  border-color: color-mix(in srgb, var(--logo-2) 45%, var(--border));
-  box-shadow: var(--shadow), 0 16px 36px -18px rgb(45 212 191 / .55);
-}
-.kpi__icon { background: var(--brand-grad-deep); box-shadow: 0 8px 18px -8px rgb(13 148 136 / .7); transition: transform 300ms var(--spring); }
-.kpi:hover .kpi__icon { transform: rotate(-6deg) scale(1.08); }
-.entity__icon { transition: transform 300ms var(--spring); }
-.entity:hover .entity__icon { transform: rotate(-6deg) scale(1.06); }
-
-/* Card de destaque: borda em degradê + cortes diagonais no canto */
-.card--feature {
-  position: relative; isolation: isolate; overflow: hidden;
-  border-color: transparent;
-  background:
-    linear-gradient(var(--surface), var(--surface)) padding-box,
-    linear-gradient(160deg, color-mix(in srgb, var(--logo-1) 70%, transparent), color-mix(in srgb, var(--logo-2) 40%, transparent) 45%, color-mix(in srgb, var(--logo-3) 70%, transparent)) border-box;
-  box-shadow: var(--shadow), 0 18px 40px -26px rgb(45 212 191 / .6);
-}
-.card--feature::before, .card--feature::after {
-  content: ''; position: absolute; z-index: -1; pointer-events: none;
-  bottom: -34px; height: 84px; border-radius: 4px; transform: rotate(42deg);
-  background: var(--brand-grad);
-}
-.card--feature::before { right: 22px; width: 12px; opacity: .55; }
-.card--feature::after { right: 44px; width: 6px; opacity: .3; }
-.card--feature:hover::before { animation: slash-pulse 900ms var(--ease); }
-@keyframes slash-pulse { 50% { opacity: .9; transform: rotate(42deg) translateY(-6px); } }
-/* Os cortes ficam no canto de baixo, longe dos botões do cabeçalho */
-.card--feature .kpi__action { z-index: 1; }
-
-/* ---------- Cartão de saldo (hero): cortes da logo e filete ---------- */
-.hero {
-  background: var(--brand-grad-h) bottom / 100% 3px no-repeat, var(--hero-bg);
-  box-shadow: var(--shadow), 0 24px 50px -28px rgb(30 123 232 / .7);
-}
-.hero::after {
-  border: 0; border-radius: 22px; width: 92px; height: 420px; right: 10%; top: -150px; left: auto;
-  transform: rotate(40deg);
-  background: linear-gradient(180deg, rgb(134 239 111 / .30), rgb(45 212 191 / .14) 55%, transparent);
-  animation: slash-drift 9s ease-in-out infinite alternate;
-}
-.hero::before {
-  content: ''; position: absolute; z-index: -1; pointer-events: none;
-  width: 34px; height: 360px; right: calc(10% + 118px); top: -120px; border-radius: 14px;
-  transform: rotate(40deg);
-  background: linear-gradient(180deg, rgb(45 212 191 / .22), rgb(30 123 232 / .08) 60%, transparent);
-  animation: slash-drift 11s ease-in-out infinite alternate-reverse;
-}
-@keyframes slash-drift { to { translate: -18px 10px; } }
-.hero .meter__fill { background: var(--brand-grad-h); box-shadow: 0 0 12px rgb(134 239 111 / .45); }
-.hero__value { text-shadow: 0 2px 24px rgb(45 212 191 / .25); }
-.chip { transition: background var(--dur) var(--ease), transform var(--dur) var(--spring); }
-.chip:hover { background: rgb(255 255 255 / .14); transform: translateY(-2px); }
-
-/* ---------- Medidores ---------- */
-.meter__fill { background: var(--brand-grad-h); }
+/* ---------- Medidores e gráficos ---------- */
+.meter__fill { transition: width 600ms var(--ease-out); }
 .route-enter #view .meter__fill {
-  transform-origin: left; animation: meter-grow 1s var(--ease) both;
-  animation-delay: calc(var(--i, 0) * 55ms + 180ms);
+  transform-origin: left; animation: grow 700ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 30ms + 120ms);
 }
-@keyframes meter-grow { from { transform: scaleX(0); } }
-
-/* Anel da saúde financeira */
-.route-enter #view .score__bar { animation: ring-in 1.3s var(--ease) both; animation-delay: calc(var(--i, 0) * 55ms + 150ms); }
+@keyframes grow { from { transform: scaleX(0); } }
+.route-enter #view .score__bar { animation: ring-in 900ms var(--ease-out) both; animation-delay: 120ms; }
 @keyframes ring-in { from { stroke-dashoffset: var(--c); } }
-.score__bar { filter: drop-shadow(0 0 6px rgb(45 212 191 / .45)); }
-
-/* ---------- Gráficos que se desenham ---------- */
 .route-enter #view .chart__bar {
   transform-box: fill-box; transform-origin: bottom;
-  animation: bar-grow 700ms var(--spring) both;
-  animation-delay: calc(var(--i, 0) * 55ms + var(--b, 0) * 45ms + 150ms);
+  animation: bar-grow 560ms var(--ease-out) both;
+  animation-delay: calc(var(--b, 0) * 30ms + 120ms);
 }
 .route-enter #view .chart__bar.is-down { transform-origin: top; }
 @keyframes bar-grow { from { transform: scaleY(0); } }
-.route-enter #view .chart__line[pathLength] {
-  stroke-dasharray: 1; animation: draw 1.3s var(--ease) both; animation-delay: calc(var(--i, 0) * 55ms + 150ms);
-}
-.route-enter #view .chart__line.is-dashed { animation: fade-in 900ms var(--ease) both; animation-delay: calc(var(--i, 0) * 55ms + 400ms); }
-.route-enter #view .chart__dot { animation: dot-pop 420ms var(--spring) both; animation-delay: calc(var(--i, 0) * 55ms + 900ms); transform-box: fill-box; transform-origin: center; }
-.route-enter #view .chart--donut path {
-  stroke-dasharray: 1; animation: draw 900ms var(--ease) both;
-  animation-delay: calc(var(--i, 0) * 55ms + var(--s, 0) * 110ms + 120ms);
-}
+.route-enter #view .chart__line[pathLength] { stroke-dasharray: 1; animation: draw 900ms var(--ease-out) both; animation-delay: 120ms; }
+.route-enter #view .chart__line.is-dashed { animation: fade 600ms var(--ease-out) both; }
+.route-enter #view .chart__dot { animation: fade 300ms var(--ease-out) both; animation-delay: 600ms; }
+.route-enter #view .chart--donut path { stroke-dasharray: 1; animation: draw 700ms var(--ease-out) both; animation-delay: calc(var(--s, 0) * 60ms + 80ms); }
 @keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
-@keyframes fade-in { from { opacity: 0; } }
-@keyframes dot-pop { from { opacity: 0; transform: scale(0); } }
-.chart__line:not(.is-dashed) { filter: drop-shadow(0 4px 8px rgb(45 212 191 / .3)); }
-.chart--donut path { transition: stroke-width var(--dur) var(--spring), opacity var(--dur); }
-.chart--donut path:hover { stroke-width: 26px; }
-.chart__bar:hover { opacity: .8; }
-
-/* ---------- Listas e dicas ---------- */
-.route-enter #view .insight, .route-enter #view .mini-list > li, .route-enter #view .item {
-  animation: fade-up 480ms var(--ease) both; animation-delay: calc(var(--i, 0) * 55ms + 200ms);
-}
-@keyframes fade-up { from { opacity: 0; transform: translateY(8px); } }
-.insight { transition: transform var(--dur) var(--spring), background var(--dur) var(--ease); border-left: 3px solid transparent; }
-.insight--good { border-left-color: var(--pos); }
-.insight--warn, .insight--bad { border-left-color: var(--warn); }
-.insight--info { border-left-color: var(--logo-2); }
-.insight:hover { transform: translateX(3px); }
-
-/* ---------- Janelas: filete da logo no topo ---------- */
-.dialog { background: var(--brand-grad-h) top / 100% 3px no-repeat, var(--surface); }
-.dialog__title { display: flex; align-items: center; gap: 10px; }
-.dialog__title::before {
-  content: ''; flex: none; width: 5px; height: 1em; border-radius: 2px;
-  background: var(--brand-grad); transform: skewX(-20deg);
-}
-
-/* Avisos (toast) com o filete da marca */
-.toast { border-left: 3px solid var(--logo-2); }
-
-/* Seta de "tem mais" com as cores da marca */
-.page-cue { color: var(--logo-2); border-color: color-mix(in srgb, var(--logo-2) 40%, var(--border)); box-shadow: var(--shadow), 0 0 18px -4px rgb(45 212 191 / .5); }
+.chart--donut path { transition: opacity var(--dur) var(--ease); }
+.chart--donut:hover path:not(:hover) { opacity: .55; }
+.chart__bar { transition: opacity var(--dur) var(--ease); }

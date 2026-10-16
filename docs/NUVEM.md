@@ -19,6 +19,8 @@ Tempo: uns 15 minutos. Tudo nos planos **gratuitos**.
    - **Region:** *South America (São Paulo)*.
    - *Create new project* e espere ~2 minutos.
 3. Menu lateral → **SQL Editor** → *New query* → cole TODO o conteúdo do arquivo [`supabase/schema.sql`](../supabase/schema.sql) → **Run**. Deve aparecer *Success*.
+   - Cria as tabelas `dhenors_state` (índice), `dhenors_chunks` (dados em blocos), `dhenors_versions` (histórico de versões), `dhenors_devices` (aparelhos conectados) e `dhenors_push` (lembretes), todas com RLS (cada conta só vê o que é dela) e ligadas ao **Realtime**.
+   - Já usava a versão 3? Rode o arquivo de novo: ele só cria o que falta e mantém seus dados.
 4. Menu → **Project Settings → API** (ou o botão **Connect** no topo) e copie:
    - **Project URL** — algo como `https://abcdefghijk.supabase.co`
    - **anon public** key (ou **publishable key**, `sb_publishable_…`)
@@ -40,18 +42,22 @@ Tempo: uns 15 minutos. Tudo nos planos **gratuitos**.
      > A pasta `.github` é escondida em alguns sistemas. No Windows, ative "Itens ocultos" no Explorador; no Mac, `Cmd + Shift + .` no Finder.
    - **Com Git:** dentro da pasta do projeto:
      ```bash
-     git init && git add . && git commit -m "Dhenors 3.2"
+     git init && git add . && git commit -m "Dhenors"
      git branch -M main
      git remote add origin https://github.com/SEU-USUARIO/dhenors.git
      git push -u origin main
      ```
 4. No repositório: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-5. Aba **Actions**: o fluxo *Publicar no GitHub Pages* roda sozinho (testes → build → publicação). Em ~1 minuto o site está em `https://SEU-USUARIO.github.io/dhenors/`.
+5. Aba **Actions**: o fluxo *Publicar no GitHub Pages* roda sozinho (lint → tipos → testes → testes no navegador → build → publicação). Em ~1 minuto o site está em `https://SEU-USUARIO.github.io/dhenors/`.
    - A cada novo envio (commit) na `main`, o site se atualiza sozinho.
 
 ### (Opcional) Deixar a nuvem pré-configurada no código
 
 Em `js/config.js`, preencha `url` e `anonKey` com os valores da Parte 1 e envie de novo. Assim, em qualquer aparelho o app já sabe qual é o seu Supabase e só pede e-mail, senha e frase secreta. Se deixar em branco, o app pede a URL e a chave na primeira vez em cada aparelho (Ajustes → Nuvem).
+
+### (Opcional) Manter a nuvem acordada
+
+O plano gratuito do Supabase **pausa** o projeto depois de 7 dias sem uso. O app avisa quando a pausa se aproxima, e o fluxo [`supabase-keepalive.yml`](../.github/workflows/supabase-keepalive.yml) faz uma consulta leve duas vezes por semana. Para ligar: **Settings → Secrets and variables → Actions** → crie `SUPABASE_URL` e `SUPABASE_ANON_KEY`.
 
 ## Parte 3 — Ligar a nuvem no app
 
@@ -61,7 +67,8 @@ Em `js/config.js`, preencha `url` e `anonKey` com os valores da Parte 1 e envie 
 2. Cole a URL e a chave (se não estiverem no `config.js`).
 3. **Criar conta** com e-mail e senha (confirme o e-mail se o Supabase pedir e depois **Entrar**).
 4. **Crie a frase secreta** (mín. 8 caracteres). **Anote em lugar seguro**: sem ela, ninguém recupera os dados da nuvem.
-5. Pronto: o ícone de nuvem no topo fica verde ("Sincronizado").
+5. Escolha se o aparelho deve **lembrar a frase**: só nesta sessão, por 30 dias ou sempre (guardada cifrada pelo PIN/senha do app, se houver).
+6. Pronto: o botão de nuvem mostra "Sincronizado há X min".
 
 > Seus dados estão hoje em outro endereço (ex.: o arquivo `dhenors.html` ou `localhost`)? Cada endereço tem o próprio armazenamento. Lá, faça **Ajustes → Baixar backup**; no site novo, **Ajustes → Restaurar** e depois ligue a nuvem.
 
@@ -87,15 +94,35 @@ Esqueceu a frase secreta? Os dados continuam a salvo **nos aparelhos que já est
 
 | Situação | O que acontece |
 |---|---|
-| Você lança algo | Salva no aparelho na hora; ~1,5 s depois vai para a nuvem (criptografado). |
-| Abre o app / volta para a aba / a cada 1 min | Busca a versão mais nova da nuvem. |
-| Sem internet | Continua funcionando; o ícone fica cinza e envia quando a conexão voltar. |
-| Mexeu em dois aparelhos ao mesmo tempo | O app **junta as mudanças item a item** (contas novas dos dois lados ficam; o que foi apagado de um lado sai). Se o mesmo item foi alterado nos dois, fica a versão da nuvem. |
-| PIN do app | Continua valendo em cada aparelho, separado da frase secreta da nuvem. |
+| Você lança algo | Salva no aparelho na hora; ~1,5 s depois vai para a nuvem (criptografado). O botão mostra "1 pendente" até enviar. |
+| Os dados são grandes | O estado é dividido em **blocos** (por coleção e por ano) e só os blocos que mudaram são enviados. |
+| Outro aparelho mudou algo | Chega em segundos pelo **Realtime** (WebSocket do Supabase). Sem Realtime, o app confere a cada 1 min com o app aberto. |
+| Sem internet | Continua funcionando; o botão mostra "Offline" e envia quando a conexão voltar. |
+| Mexeu em dois aparelhos ao mesmo tempo | O app **junta as mudanças item a item**. Se o MESMO campo do mesmo item foi alterado nos dois, vira um **conflito**: Ajustes → Nuvem → Conflitos mostra as duas versões e você escolhe. |
+| Errou feio | **Histórico de versões** (Ajustes → Nuvem): volte o estado inteiro para uma cópia de dias atrás. |
+| Perdeu o celular | **Aparelhos conectados** (Ajustes → Nuvem): veja onde a conta está aberta e desconecte. Troque a frase secreta se precisar: os dados são recriptografados. |
+
+## (Opcional) Lembretes com o app fechado (push)
+
+1. Gere as chaves: `npx web-push generate-vapid-keys`.
+2. Coloque a chave **pública** em `js/config.js` (`vapidPublicKey`).
+3. Publique a função: `supabase functions deploy daily-reminders --no-verify-jwt` e `supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:voce@exemplo.com`.
+4. Ligue as extensões **pg_cron** e **pg_net** (Database → Extensions) e rode o `cron.schedule` comentado no fim do `schema.sql`.
+5. No app: Ajustes → Lembretes → **Com o app fechado (push)**.
+
+Privacidade: cada aparelho envia só **quantas** contas vencem em cada dia — nunca valores ou nomes.
+
+## (Opcional) Open Finance pela Pluggy
+
+Vai contra o princípio "nada sai do aparelho", por isso fica **desligado** até você ligar.
+
+1. Crie uma conta em **pluggy.ai** e pegue `CLIENT_ID` e `CLIENT_SECRET`.
+2. `supabase functions deploy open-finance` e `supabase secrets set PLUGGY_CLIENT_ID=... PLUGGY_CLIENT_SECRET=...`.
+3. No app: Ajustes → Dados → **Open Finance** → Ligar → Conectar banco. As transações abrem na tela de importação (com conciliação): nada é lançado sem a sua revisão.
 
 ## Segurança, em resumo
 
-- **Criptografia de ponta a ponta:** AES-256-GCM com chave derivada da sua frase (PBKDF2-SHA256, 310 mil iterações). O Supabase só guarda um bloco ilegível.
-- **Isolamento:** as regras do banco (RLS) só deixam cada conta ler e alterar a própria linha.
-- **Sem dependências externas:** o app fala com o Supabase pela API REST oficial, sem bibliotecas de terceiros.
-- O plano gratuito do Supabase pausa projetos sem uso por 1 semana; basta abrir o painel do Supabase e clicar em *Restore* (seus dados continuam lá). Usando o app regularmente, isso não acontece.
+- **Criptografia de ponta a ponta:** AES-256-GCM com chave derivada da sua frase (PBKDF2-SHA256, 600 mil iterações). O Supabase só guarda blocos ilegíveis.
+- **Isolamento:** as regras do banco (RLS) só deixam cada conta ler e alterar as próprias linhas; tamanhos máximos evitam abuso.
+- **Sem dependências externas:** o app fala com o Supabase pela API REST e pelo WebSocket oficiais, sem bibliotecas de terceiros.
+- Detalhes em [SEGURANCA.md](SEGURANCA.md) e [PRIVACIDADE.md](PRIVACIDADE.md).

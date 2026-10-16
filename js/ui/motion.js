@@ -11,7 +11,10 @@
 // Quem pede "reduzir movimento" no sistema não vê nada disso.
 // =============================================================
 
-const reduced = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+import { motionReduced } from '../core/theme.js';
+
+// Sistema pedindo menos movimento, ou Ajustes → Efeitos "Desligados"/"Calmos"
+const reduced = () => motionReduced() || globalThis.document?.documentElement.dataset.motion === 'calm';
 
 const NUMBERS = '.hero__value, .kpi__value, .big-number, .stats dd, .entity__value, .score__num strong, .chip dd, .kv strong';
 const MONEY = /(R\$\s?)(\d{1,3}(?:\.\d{3})*,\d{2})/;

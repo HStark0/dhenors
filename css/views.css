@@ -194,7 +194,7 @@ body.is-loading .tabbar, body.is-loading .topbar { visibility: hidden; }
 @media (max-width: 479px) { .kv--stack { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } }
 
 /* =============================================================
-   3.0 — Busca, agenda, simulador, importação, bloqueio, score
+   Busca, agenda, simulador, importação, bloqueio, score
    ============================================================= */
 
 /* ---------- Busca na barra lateral ---------- */
@@ -400,7 +400,7 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; font-fam
 .palette__tip { flex-basis: 100%; }
 
 /* =============================================================
-   Ajustes finos de espaçamento (3.0.2)
+   Ajustes finos de espaçamento
    ============================================================= */
 .grid--top { align-items: start; }
 

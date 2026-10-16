@@ -1,0 +1,21 @@
+{
+  // Checagem de tipos por JSDoc (sem TypeScript no código).
+  // Só os arquivos com "// @ts-check" no topo são verificados — a lista
+  // cresce aos poucos, começando pelos cálculos de dinheiro e datas.
+  // Rode: npm run typecheck
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  },
+  "include": ["js/**/*.js"],
+  "exclude": ["node_modules", "dist"]
+}

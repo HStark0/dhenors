@@ -2,25 +2,30 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <!-- Segurança: só carrega arquivos do próprio site e só conversa com o
+       Supabase (nuvem) e, quando você pede, com as APIs públicas do Banco
+       Central (CDI/Selic/IPCA) e da brapi (cotações). Ver docs/SEGURANCA.md. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.bcb.gov.br https://brapi.dev; worker-src 'self'; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
   <title>Dhenors · Controle financeiro</title>
-  <meta name="description" content="Controle financeiro pessoal: contas, parcelamentos, recorrentes, metas e análise. Funciona offline e os dados ficam no seu aparelho.">
-  <meta name="theme-color" content="#F6F8FB">
+  <meta name="description" content="Controle financeiro pessoal: contas, cartões, parcelamentos, recorrentes, salário, metas e investimentos. Funciona offline e os dados ficam no seu aparelho.">
+  <!-- Cores iguais às de js/core/theme.js (THEME_COLORS) e do manifest -->
+  <meta name="theme-color" content="#F5F5F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0B0B0D" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Dhenors">
 
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preload" href="assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
 
-  <!-- Aplica o tema antes de desenhar a página (evita "piscar" branco no modo escuro) -->
-  <script>
-    (function () {
-      var t = 'auto';
-      try { t = localStorage.getItem('dhenors:theme') || 'auto'; } catch (e) {}
-      var dark = t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    })();
-  </script>
+  <!-- Tema antes de desenhar (evita "piscar" branco no modo escuro) -->
+  <script src="js/boot.js"></script>
 
   <link rel="stylesheet" href="css/tokens.css">
   <link rel="stylesheet" href="css/base.css">
@@ -28,6 +33,8 @@
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/views.css">
   <link rel="stylesheet" href="css/brand.css">
+  <link rel="stylesheet" href="css/features.css">
+  <link rel="stylesheet" href="css/design.css">
 
   <script type="module" src="js/main.js"></script>
 </head>
@@ -35,19 +42,20 @@
   <a class="skip-link" href="#main">Pular para o conteúdo</a>
 
   <div class="app">
-    <!-- Menu lateral (computador / tablet) -->
+    <!-- Menu lateral (computador / tablet): fixo, com a altura toda -->
     <aside class="sidebar" aria-label="Menu principal">
       <a class="brand" href="#/painel">
         <img src="assets/icons/logo-64.png" alt="" width="32" height="32">
         <span>Dhenors</span>
       </a>
       <nav id="sidebar-nav" class="sidebar__nav"></nav>
-      <p class="sidebar__foot">Dados salvos neste aparelho</p>
+      <div id="sidebar-foot" class="sidebar__foot"></div>
     </aside>
 
     <div class="app__main">
       <header id="topbar" class="topbar"></header>
       <main id="main" class="content" tabindex="-1">
+        <div id="ptr" class="ptr" aria-hidden="true"></div>
         <div id="view" class="view">
           <p class="loading">Carregando…</p>
         </div>
@@ -57,6 +65,9 @@
     <!-- Barra inferior (celular) -->
     <nav id="tabbar" class="tabbar" aria-label="Navegação"></nav>
   </div>
+
+  <!-- Avisos falados para leitores de tela (ex.: "Conta marcada como paga") -->
+  <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <noscript>
     <p class="noscript">O Dhenors precisa de JavaScript ativado para funcionar.</p>

@@ -7,19 +7,27 @@
 //
 // São funções puras: recebem o estado e devolvem resultados,
 // sem tocar na tela nem no armazenamento. Por isso são testadas
-// em tests/ledger.test.mjs.
+// em tests/ledger.test.mjs. Os resultados ficam em cache enquanto
+// o estado for o mesmo objeto (core/memo.js).
 // =============================================================
 
 import { splitCents, sumCents } from '../core/money.js';
-import { addMonthsYM, dateInMonth, diffDays, monthsBetween, todayISO, ymOf, parseISO } from '../core/dates.js';
+import { addMonthsYM, dateInMonth, diffDays, monthsBetween, todayISO, ymOf, parseISO, addDaysISO } from '../core/dates.js';
+import { memoByState } from '../core/memo.js';
 import { payrollFor, thirteenthFor, vacationFor, paydayOf } from './payroll.js';
+import { registerCustomTables } from './taxTables.js';
+import { shiftIncomes } from './shifts.js';
+import { benefitsIn, jobsIn } from './benefits.js';
+import { invoicesIn } from './cards.js';
 
 // ---------- Parcelamentos ----------
 
 /**
  * Cronograma completo de um parcelamento.
  * Cada parcela vence no `dueDay` do mês (limitado ao fim do mês).
- * → [{ n, ym, dueDate, cents, paid }]
+ * → [{ n, ym, dueDate, cents, paid, paidAt }]
+ * paidAt = data REAL do pagamento (quando registrada). Parcelas
+ * marcadas como já pagas no cadastro não têm data: usam o vencimento.
  */
 export function installmentSchedule(inst) {
   const firstYM = ymOf(inst.firstDueDate);
@@ -29,7 +37,8 @@ export function installmentSchedule(inst) {
     const ym = addMonthsYM(firstYM, i);
     // A 1ª parcela usa a data informada; as demais, o dia de vencimento.
     const dueDate = i === 0 ? inst.firstDueDate : dateInMonth(ym, inst.dueDay);
-    return { n: i + 1, ym, dueDate, cents, paid: paid.has(i + 1) };
+    const n = i + 1;
+    return { n, ym, dueDate, cents, paid: paid.has(n), paidAt: paid.has(n) ? (inst.paidOn?.[n] || dueDate) : null, paidAtKnown: Boolean(inst.paidOn?.[n]) };
   });
 }
 
@@ -83,27 +92,78 @@ export function planInstallment({ parcelCents, count, paidCount, nextDueDate, du
 
 // ---------- Recorrentes ----------
 
-export const entryKey = (recurringId, ym) => `${recurringId}|${ym}`;
+/** Chave do pagamento: por mês ("id|AAAA-MM") ou, nas semanais/quinzenais, por dia ("id|AAAA-MM-DD"). */
+export const entryKey = (recurringId, ymOrDate) => `${recurringId}|${ymOrDate}`;
+
+/** Intervalo em meses de cada ritmo (semanal e quinzenal são por dias). */
+export const FREQ_MONTHS = { monthly: 1, bimonthly: 2, quarterly: 3, semiannual: 6, annual: 12 };
+export const FREQ_DAYS = { weekly: 7, biweekly: 14 };
+export const FREQ_LABELS = {
+  monthly: 'Mensal', weekly: 'Semanal', biweekly: 'Quinzenal', bimonthly: 'Bimestral',
+  quarterly: 'Trimestral', semiannual: 'Semestral', annual: 'Anual',
+};
 
 /** A recorrente vale no mês? (entre o início e o fim, se houver). */
 export function recurringActiveIn(rec, ym) {
   return rec.startYM <= ym && (!rec.endYM || ym <= rec.endYM);
 }
 
+/**
+ * Datas em que a recorrente vence no mês (vazio se não vence).
+ * Mensal: 1 data. Bimestral/trimestral/…: só nos meses do ciclo,
+ * contados a partir do início. Semanal/quinzenal: todas as datas do mês.
+ */
+export function recurringDates(rec, ym) {
+  if (!recurringActiveIn(rec, ym)) return [];
+  const freq = rec.freq || 'monthly';
+  if (FREQ_DAYS[freq]) {
+    const step = FREQ_DAYS[freq];
+    const anchor = rec.anchorDate || dateInMonth(rec.startYM, rec.dueDay);
+    const first = `${ym}-01`;
+    let k = Math.max(0, Math.ceil(diffDays(anchor, first) / step));
+    const out = [];
+    for (let d = addDaysISO(anchor, k * step); ymOf(d) === ym || d < first; d = addDaysISO(anchor, ++k * step)) {
+      if (ymOf(d) === ym && d >= anchor) out.push(d);
+      if (k > 400) break;
+    }
+    return out;
+  }
+  const step = FREQ_MONTHS[freq] || 1;
+  return monthsBetween(rec.startYM, ym) % step === 0 ? [dateInMonth(ym, rec.dueDay)] : [];
+}
+
+/** Valor estimado de uma conta variável (luz, água): média dos últimos valores confirmados. */
+export function variableEstimate(state, rec, ym, n = 3) {
+  const known = Object.entries(state.recurringEntries || {})
+    .filter(([k, e]) => k.startsWith(`${rec.id}|`) && e.cents != null && k.split('|')[1] < ym)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .slice(0, n)
+    .map(([, e]) => e.cents);
+  return known.length ? Math.round(sumCents(known) / known.length) : rec.cents;
+}
+
 // ---------- Renda ----------
 
+/** Rendas extras do mês: lançadas + geradas pela escala de plantões. */
+export function extrasOf(state, ym) {
+  return [...state.extraIncomes.filter((x) => x.ym === ym), ...shiftIncomes(state, ym)];
+}
+
 /**
- * Renda LÍQUIDA do mês.
+ * Renda LÍQUIDA do mês (competência).
  *   salary      = líquido do salário (sem os extras)
  *   extrasCents = quanto os extras somam ao líquido. Extras "na folha" são
  *                 brutos: entram no contracheque e pagam INSS/IR junto com o
  *                 salário, então somam (líquido com extras − líquido sem extras).
  *   thirteenth  = 13º salário do mês (nov/dez), se houver
  *   actual      = líquido da folha que você CONFERIU no holerite (substitui a estimativa)
+ *   benefits    = PLR, abono e outros benefícios em dinheiro (VA/VR à parte)
+ *   jobs        = líquido dos outros vínculos (segundo emprego, PJ…)
  *   payroll     = contracheque completo do mês (ver payroll.js)
  */
-export function payslipIncome(state, ym) {
-  const extras = state.extraIncomes.filter((x) => x.ym === ym);
+function payslipIncomeRaw(state, ym) {
+  registerCustomTables(state.settings.taxTables);
+  const extras = extrasOf(state, ym);
   const inPayroll = sumCents(extras.filter((x) => x.payroll).map((x) => x.cents));
   const outside = sumCents(extras.filter((x) => !x.payroll).map((x) => x.cents));
 
@@ -113,6 +173,8 @@ export function payslipIncome(state, ym) {
   const thirteenthNet = thirteenth ? thirteenth.net : 0;
   const vacation = vacationFor(state.settings, ym);
   const vacationNet = vacation ? vacation.net : 0;
+  const benefits = benefitsIn(state.settings, ym);
+  const jobs = jobsIn(state.settings, ym, payroll.gross);
 
   let salary = withoutExtras.net;
   let extrasNet = payroll.net - withoutExtras.net;
@@ -138,18 +200,24 @@ export function payslipIncome(state, ym) {
     gross: payroll.gross + outside,
     thirteenth,
     vacation,
+    benefits,
+    benefitsNet: benefits.cashNet,
+    jobs,
+    jobsNet: jobs.net,
     actual,
     estimatedNet: payroll.net,
-    total: salary + extrasCents + thirteenthNet + vacationNet,
+    total: salary + extrasCents + thirteenthNet + vacationNet + benefits.cashNet + jobs.net,
     payroll,
   };
 }
+export const payslipIncome = memoByState(payslipIncomeRaw);
 
 /**
  * Renda que ENTRA no mês `ym` (caixa).
  * Com "salário cai no mês seguinte", o salário e os plantões na folha
  * vêm da competência anterior (ex.: holerite de setembro pago em outubro).
- * 13º, férias e rendas fora da folha continuam no mês em que caem.
+ * 13º, férias, benefícios, outros vínculos e rendas fora da folha
+ * continuam no mês em que caem.
  * Para o contracheque de uma competência, use payslipIncome().
  */
 export function incomeFor(state, ym) {
@@ -168,7 +236,7 @@ export function incomeFor(state, ym) {
     gross: comp.payroll.gross + own.outside,
     actual: comp.actual,
     estimatedNet: comp.estimatedNet,
-    total: comp.salary + extrasCents + own.thirteenthNet + own.vacationNet,
+    total: comp.salary + extrasCents + own.thirteenthNet + own.vacationNet + own.benefitsNet + own.jobsNet,
     payroll: comp.payroll,
   };
 }
@@ -195,10 +263,11 @@ export function itemStatus(dueDate, paidAt, today = todayISO()) {
 
 /**
  * Todos os compromissos de um mês, já com status.
- * Item: { key, kind, refId, description, cents, dueDate, paidAt, status,
- *         categoryId, subcategoryId, creditorId, parcel?: { n, count } }
+ * Item: { key, kind: 'expense'|'recurring'|'installment'|'invoice', refId, description, cents,
+ *         dueDate, paidAt, status, categoryId, subcategoryId, creditorId, tags,
+ *         parcel?: { n, count }, splits?, parts?, estimated?, entryKey? }
  */
-export function monthItems(state, ym, today = todayISO()) {
+function monthItemsRaw(state, ym, today = todayISO()) {
   const items = [];
 
   for (const e of state.expenses) {
@@ -207,20 +276,30 @@ export function monthItems(state, ym, today = todayISO()) {
       key: `expense:${e.id}`, kind: 'expense', refId: e.id,
       description: e.description, cents: e.cents, dueDate: e.dueDate, paidAt: e.paidAt,
       categoryId: e.categoryId, subcategoryId: e.subcategoryId, creditorId: e.creditorId,
+      tags: e.tags || [], splits: e.splits?.length ? e.splits : null, accountId: e.accountId || null,
+      attachments: e.attachments?.length || 0,
     });
   }
 
   for (const r of state.recurring) {
-    if (!recurringActiveIn(r, ym)) continue;
-    const entry = state.recurringEntries[entryKey(r.id, ym)] || {};
-    if (entry.skipped) continue;
-    items.push({
-      key: `recurring:${r.id}:${ym}`, kind: 'recurring', refId: r.id,
-      description: r.description, cents: entry.cents ?? r.cents,
-      dueDate: dateInMonth(ym, r.dueDay), paidAt: entry.paidAt || null,
-      adjusted: entry.cents != null && entry.cents !== r.cents,
-      categoryId: r.categoryId, subcategoryId: r.subcategoryId, creditorId: r.creditorId,
-    });
+    if (r.cardId) continue; // cobrada no cartão: entra na fatura
+    const dates = recurringDates(r, ym);
+    for (const dueDate of dates) {
+      const k = FREQ_DAYS[r.freq] ? entryKey(r.id, dueDate) : entryKey(r.id, ym);
+      const entry = state.recurringEntries[k] || {};
+      if (entry.skipped) continue;
+      const estimated = r.variable && entry.cents == null && !entry.paidAt;
+      const cents = entry.cents ?? (r.variable ? variableEstimate(state, r, ym) : r.cents);
+      items.push({
+        key: `recurring:${r.id}:${FREQ_DAYS[r.freq] ? dueDate : ym}`, kind: 'recurring', refId: r.id, entryKey: k,
+        description: r.description, cents,
+        dueDate, paidAt: entry.paidAt || null,
+        adjusted: entry.cents != null && entry.cents !== r.cents,
+        estimated, subscription: Boolean(r.subscription), freq: r.freq || 'monthly',
+        categoryId: r.categoryId, subcategoryId: r.subcategoryId, creditorId: r.creditorId, tags: r.tags || [],
+        accountId: r.accountId || null,
+      });
+    }
   }
 
   for (const inst of state.installments) {
@@ -229,9 +308,20 @@ export function monthItems(state, ym, today = todayISO()) {
     items.push({
       key: `installment:${inst.id}:${parcel.n}`, kind: 'installment', refId: inst.id,
       description: inst.description, cents: parcel.cents, dueDate: parcel.dueDate,
-      paidAt: parcel.paid ? parcel.dueDate : null,
+      paidAt: parcel.paidAt, paidAtKnown: parcel.paidAtKnown,
       parcel: { n: parcel.n, count: inst.count },
-      categoryId: inst.categoryId, subcategoryId: inst.subcategoryId, creditorId: inst.creditorId,
+      categoryId: inst.categoryId, subcategoryId: inst.subcategoryId, creditorId: inst.creditorId, tags: inst.tags || [],
+    });
+  }
+
+  for (const inv of invoicesIn(state, ym, today)) {
+    if (inv.total <= 0 && !inv.paidAt) continue;
+    items.push({
+      key: `invoice:${inv.card.id}:${ym}`, kind: 'invoice', refId: inv.card.id,
+      description: `Fatura ${inv.card.name}`, cents: inv.paidCents ?? Math.max(0, inv.total), dueDate: inv.due, paidAt: inv.paidAt,
+      categoryId: null, subcategoryId: null, creditorId: null, tags: [],
+      parts: inv.parts, invoice: { closing: inv.closing, status: inv.status, lines: inv.lines.length, total: inv.total },
+      accountId: inv.card.accountId || null,
     });
   }
 
@@ -239,6 +329,8 @@ export function monthItems(state, ym, today = todayISO()) {
   items.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.description.localeCompare(b.description));
   return items;
 }
+const monthItemsMemo = memoByState(monthItemsRaw);
+export const monthItems = (state, ym, today = todayISO()) => monthItemsMemo(state, ym, today);
 
 /** Totais de uma lista de itens. */
 export function totalsOf(items) {
@@ -251,19 +343,38 @@ export function totalsOf(items) {
     expense: by((i) => i.kind === 'expense'),
     recurring: by((i) => i.kind === 'recurring'),
     installment: by((i) => i.kind === 'installment'),
+    invoice: by((i) => i.kind === 'invoice'),
     count: items.length,
     pendingCount: items.filter((i) => i.status !== 'paid').length,
   };
+}
+
+/**
+ * Partes de um item por categoria: um gasto dividido (splits) ou uma
+ * fatura de cartão (parts) contam em várias categorias.
+ */
+export function itemParts(item) {
+  if (item.splits?.length) {
+    const total = sumCents(item.splits.map((s) => s.cents));
+    if (total === item.cents) return item.splits;
+    const ratio = item.cents / (total || 1);
+    return item.splits.map((s) => ({ ...s, cents: Math.round(s.cents * ratio) }));
+  }
+  if (item.parts?.length) return item.parts;
+  return [{ categoryId: item.categoryId, subcategoryId: item.subcategoryId, cents: item.cents }];
 }
 
 /** Gastos por categoria, do maior para o menor. */
 export function byCategory(items, categories) {
   const map = new Map();
   for (const item of items) {
-    const id = item.categoryId || '_none';
-    map.set(id, (map.get(id) || 0) + item.cents);
+    for (const p of itemParts(item)) {
+      const id = p.categoryId || '_none';
+      map.set(id, (map.get(id) || 0) + p.cents);
+    }
   }
   return [...map.entries()]
+    .filter(([, cents]) => cents !== 0)
     .map(([id, cents]) => {
       const cat = categories.find((c) => c.id === id);
       return {
@@ -271,6 +382,7 @@ export function byCategory(items, categories) {
         name: cat?.name || 'Sem categoria',
         icon: cat?.icon || '🏷️',
         color: cat?.color || '#64748B',
+        group: cat?.group || 'needs',
       };
     })
     .sort((a, b) => b.cents - a.cents);
@@ -281,7 +393,7 @@ export function byCategory(items, categories) {
  *   balance      = renda − tudo que vence no mês   (saldo previsto)
  *   cashBalance  = renda − o que já foi pago        (saldo atual)
  */
-export function computeMonth(state, ym, today = todayISO()) {
+function computeMonthRaw(state, ym, today = todayISO()) {
   const items = monthItems(state, ym, today);
   const income = incomeFor(state, ym);
   const totals = totalsOf(items);
@@ -296,12 +408,14 @@ export function computeMonth(state, ym, today = todayISO()) {
     closed: Boolean(state.closedMonths[ym]),
   };
 }
+const computeMonthMemo = memoByState(computeMonthRaw);
+export const computeMonth = (state, ym, today = todayISO()) => computeMonthMemo(state, ym, today);
 
 /**
  * Contas atrasadas de meses ANTERIORES a `ym` (não pagas).
- * Olha até 24 meses para trás.
+ * Olha até 24 meses para trás (com cache: não recalcula a cada desenho).
  */
-export function overdueBefore(state, ym, today = todayISO()) {
+function overdueBeforeRaw(state, ym, today = todayISO()) {
   const result = [];
   for (let i = 1; i <= 24; i++) {
     const prev = addMonthsYM(ym, -i);
@@ -311,6 +425,8 @@ export function overdueBefore(state, ym, today = todayISO()) {
   }
   return result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
+const overdueBeforeMemo = memoByState(overdueBeforeRaw);
+export const overdueBefore = (state, ym, today = todayISO()) => overdueBeforeMemo(state, ym, today);
 
 /** Valor que ainda será pago a um credor (todas as pendências futuras + atrasadas). */
 export function creditorOutstanding(state, creditorId, today = todayISO()) {
@@ -322,12 +438,19 @@ export function creditorOutstanding(state, creditorId, today = todayISO()) {
   const monthlyRecurring = sumCents(state.recurring
     .filter((r) => r.creditorId === creditorId && recurringActiveIn(r, ymOf(today)))
     .map((r) => r.cents));
-  return { outstanding: cents, monthlyRecurring };
+  const receivable = sumCents((state.receivables || []).filter((r) => r.creditorId === creditorId && !r.receivedAt)
+    .map((r) => r.cents - sumCents((r.partials || []).map((p) => p.cents))));
+  return { outstanding: cents, monthlyRecurring, receivable };
 }
 
-/** Quanto falta guardar por mês para bater a meta no prazo. */
-export function goalPlan(goal, today = todayISO()) {
-  const saved = sumCents(goal.contributions.map((c) => c.cents));
+/**
+ * Quanto falta guardar por mês para bater a meta no prazo.
+ * `linkedCents` = valor atual dos investimentos ligados à meta (a meta
+ * "Viagem" usa o CDB X): conta como guardado, sem duplicar.
+ */
+export function goalPlan(goal, today = todayISO(), linkedCents = 0) {
+  const contributed = sumCents(goal.contributions.map((c) => c.cents));
+  const saved = contributed + linkedCents;
   const remaining = Math.max(0, goal.targetCents - saved);
   let monthsLeft = null;
   let perMonth = null;
@@ -336,7 +459,7 @@ export function goalPlan(goal, today = todayISO()) {
     perMonth = remaining > 0 ? Math.ceil(remaining / monthsLeft) : 0;
   }
   return {
-    saved, remaining, monthsLeft, perMonth,
+    saved, contributed, linked: linkedCents, remaining, monthsLeft, perMonth,
     progress: goal.targetCents > 0 ? Math.min(100, (saved / goal.targetCents) * 100) : 0,
     done: remaining === 0,
     late: Boolean(goal.deadline && goal.deadline < today && remaining > 0),

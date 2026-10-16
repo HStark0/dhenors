@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Dhenors — controle financeiro para quem vive de salário</title>
+  <meta name="description" content="App gratuito de finanças pessoais que entende o holerite brasileiro: INSS, IR, plantões, cartão de crédito, metas e investimentos. Funciona offline, sem anúncios, com criptografia de ponta a ponta.">
+  <meta name="theme-color" content="#F5F5F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0B0B0D" media="(prefers-color-scheme: dark)">
+  <meta property="og:title" content="Dhenors — controle financeiro para quem vive de salário">
+  <meta property="og:description" content="Do salário bruto ao que sobra no fim do mês. Grátis, privado e offline.">
+  <meta property="og:image" content="site/screens/painel.webp">
+  <link rel="icon" href="assets/icons/favicon-32.png" type="image/png">
+  <link rel="preload" href="assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+  <style>
+    @font-face { font-family: 'Inter'; font-weight: 100 900; font-display: swap; src: url('assets/fonts/InterVariable.woff2') format('woff2'); }
+    /* Mesma linguagem do app: superfícies neutras, cor só onde comunica */
+    :root {
+      color-scheme: light dark;
+      --bg: #F5F5F7; --surface: #FFFFFF; --surface-2: #F2F2F5; --fill: rgb(120 120 128 / .1);
+      --border: rgb(0 0 0 / .07); --text: #1D1D1F; --text-2: #424245; --muted: #6E6E73;
+      --primary: #0071E3; --primary-hover: #0062C4; --primary-text: #0066CC; --primary-soft: #E8F1FC; --pos: #1E7A34;
+      --shadow: 0 1px 2px rgb(0 0 0 / .04), 0 2px 12px rgb(0 0 0 / .04);
+      --shadow-lg: 0 8px 24px rgb(0 0 0 / .08), 0 32px 64px rgb(0 0 0 / .12);
+      --ease-out: cubic-bezier(.16, 1, .3, 1);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0B0B0D; --surface: #161618; --surface-2: #1F1F22; --fill: rgb(120 120 128 / .18);
+        --border: rgb(255 255 255 / .08); --text: #F5F5F7; --text-2: #D1D1D6; --muted: #98989F;
+        --primary: #0A84FF; --primary-hover: #3395FF; --primary-text: #4DA3FF; --primary-soft: #0F2740; --pos: #30D158;
+        --shadow: none; --shadow-lg: 0 12px 32px rgb(0 0 0 / .45), 0 40px 80px rgb(0 0 0 / .5);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { animation: none !important; transition: none !important; } }
+    body {
+      margin: 0; font: 400 17px/1.6 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; letter-spacing: -.011em;
+      color: var(--text); background: var(--bg); -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; }
+    img { max-width: 100%; height: auto; display: block; }
+    .wrap { width: min(1120px, 100% - 40px); margin: 0 auto; }
+    .skip { position: absolute; left: -999px; } .skip:focus { left: 16px; top: 16px; background: var(--surface); color: var(--text); padding: 8px 12px; border-radius: 8px; }
+    :focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 50%, transparent); outline-offset: 3px; border-radius: 8px; }
+
+    /* Topo de vidro fixo */
+    .top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 72%, transparent); backdrop-filter: saturate(1.8) blur(20px); -webkit-backdrop-filter: saturate(1.8) blur(20px); border-bottom: 1px solid var(--border); }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 60px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -.02em; text-decoration: none; }
+    .brand img { width: 30px; height: 30px; border-radius: 8px; }
+    nav { display: flex; align-items: center; gap: 24px; }
+    nav a { color: var(--text-2); text-decoration: none; font-size: 14px; font-weight: 500; transition: color .16s; }
+    nav a:hover { color: var(--text); }
+    @media (max-width: 720px) { nav a:not(.btn) { display: none; } }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 22px; border-radius: 999px; font-weight: 600; font-size: 16px; text-decoration: none; transition: background-color .16s, transform .22s cubic-bezier(.3, 1.3, .5, 1); }
+    .btn:active { transform: scale(.97); }
+    nav .btn { min-height: 34px; padding: 0 16px; font-size: 14px; }
+    .btn--primary { background: var(--primary); color: #fff; }
+    .btn--primary:hover { background: var(--primary-hover); }
+    .btn--ghost { background: var(--fill); color: var(--text); }
+    .btn--ghost:hover { background: color-mix(in srgb, var(--fill) 100%, var(--text) 6%); }
+
+    /* Abertura centralizada, com a captura logo abaixo */
+    .hero { text-align: center; padding: 88px 0 0; }
+    .eyebrow { display: inline-block; color: var(--muted); font-weight: 500; font-size: 15px; }
+    h1 { font-size: clamp(40px, 7vw, 72px); line-height: 1.04; letter-spacing: -.045em; margin: 12px auto 20px; font-weight: 700; max-width: 16ch; }
+    h1 span { color: var(--muted); }
+    .lead { font-size: clamp(18px, 2.2vw, 21px); color: var(--text-2); max-width: 40ch; margin: 0 auto; }
+    .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 32px 0 14px; }
+    .fine { color: var(--muted); font-size: 14px; }
+    .shot { border-radius: 16px; box-shadow: var(--shadow-lg); overflow: hidden; background: var(--surface); }
+    .hero__media { position: relative; margin: 56px auto 0; max-width: 1040px; }
+    .hero__phone { position: absolute; width: 22%; right: -2%; bottom: -10%; border-radius: 28px; border: 5px solid #1D1D1F; box-shadow: var(--shadow-lg); }
+    @media (max-width: 720px) { .hero { padding-top: 48px; } .hero__phone { width: 30%; right: 2%; } }
+
+    section { padding: 104px 0 0; }
+    h2 { font-size: clamp(30px, 4.4vw, 48px); letter-spacing: -.035em; line-height: 1.1; margin: 0 0 14px; font-weight: 700; }
+    .sub { color: var(--text-2); font-size: 19px; max-width: 52ch; margin: 0 0 40px; }
+    #recursos > h2, #recursos > .sub, #privacidade > h2, #privacidade > .sub { text-align: center; margin-inline: auto; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+    .card { padding: 28px; border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); border: 1px solid transparent; }
+    @media (prefers-color-scheme: dark) { .card { border-color: var(--border); } }
+    .card h3 { margin: 16px 0 6px; font-size: 19px; letter-spacing: -.02em; font-weight: 650; }
+    .card p { margin: 0; color: var(--muted); font-size: 15px; }
+    .ico { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary-text); }
+    .ico svg { width: 21px; height: 21px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+    .feature { display: grid; grid-template-columns: 1fr 1.35fr; gap: 64px; align-items: center; }
+    .feature:nth-of-type(even) .feature__text { order: 2; }
+    @media (max-width: 920px) { .feature { grid-template-columns: 1fr; gap: 32px; } .feature:nth-of-type(even) .feature__text { order: 0; } }
+    .feature ul { list-style: none; padding: 0; margin: 0; color: var(--text-2); }
+    .feature li { position: relative; padding-left: 26px; margin: 10px 0; }
+    .feature li::before { content: ''; position: absolute; left: 2px; top: .62em; width: 8px; height: 8px; border-radius: 50%; background: var(--primary); }
+
+    .phones { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+    .phones img { width: min(280px, 44vw); border-radius: 32px; border: 5px solid #1D1D1F; box-shadow: var(--shadow-lg); }
+    section:has(.phones) > h2 { text-align: center; }
+
+    .privacy { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+    .privacy .card { text-align: center; }
+    .stat { font-size: 36px; font-weight: 700; letter-spacing: -.035em; color: var(--text) !important; margin-bottom: 4px !important; }
+
+    .final { text-align: center; padding: 80px 24px; margin-top: 8px; border-radius: 28px; background: var(--surface); box-shadow: var(--shadow); }
+    @media (prefers-color-scheme: dark) { .final { border: 1px solid var(--border); } }
+    .final .cta { justify-content: center; }
+    footer { padding: 56px 0 64px; color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+    footer a { color: var(--muted); }
+
+  </style>
+</head>
+<body>
+  <a class="skip" href="#conteudo">Pular para o conteúdo</a>
+  <div class="top"><div class="wrap">
+    <header>
+      <a class="brand" href="./landing.html"><img src="assets/icons/logo-64.png" alt="" width="36" height="36">Dhenors</a>
+      <nav aria-label="Seções">
+        <a href="#recursos">Recursos</a>
+        <a href="#privacidade">Privacidade</a>
+        <a href="https://github.com/HStark0/dhenors">Código</a>
+        <a class="btn btn--primary" href="./index.html">Abrir o app</a>
+      </nav>
+    </header>
+  </div></div>
+  <div class="wrap">
+
+    <main id="conteudo">
+      <div class="hero">
+        <div>
+          <span class="eyebrow">Grátis · sem anúncios · funciona offline</span>
+          <h1>Do salário bruto ao que <span>sobra no fim do mês</span>.</h1>
+          <p class="lead">O controle financeiro que entende o holerite brasileiro: INSS, IR, plantões, 13º, cartão de crédito, metas e investimentos — tudo no seu aparelho.</p>
+          <div class="cta">
+            <a class="btn btn--primary" href="./index.html">Começar agora</a>
+            <a class="btn btn--ghost" href="./index.html#/painel" onclick="try{localStorage.setItem('dhenors:open-demo','1')}catch(e){}">Ver com dados de exemplo</a>
+          </div>
+          <p class="fine">Sem cadastro. Instale no celular pelo navegador ("Adicionar à tela inicial").</p>
+        </div>
+        <div class="hero__media">
+          <img class="shot" src="site/screens/painel.webp" width="1366" height="804" alt="Painel do Dhenors com o saldo previsto do mês, a meta de gastos e as contas atrasadas">
+          <img class="hero__phone" src="site/screens/celular-painel.webp" width="390" height="844" alt="O mesmo painel no celular" loading="lazy">
+        </div>
+      </div>
+
+      <section id="recursos" aria-labelledby="t-recursos">
+        <h2 id="t-recursos">Feito para quem vive de salário no Brasil</h2>
+        <p class="sub">Planilhas cansam e os apps gringos não sabem o que é DSR, consignado ou 5º dia útil. O Dhenors sabe.</p>
+        <div class="grid">
+          <article class="card"><span class="ico"><svg viewBox="0 0 24 24"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg></span><h3>Holerite de verdade</h3><p>INSS por faixa, IR com a redução de 2026, horas extras com DSR, consignado, férias e 13º. Importe o PDF e confira verba a verba.</p></article>
+          <article class="card"><span class="ico"><svg viewBox="0 0 24 24"><path d="M11 2v2M5 2v2M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1"/><path d="M8 15a6 6 0 0 0 12 0v-3"/><circle cx="20" cy="10" r="2"/></svg></span><h3>Plantões e renda extra</h3><p>Marque os plantões no calendário e a renda entra sozinha no mês certo, com o líquido já descontado.</p></article>
+          <article class="card"><span class="ico"><svg viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg></span><h3>Cartão e contas</h3><p>Cada compra na fatura certa pelo dia de fechamento. Importe a fatura em PDF ou o extrato: o que já foi lançado é reconhecido.</p></article>
+          <article class="card"><span class="ico"><svg viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg></span><h3>Investimentos</h3><p>Renda fixa que rende sozinha, taxas do Banco Central, cotações, proventos, IR na venda de ações e independência financeira.</p></article>
+          <article class="card"><span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><h3>Metas e planejamento</h3><p>"Posso comprar?", fluxo de caixa dia a dia, visão de 12 meses com 13º e IPVA, envelopes e regra 50/30/20.</p></article>
+          <article class="card"><span class="ico"><svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><h3>Privado de ponta a ponta</h3><p>Os dados ficam no aparelho. A nuvem é opcional e recebe só blocos criptografados com uma frase que só você sabe.</p></article>
+        </div>
+      </section>
+
+      <section class="feature" aria-labelledby="t-contas">
+        <div class="feature__text">
+          <h2 id="t-contas">Nenhuma conta esquecida</h2>
+          <ul>
+            <li>Atrasadas em vermelho, as da semana em âmbar, agrupadas por data.</li>
+            <li>Deslize para pagar, selecione várias, desfaça com um toque.</li>
+            <li>Lembretes no celular e exportação para a agenda.</li>
+            <li>Leia o boleto ou o Pix Copia e Cola e a conta se preenche.</li>
+          </ul>
+        </div>
+        <img class="shot" src="site/screens/contas.webp" width="1366" height="804" alt="Lista de contas do mês agrupada em atrasadas, hoje e próximos dias" loading="lazy">
+      </section>
+
+      <section class="feature" aria-labelledby="t-salario">
+        <div class="feature__text">
+          <h2 id="t-salario">Entenda o seu contracheque</h2>
+          <ul>
+            <li>Do bruto ao líquido, com cada desconto explicado.</li>
+            <li>Previsão do IR anual: completa ou simplificada.</li>
+            <li>Simule rescisão, FGTS, PLR e um segundo vínculo.</li>
+          </ul>
+        </div>
+        <img class="shot" src="site/screens/salario.webp" width="1366" height="804" alt="Tela de salário com bruto, impostos, descontos e líquido" loading="lazy">
+      </section>
+
+      <section class="feature" aria-labelledby="t-futuro">
+        <div class="feature__text">
+          <h2 id="t-futuro">Veja o mês antes de ele acontecer</h2>
+          <ul>
+            <li>Saldo dia a dia até o próximo salário.</li>
+            <li>Quanto dá para gastar por dia sem apertar.</li>
+            <li>Compare sua carteira com CDI, IPCA e Ibovespa.</li>
+          </ul>
+        </div>
+        <img class="shot" src="site/screens/fluxo.webp" width="1366" height="804" alt="Gráfico do fluxo de caixa diário com o menor saldo do período" loading="lazy">
+      </section>
+
+      <section aria-labelledby="t-celular">
+        <h2 id="t-celular" style="text-align:center">No bolso, como um app</h2>
+        <p class="sub" style="margin-inline:auto;text-align:center">Instale pelo navegador, use offline, compartilhe comprovantes de outros apps direto para o Dhenors.</p>
+        <div class="phones">
+          <img src="site/screens/celular-painel.webp" width="390" height="844" alt="Painel no celular" loading="lazy">
+          <img src="site/screens/celular-agenda.webp" width="390" height="844" alt="Agenda do mês no celular" loading="lazy">
+        </div>
+      </section>
+
+      <section id="privacidade" aria-labelledby="t-priv">
+        <h2 id="t-priv">Seus dados são seus</h2>
+        <p class="sub">Sem anúncios, sem rastreadores, sem bibliotecas de terceiros. Código aberto para quem quiser conferir.</p>
+        <div class="privacy">
+          <div class="card"><p class="stat">0</p><p>rastreadores e anúncios</p></div>
+          <div class="card"><p class="stat">AES-256</p><p>criptografia no aparelho, antes da nuvem</p></div>
+          <div class="card"><p class="stat">100%</p><p>funciona offline</p></div>
+          <div class="card"><p class="stat">R$ 0</p><p>para usar, inclusive a nuvem (plano gratuito do Supabase)</p></div>
+        </div>
+        <p class="fine" style="margin-top:16px"><a href="docs/PRIVACIDADE.md">Política de privacidade</a> · <a href="docs/SEGURANCA.md">Como protegemos os dados</a></p>
+      </section>
+
+      <section>
+        <div class="final">
+          <h2>Comece em 2 minutos</h2>
+          <p class="sub" style="margin-inline:auto">Informe o nome e o salário bruto. O resto o Dhenors calcula.</p>
+          <div class="cta"><a class="btn btn--primary" href="./index.html">Abrir o Dhenors</a></div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>Dhenors · controle financeiro pessoal · código aberto</span>
+      <span><a href="https://github.com/HStark0/dhenors">GitHub</a> · <a href="CHANGELOG.md">Novidades</a> · <a href="https://github.com/HStark0/dhenors/issues">Sugestões</a></span>
+    </footer>
+  </div>
+</body>
+</html>

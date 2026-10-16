@@ -8,9 +8,11 @@
 //    o saldo cresce sozinho por estimativa, dia a dia, até o
 //    vencimento. Uma "atualização de saldo" corrige a estimativa
 //    com o valor real do extrato.
-//  • Renda variável (ações, FII, cripto…): o valor só muda quando
-//    você atualiza o saldo (não há cotação automática: o app
-//    funciona sem internet e sem cadastro).
+//  • Renda variável (ações, FII, cripto…): o valor muda quando você
+//    atualiza o saldo OU, se o investimento tem código (ticker) e
+//    quantidade, pela cotação baixada da brapi (core/market.js).
+//  • "Venda" é um resgate de renda variável: entra no cálculo do IR
+//    sobre vendas de ações (isenção de R$ 20 mil/mês, DARF).
 //
 // Taxas em centésimos de % ao ano (1490 = 14,90% a.a.).
 // Valores em centavos.
@@ -81,9 +83,10 @@ export const MOVEMENT_KINDS = {
   resgate: { label: 'Resgate', sign: -1 },
   provento: { label: 'Provento / rendimento recebido', sign: 1 },
   saldo: { label: 'Atualização de saldo', sign: 0 },
+  venda: { label: 'Venda (ações, FII, ETF)', sign: -1 },
 };
 
-export const DEFAULT_INVESTING = { cdiBp: 1490, ipcaBp: 450, monthlyTargetCents: 0, targets: {} };
+export const DEFAULT_INVESTING = { cdiBp: 1490, ipcaBp: 450, selicBp: 1500, monthlyTargetCents: 0, targets: {} };
 
 export const typeOf = (inv) => INVEST_TYPES[inv.type] || INVEST_TYPES.outro;
 export const classOf = (inv) => typeOf(inv).cls;
@@ -147,10 +150,10 @@ const byDate = (a, b) => a.date.localeCompare(b.date) || (a.kind === 'saldo') - 
  *  • gain: rendimento ainda não resgatado (value − principal)
  *  • realized: lucro já resgatado · income: proventos recebidos
  */
-export function positionAt(inv, investing, date = todayISO()) {
+export function positionAt(inv, investing, date = todayISO(), quotes = null) {
   const rate = annualRate(inv, investing);
   const end = inv.maturity && inv.maturity < date ? inv.maturity : date;
-  let value = 0, principal = 0, contributed = 0, withdrawn = 0, realized = 0, income = 0;
+  let value = 0, principal = 0, contributed = 0, withdrawn = 0, realized = 0, income = 0, qty = 0;
   let last = null, lastUpdate = null;
   let weighted = 0; // Σ(aporte × data) para o prazo médio (IR)
   const advance = (to) => {
@@ -164,7 +167,9 @@ export function positionAt(inv, investing, date = todayISO()) {
     if (m.kind === 'aporte') {
       value += m.cents; principal += m.cents; contributed += m.cents;
       weighted += m.cents * diffDays(m.date, date);
-    } else if (m.kind === 'resgate') {
+      if (m.qty) qty += m.qty;
+    } else if (m.kind === 'resgate' || m.kind === 'venda') {
+      if (m.qty) qty = Math.max(0, qty - m.qty);
       const out = Math.min(m.cents, value);
       const cost = value > 0 ? Math.round(principal * (out / value)) : 0;
       realized += out - cost;
@@ -177,6 +182,15 @@ export function positionAt(inv, investing, date = todayISO()) {
   }
   if (last) advance(date);
 
+  // Cotação (renda variável com código e quantidade): vale mais que a última atualização manual
+  const quote = inv.ticker && quotes ? quotes[inv.ticker] : null;
+  let quoted = false;
+  if (quote && qty > 0 && (!lastUpdate || String(quote.at).slice(0, 10) >= lastUpdate) && String(quote.at).slice(0, 10) <= date) {
+    value = Math.round(qty * quote.price);
+    lastUpdate = String(quote.at).slice(0, 10);
+    quoted = true;
+  }
+
   const gain = value - principal;
   const avgDays = contributed > 0 ? Math.round(weighted / contributed) : 0;
   const taxed = typeOf(inv).taxed;
@@ -186,7 +200,8 @@ export function positionAt(inv, investing, date = todayISO()) {
     gainPct: principal > 0 ? (gain / principal) * 100 : 0,
     ir, net: value - ir,
     estimated: rate != null && (!lastUpdate || lastUpdate < date),
-    lastUpdate, avgDays,
+    lastUpdate, avgDays, qty, quoted,
+    avgPrice: qty > 0 ? Math.round(principal / qty) : 0,
     matured: Boolean(inv.maturity && inv.maturity <= date),
   };
 }
@@ -200,7 +215,8 @@ export function positionAt(inv, investing, date = todayISO()) {
  */
 export function portfolio(state, today = todayISO()) {
   const investing = investingOf(state.settings);
-  const positions = (state.investments || []).map((inv) => ({ inv, pos: positionAt(inv, investing, today) }));
+  const quotes = state.settings?.quotes || null;
+  const positions = (state.investments || []).map((inv) => ({ inv, pos: positionAt(inv, investing, today, quotes) }));
   const sum = (k) => sumCents(positions.map((p) => p.pos[k]));
   const totals = {
     value: sum('value'), principal: sum('principal'), contributed: sum('contributed'), withdrawn: sum('withdrawn'),
@@ -217,7 +233,7 @@ export function portfolio(state, today = todayISO()) {
   const ym = ymOf(today);
   const inMonth = (kind) => sumCents((state.investments || []).flatMap((i) => i.movements || [])
     .filter((m) => m.kind === kind && ymOf(m.date) === ym).map((m) => m.cents));
-  const month = { aportes: inMonth('aporte'), resgates: inMonth('resgate') };
+  const month = { aportes: inMonth('aporte'), resgates: inMonth('resgate') + inMonth('venda') };
   month.net = month.aportes - month.resgates;
 
   const emergency = sumCents(positions.filter((p) => p.inv.emergency).map((p) => p.pos.value));
@@ -234,7 +250,7 @@ export function evolution(state, endYM, count = 12, today = todayISO()) {
     const { y, m } = parseYM(ym);
     const last = toISO(y, m, daysInMonth(y, m));
     const date = last < today ? last : today;
-    const list = (state.investments || []).map((inv) => positionAt(inv, investing, date));
+    const list = (state.investments || []).map((inv) => positionAt(inv, investing, date, date === today ? state.settings?.quotes : null));
     return { ym, value: sumCents(list.map((p) => p.value)), principal: sumCents(list.map((p) => p.principal)) };
   });
 }

@@ -29,42 +29,43 @@ Planilhas cansam e a maioria dos apps de finanças não entende o contracheque b
 
 ### 💰 Salário e holerite
 - Informe o salário **bruto**: o app calcula **INSS** (por faixa, como na folha), **IR** (com desconto simplificado e a redução de 2026) e o **líquido**.
-- **Adicionais** em % ou R$: insalubridade, periculosidade, gratificações — fixos (todo mês) ou variáveis (só no mês).
-- **Horas**: horas extras 50% e 100%, sobreaviso, adicional noturno, com **DSR** calculado automaticamente.
-- **Descontos em folha**: plano de saúde, pensão, sindicato e **empréstimo consignado** com controle de parcelas.
-- **Faltas e afastamentos**: atestado (até 15 dias pagos pela empresa), afastamento pelo INSS e faltas.
-- **13º salário** e **férias** (com 1/3, abono e adiantamento do 13º).
-- **Importar holerite em PDF**: o app lê as verbas e mostra o líquido calculado ao lado do líquido oficial.
-- Baixe o **holerite** em PDF e os **dados** em planilha.
+- **Adicionais**, **horas extras** com DSR automático, **descontos** e **consignado** com controle de parcelas.
+- **Escala de plantões**: marque os dias no calendário e as rendas extras saem sozinhas.
+- **Importar holerite em PDF** com conferência **verba a verba** (holerite × cálculo do app).
+- **13º**, **férias**, **previsão do IR anual** (completa × simplificada), **rescisão e FGTS**, **PLR, abono e VA/VR**, **outros vínculos** e **linha do tempo da carreira**.
+- Tabelas de INSS/IR por ano, com aviso quando um ano ainda não tem tabela.
 
-### 🧾 Contas do dia a dia
-- **Contas avulsas**, **recorrentes** (aluguel, internet, assinaturas) e **parcelamentos** (informe a parcela e quantas já pagou — o app calcula início, fim e total).
-- Marque como pago com um toque; contas **atrasadas** ficam em destaque.
-- **Categorias e subcategorias**, **credores** e **orçamento por categoria**.
-- **Importe o extrato do banco** (OFX ou CSV): as compras entram já categorizadas.
-- **Lançamento rápido**: escreva "mercado 120 ontem" e pronto (atalho `Ctrl + K`).
+### 🧾 Contas, cartões e contas bancárias
+- Contas **avulsas**, **recorrentes** (semanal a anual, valor fixo ou pela média) e **parcelamentos**; **assinaturas** com aviso de renovação e **reajuste** pelo IGP-M/IPCA.
+- **Cartões de crédito** com fechamento e vencimento: cada compra cai na fatura certa, parcelas dentro da fatura, limite usado.
+- **Contas e carteiras** com saldo real, transferências e conferência com o saldo do banco.
+- **Divisão** de um gasto entre categorias, **etiquetas** (#viagem), **fotos de comprovantes**, leitura de **boleto** e **Pix Copia e Cola**.
+- **Quem me deve** e **dívidas** com simulação de quitação (bola de neve × avalanche).
+- **Importe o extrato** (OFX/CSV) ou a **fatura em PDF**: as transações que batem com contas já lançadas são **conciliadas**, o resto entra categorizado. Open Finance opcional.
+- Deslize para pagar, ações em lote, desfazer, **busca com filtros** e buscas salvas, **lançamento rápido** por texto ou voz ("gastei 50 no mercado").
 
-### 📅 Planejamento
-- **Painel** com saldo previsto do mês, quanto dá para gastar por dia até o próximo salário e alertas.
-- **Agenda** com salário, vencimentos e feriados; exporte para o calendário do celular.
-- **Saúde financeira**: uma nota de 0 a 100 com dicas práticas.
-- **Metas** (como a reserva de emergência) com quanto guardar por mês.
-- **Simulador "e se"**: veja o efeito de um aumento, uma compra parcelada ou de cancelar assinaturas.
-- **Análise** de renda, gastos e tendências, e **histórico** com fechamento de mês.
+### 📅 Planejamento e análise
+- **Painel configurável**: saldo previsto, quanto dá para gastar por dia até o salário, ritmo da meta de gastos, próximas ações e saúde financeira com histórico.
+- **Agenda** com salário, contas, plantões, faturas, valores a receber e renovações; exportação para o calendário e **lembretes push** sem valores.
+- **Metas** (ligadas a investimentos), **lista de desejos**, **envelopes** e **regra 50/30/20**.
+- **Fluxo de caixa dia a dia**, **visão de 12 meses** (13º, férias, IPVA…), **"Posso comprar?"** e **cenários** salvos.
+- **Análise** por período, comparação entre períodos, gastos fora do padrão, **relatório do mês em PDF** e **retrospectiva do ano**.
 
 ### 📈 Investimentos
-- **Carteira completa**: CDB, Tesouro (Selic, IPCA+, Prefixado), LCI/LCA, poupança, caixinhas, fundos, ações, FIIs, ETFs, cripto e previdência.
-- **Renda fixa que rende sozinha**: informe "110% do CDI", "IPCA + 6%" ou "13% a.a." e o saldo é estimado dia a dia, até o vencimento, com o **IR regressivo** já calculado.
-- **Aportes, resgates, proventos e atualização de saldo**, com histórico; o aporte pode sair do saldo do mês.
-- **Evolução do patrimônio**, **alocação por classe** e **carteira ideal**, com sugestão de onde colocar o próximo aporte.
-- **Meta de aporte mensal**, **reserva de emergência** (entra na Saúde financeira) e **vencimentos na Agenda**.
-- **Projeção** com juros compostos (com ou sem inflação), tempo até uma meta de patrimônio e renda passiva estimada.
+- Carteira completa (renda fixa que rende sozinha, ações, FIIs, ETFs, cripto, previdência) com IR regressivo, alocação e carteira ideal.
+- **Taxas do Banco Central** (CDI, Selic, IPCA, IGP-M) e **cotações** (brapi) com um toque.
+- **Proventos**, comparação com **CDI, IPCA e Ibovespa**, **IR na venda de ações** (isenção de R$ 20 mil, DARF), **independência financeira** e **PGBL × VGBL**.
 
-### 🔐 Segurança e nuvem
-- Os dados são salvos **primeiro no aparelho** — o app funciona mesmo sem internet.
-- **Sincronização na nuvem** opcional: acesse os mesmos dados no computador e no celular.
-- **Criptografia de ponta a ponta**: os dados são cifrados no seu aparelho antes de sair dele.
-- **Bloqueio por PIN**, **backup** em arquivo e lembretes de vencimento.
+### 🔐 Segurança, privacidade e nuvem
+- Dados salvos **primeiro no aparelho** — funciona offline.
+- **PIN ou senha** (AES-256, 600 mil iterações), **biometria**, bloqueio automático, espera crescente após erros.
+- **Nuvem opcional** com criptografia de ponta a ponta, sincronização em tempo real, conflitos resolvidos por você, histórico de versões e aparelhos conectados.
+- **Backup criptografado** com senha, modo discreto (valores borrados), sem anúncios ou rastreadores.
+
+### 🎨 Do seu jeito
+- Tema claro, escuro ou **preto (OLED)**, cor de destaque, **densidade compacta**, efeitos calmos ou desligados, barra do celular configurável.
+- Instalável como app, atalhos no ícone, **compartilhar** comprovantes/faturas de outros apps para o Dhenors.
+- Acessível: navegação por teclado, foco visível, leitores de tela, alvos de toque de 44 px.
 
 ---
 
@@ -95,7 +96,28 @@ Abra o site no celular e use **"Adicionar à tela inicial"** (Chrome: menu ⋮ �
 
 - Não há anúncios nem rastreamento.
 - Sem a nuvem, nada sai do seu aparelho.
-- Com a nuvem, o servidor recebe apenas um bloco **criptografado** (AES-256): nem o serviço de armazenamento consegue ler seus valores.
+- Com a nuvem, o servidor recebe apenas blocos **criptografados** (AES-256): nem o serviço de armazenamento consegue ler seus valores.
+- Detalhes: [Política de privacidade](docs/PRIVACIDADE.md) · [Segurança](docs/SEGURANCA.md) · [Nuvem passo a passo](docs/NUVEM.md) · [Novidades](CHANGELOG.md)
+
+---
+
+## Desenvolvimento
+
+Sem framework e sem dependências em produção: HTML, CSS e módulos ES. As ferramentas abaixo são só para desenvolver.
+
+```bash
+npm install            # ESLint, Prettier, TypeScript (tipos via JSDoc), Playwright, esbuild
+npm start              # servidor local em http://localhost:5173
+npm test               # testes dos cálculos (node --test)
+npm run e2e            # testes no navegador com capturas (npx playwright install chromium antes)
+npm run check          # lint + tipos + testes  (npm run format formata o código)
+npm run build          # gera dist/dhenors.html (arquivo único, abre sem servidor)
+```
+
+- **Versão**: altere só o `version` do `package.json` e rode `npm run sync` — atualiza `js/version.js` e o cache do service worker (`sw-assets.js`). Registre a mudança no `CHANGELOG.md` e em `js/changelog.js`.
+- **Estrutura**: `js/core` (armazenamento, criptografia, nuvem), `js/domain` (cálculos puros e testados), `js/ui` (componentes), `js/views` (telas).
+- **CI**: cada envio para a `main` passa por lint, tipos, testes e testes no navegador antes de publicar; cada pull request ganha uma prévia (arquivo único + capturas).
+- Site de apresentação: [landing.html](landing.html).
 
 ---
 

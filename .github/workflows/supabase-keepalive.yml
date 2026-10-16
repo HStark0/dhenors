@@ -1,0 +1,36 @@
+# O plano gratuito do Supabase PAUSA o projeto depois de 7 dias sem uso.
+# Este agendamento faz uma leitura leve duas vezes por semana para manter
+# a nuvem acordada (o app também avisa quando a pausa se aproxima).
+#
+# Configuração (uma vez), em Settings → Secrets and variables → Actions:
+#   SUPABASE_URL       ex.: https://abcd1234.supabase.co
+#   SUPABASE_ANON_KEY  a chave "anon public" do projeto
+# Sem os segredos, o job só avisa e termina sem erro.
+name: Manter a nuvem acordada
+
+on:
+  schedule:
+    - cron: '17 9 * * 1,4' # segundas e quintas, 06:17 em Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consulta leve ao Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::notice::Segredos SUPABASE_URL / SUPABASE_ANON_KEY não configurados — nada a fazer."
+            exit 0
+          fi
+          # Sem login, a política RLS devolve lista vazia: basta para contar como uso.
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$SUPABASE_URL/rest/v1/dhenors_state?select=user_id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "Supabase respondeu HTTP $code"
+          [ "$code" -lt 500 ]

@@ -1,5 +1,6 @@
 // =============================================================
-// Agenda — calendário do mês: salário, contas, férias e metas
+// Agenda — calendário do mês: salário, contas, plantões, faturas,
+// valores a receber, renovações, férias e metas
 // =============================================================
 
 import { html } from '../ui/dom.js';
@@ -14,8 +15,22 @@ import { holidayName } from '../core/calendar.js';
 import { calendarEvents, monthGrid, buildICS } from '../domain/planning.js';
 import { paydayLabel } from '../domain/payroll.js';
 import { enableNotifications } from '../ui/notify.js';
+import { catIcon } from '../ui/catIcon.js';
+
+const COLOR = { income: '#10B981', vacation: '#EC4899', goal: '#8B5CF6', invest: '#06B6D4', shift: '#0D9488', card: '#6D28D9', receivable: '#65A30D', renewal: '#EA580C' };
 
 const WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+/** Ícone e cor de cada tipo de evento (sem emoji: ícones da marca). */
+const EVENT = {
+  income: { icon: 'banknote', label: 'Entradas', tone: 'pos' },
+  vacation: { icon: 'tree-palm', label: 'Férias' },
+  goal: { icon: 'target', label: 'Prazo de meta' },
+  invest: { icon: 'landmark', label: 'Vencimento de investimento' },
+  shift: { icon: 'stethoscope', label: 'Plantões', tone: 'pos' },
+  card: { icon: 'credit-card', label: 'Fechamento de fatura' },
+  receivable: { icon: 'hand-coins', label: 'A receber', tone: 'pos' },
+  renewal: { icon: 'repeat', label: 'Renovação de assinatura' },
+};
 
 export default {
   id: 'agenda',
@@ -56,6 +71,10 @@ export default {
             <li><span class="dot dot--bill"></span>A pagar</li>
             <li><span class="dot dot--overdue"></span>Atrasadas</li>
             <li><span class="dot dot--paid"></span>Pagas</li>
+            <li><span class="dot dot--shift"></span>Plantões</li>
+            <li><span class="dot dot--card"></span>Fatura fecha</li>
+            <li><span class="dot dot--receivable"></span>A receber</li>
+            <li><span class="dot dot--renewal"></span>Renovações</li>
             <li><span class="dot dot--vacation"></span>Férias, metas e vencimentos</li>
           </ul>
         </article>
@@ -68,8 +87,8 @@ export default {
           ${dayEvents.filter((e) => e.type !== 'bill').length ? html`
             <ul class="mini-list">
               ${dayEvents.filter((e) => e.type !== 'bill').map((e) => html`
-                <li><span>${e.type === 'income' ? '💰' : e.type === 'vacation' ? '🏖️' : e.type === 'invest' ? '📈' : '🎯'} ${e.label}</span>
-                <span class="money ${e.type === 'income' ? 'pos' : ''}">${e.cents ? `${e.type === 'income' ? '+' : ''}${formatBRL(e.cents)}` : ''}</span></li>`)}
+                <li><span class="row-flex">${catIcon({ icon: `i:${(EVENT[e.type] || EVENT.goal).icon}`, color: COLOR[e.type] }, { size: 'xs' })} ${e.label}</span>
+                <span class="money ${EVENT[e.type]?.tone || ''}">${e.cents ? `${EVENT[e.type]?.tone === 'pos' ? '+' : ''}${formatBRL(e.cents)}` : ''}</span></li>`)}
             </ul>` : ''}
           ${itemList(dayEvents.filter((e) => e.type === 'bill').map((e) => e.item), { showMonth: true })}
           ${dayEvents.length ? '' : html`<div class="empty empty--sm"><p class="muted">Nada marcado para este dia.</p></div>`}
@@ -97,12 +116,12 @@ function dayCell(date, inMonth, events, isToday, isSelected) {
   const holiday = holidayName(date);
   const income = events.filter((e) => e.type === 'income');
   const bills = events.filter((e) => e.type === 'bill');
-  const other = events.filter((e) => e.type === 'vacation' || e.type === 'goal' || e.type === 'invest');
+  const other = events.filter((e) => e.type !== 'income' && e.type !== 'bill');
   const total = bills.reduce((s, e) => s + e.cents, 0);
   const dots = [
     ...income.map(() => 'income'),
     ...bills.map((e) => (e.status === 'paid' ? 'paid' : e.status === 'overdue' ? 'overdue' : 'bill')),
-    ...other.map(() => 'vacation'),
+    ...other.map((e) => e.type),
   ].slice(0, 5);
   const label = `${formatDateBR(date)}${holiday ? `, ${holiday}` : ''}: ${events.length ? plural(events.length, 'evento') : 'sem eventos'}`;
 

@@ -80,7 +80,7 @@ function dictValue(dict, key) {
   const re = new RegExp(`/${key}(?![A-Za-z0-9])\\s*`);
   const m = re.exec(dict);
   if (!m) return null;
-  let i = m.index + m[0].length;
+  const i = m.index + m[0].length;
   const c = dict[i];
   if (c === '<' && dict[i + 1] === '<') return balanced(dict, i, '<<', '>>');
   if (c === '[') return balanced(dict, i, '[', ']');

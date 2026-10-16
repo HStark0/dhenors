@@ -1,5 +1,6 @@
 # Publica o Dhenors no GitHub Pages a cada envio para a branch main.
 # Configuração (uma vez): Settings → Pages → Source: "GitHub Actions".
+# Antes de publicar: lint, tipos, testes de cálculo e testes no navegador.
 name: Publicar no GitHub Pages
 
 on:
@@ -17,21 +18,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Versão sincronizada (index, manifest, service worker)
+        run: npm run sync && git diff --exit-code -- js/version.js sw-assets.js || (echo "::error::Rode 'npm run sync' e envie js/version.js e sw-assets.js" && exit 1)
+      - name: Lint
+        run: npm run lint
+      - name: Tipos (JSDoc)
+        run: npm run typecheck
       - name: Testes dos cálculos
         run: npm test
+      - name: Testes no navegador
+        run: npx playwright install --with-deps chromium && npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relatorio-e2e
+          path: playwright-report
+          retention-days: 7
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --no-audit --no-fund
       - name: Gera o arquivo único (dist/dhenors.html)
-        run: npm install --no-audit --no-fund && npm run build
+        run: npm run build
       - name: Monta o site
         run: |
           mkdir -p _site
-          cp -r index.html manifest.webmanifest sw.js css js assets dist _site/
+          cp -r index.html manifest.webmanifest sw.js sw-assets.js css js assets dist site docs CHANGELOG.md _site/
+          [ -f landing.html ] && cp landing.html _site/ || true
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:

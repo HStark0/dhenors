@@ -150,6 +150,7 @@ export function exportInvestmentsCSV() {
 // ---------- Janela "Exportar" ----------
 
 const KINDS = [
+  { value: 'report', label: 'Relatório do mês com a marca Dhenors (PDF)', icon: 'file-text', period: 'month' },
   { value: 'payslip', label: 'Holerite do mês (PDF para imprimir/salvar)', icon: 'printer', period: 'month' },
   { value: 'payroll', label: 'Contracheques: proventos e descontos (planilha)', icon: 'file-spreadsheet', period: 'year' },
   { value: 'summary', label: 'Resumo mensal: renda, gastos e saldo (planilha)', icon: 'chart-column', period: 'year' },
@@ -198,6 +199,7 @@ export function openExportDialog(preset = 'payroll') {
         : MONTHS(year).filter((ym) => ym <= ymOf(todayISO()) || d.closedMonths[ym] || ym <= store.ui.ym);
       const tag = year === 'all' ? 'completo' : year;
       if (kind === 'payslip') setTimeout(() => printPayslip(form.month.value));
+      if (kind === 'report') { const ym = form.month.value; setTimeout(() => import('../views/analysis.js').then((m) => m.report(ym))); }
       if (kind === 'payroll') exportPayrollCSV(range, `dhenors-contracheques-${tag}.csv`);
       if (kind === 'summary') exportSummaryCSV(range, `dhenors-resumo-${tag}.csv`);
       if (kind === 'bills') exportMonthCSV(form.month.value);

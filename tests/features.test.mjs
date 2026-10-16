@@ -1,4 +1,4 @@
-// Testes das funcionalidades da 3.0: dia útil, férias, orçamento,
+// Testes de dia útil, férias, orçamento,
 // pontuação, simulador, agenda/.ics e importação de extratos.
 
 import { test } from 'node:test';
@@ -134,8 +134,8 @@ test('renda do mês inclui férias', () => {
 test('lançamento rápido em linguagem natural', async () => {
   const { parseQuickAdd } = await import('../js/domain/quickadd.js');
   const t = '2026-10-13';
-  assert.deepEqual(parseQuickAdd('mercado 154,90', t), { description: 'Mercado', cents: 15490, date: t, paid: false, income: false });
-  assert.deepEqual(parseQuickAdd('uber 23 ontem', t), { description: 'Uber', cents: 2300, date: '2026-10-12', paid: true, income: false });
+  assert.deepEqual(parseQuickAdd('mercado 154,90', t), { description: 'Mercado', cents: 15490, date: t, paid: false, income: false, type: 'expense', card: null });
+  assert.deepEqual(parseQuickAdd('uber 23 ontem', t), { description: 'Uber', cents: 2300, date: '2026-10-12', paid: true, income: false, type: 'expense', card: null });
   assert.equal(parseQuickAdd('luz 180 dia 20', t).date, '2026-10-20');
   assert.equal(parseQuickAdd('dentista 250 15/11', t).date, '2026-11-15');
   assert.equal(parseQuickAdd('plantão 1.200 recebi', t).income, true);

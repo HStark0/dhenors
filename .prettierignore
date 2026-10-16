@@ -1,0 +1,10 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+assets/
+sw-assets.js
+js/version.js
+js/ui/icons.js
+supabase/schema.sql
+*.pdf

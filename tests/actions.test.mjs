@@ -110,7 +110,7 @@ test('linha comum incluída antes de um aumento também vale depois dele', async
   assert.ok(!payrollFor(store.data.settings, '2026-10').additions.some((x) => x.description === 'Gratificação'));
 });
 
-test('migração v2 → v3: consignado sai do perfil para a lista própria', () => {
+test('migração do formato antigo: consignado sai do perfil para a lista própria', () => {
   const v2 = { schema: 2, settings: { salaryHistory: [{ from: '2026-10', grossCents: 500000, additions: [], deductions: [
     { id: 'c1', description: 'Consignado', mode: 'fixed', value: 1000, loan: { count: 3, startYM: '2026-09' } },
     { id: 'p1', description: 'Plano', mode: 'fixed', value: 2000 },

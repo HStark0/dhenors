@@ -13,7 +13,7 @@ import { toCents, centsToInput, formatBRL } from '../core/money.js';
 import { todayISO, formatDateBR } from '../core/dates.js';
 import {
   INVEST_TYPES, INVEST_CLASSES, CLASS_KEYS, RATE_KINDS, LIQUIDITY, MOVEMENT_KINDS,
-  annualRate, rateLabel, positionAt, investingOf, typeOf, irRate,
+  annualRate, positionAt, investingOf, typeOf, irRate,
 } from '../domain/investments.js';
 import * as A from '../domain/actions.js';
 
@@ -27,7 +27,7 @@ const INSTITUTIONS = ['Nubank', 'Inter', 'Itaú', 'Bradesco', 'Banco do Brasil',
 
 export function editInvestment(inv = null) {
   const isNew = !inv;
-  const i = inv || { name: '', type: 'cdb', institution: '', rate: { ...INVEST_TYPES.cdb.rate }, liquidity: INVEST_TYPES.cdb.liquidity, maturity: '', emergency: false, notes: '' };
+  const i = inv || { name: '', type: 'cdb', institution: '', rate: { ...INVEST_TYPES.cdb.rate }, liquidity: INVEST_TYPES.cdb.liquidity, maturity: '', emergency: false, notes: '', ticker: '', pension: '' };
   const typeOptions = CLASS_KEYS.flatMap((cls) => Object.entries(INVEST_TYPES).filter(([, t]) => t.cls === cls)
     .map(([value, t]) => ({ value, label: `${t.icon} ${t.label}` })));
 
@@ -50,12 +50,24 @@ export function editInvestment(inv = null) {
           </div>
         </div>
 
+        <div class="field" data-ticker>
+          <label class="field__label" for="inv-ticker">Código na bolsa (opcional)</label>
+          <input class="input" id="inv-ticker" name="ticker" value="${i.ticker || ''}" placeholder="PETR4, HGLG11, BOVA11" maxlength="8" autocapitalize="characters" autocomplete="off">
+          <p class="field__hint">Com o código e a quantidade de cotas, o saldo segue a cotação (botão "Atualizar cotações").</p>
+        </div>
+        <div class="field" data-pension>
+          ${selectField({ label: 'Plano de previdência', name: 'pension', value: i.pension || '', options: [{ value: '', label: 'Não é previdência' }, { value: 'pgbl', label: 'PGBL (deduz até 12% da renda no IR)' }, { value: 'vgbl', label: 'VGBL (IR só sobre o rendimento)' }] })}
+        </div>
         ${selectField({ label: 'Liquidez (resgate)', name: 'liquidity', value: i.liquidity, options: Object.entries(LIQUIDITY).map(([value, label]) => ({ value, label })) })}
         ${dateField({ label: 'Vencimento (opcional)', name: 'maturity', value: i.maturity || '', required: false })}
 
         ${isNew ? html`
           ${moneyField({ label: 'Valor já aplicado (opcional)', name: 'initialCents', required: false, hint: 'Vira o primeiro aporte.' })}
-          ${dateField({ label: 'Data da aplicação', name: 'initialDate', value: todayISO(), required: false, max: todayISO() })}` : ''}
+          ${dateField({ label: 'Data da aplicação', name: 'initialDate', value: todayISO(), required: false, max: todayISO() })}
+          <div class="field" data-qty>
+            <label class="field__label" for="inv-qty">Quantidade de cotas (opcional)</label>
+            <input class="input" id="inv-qty" name="initialQty" inputmode="decimal" autocomplete="off" placeholder="Ex.: 100">
+          </div>` : ''}
 
         ${switchField({ label: 'Faz parte da reserva de emergência', name: 'emergency', checked: i.emergency, hint: 'Entra no cálculo da Saúde financeira. Use só para algo com liquidez diária.' })}
         ${textareaField({ label: 'Observação', name: 'notes', value: i.notes || '' })}
@@ -70,6 +82,11 @@ export function editInvestment(inv = null) {
         const kind = form.rateKind.value;
         const needsBp = kind === 'cdi' || kind === 'pre' || kind === 'ipca';
         dlg.querySelector('[data-rate-bp]').hidden = !needsBp;
+        const variable = ['acoes', 'fii', 'etf', 'bdr'].includes(form.type.value);
+        dlg.querySelector('[data-ticker]').hidden = !variable;
+        const qtyField = dlg.querySelector('[data-qty]');
+        if (qtyField) qtyField.hidden = !variable;
+        dlg.querySelector('[data-pension]').hidden = !/previd/.test(form.type.value);
         dlg.querySelector('[data-rate-label]').textContent = kind === 'cdi' ? 'Percentual do CDI' : kind === 'ipca' ? 'Taxa acima do IPCA (a.a.)' : 'Taxa ao ano';
         const preview = dlg.querySelector('[data-preview]');
         const probe = { type: form.type.value, rate: { kind, bp: parsePercent(form.rateBp.value) || 0 } };
@@ -109,6 +126,7 @@ export function editInvestment(inv = null) {
       A.saveInvestment({
         ...v, id: inv?.id, rateKind: kind, rateBp: needsBp ? parsePercent(v.rateBp) : 0,
         maturity: v.maturity || null, initialCents: initial, initialDate: v.initialDate || todayISO(),
+        ticker: v.ticker || '', pension: v.pension || '', initialQty: v.initialQty ? Number(String(v.initialQty).replace(',', '.')) : 0,
       });
       toast(isNew ? 'Investimento adicionado.' : 'Investimento atualizado.');
     },
@@ -118,14 +136,15 @@ export function editInvestment(inv = null) {
 // ---------- Movimentos ----------
 
 const MOVE_TEXT = {
-  aporte: { title: (n) => `Aporte em "${n}"`, submit: 'Registrar aporte', done: 'Aporte registrado. 🚀' },
+  aporte: { title: (n) => `Aporte em "${n}"`, submit: 'Registrar aporte', done: 'Aporte registrado.' },
   resgate: { title: (n) => `Resgate de "${n}"`, submit: 'Registrar resgate', done: 'Resgate registrado.' },
   provento: { title: (n) => `Provento de "${n}"`, submit: 'Registrar provento', done: 'Provento registrado.' },
   saldo: { title: (n) => `Atualizar saldo de "${n}"`, submit: 'Atualizar', done: 'Saldo atualizado.' },
+  venda: { title: (n) => `Venda de "${n}"`, submit: 'Registrar venda', done: 'Venda registrada. Veja o IR em Investimentos → IR nas vendas.' },
 };
 
 export function movementDialog(inv, kind = 'aporte') {
-  const pos = positionAt(inv, investing());
+  const pos = positionAt(inv, investing(), todayISO(), store.data.settings.quotes);
   const t = MOVE_TEXT[kind];
   openDialog({
     title: t.title(inv.name),
@@ -142,6 +161,11 @@ export function movementDialog(inv, kind = 'aporte') {
             : kind === 'provento' ? 'Dividendos, JCP, rendimentos de FII ou cupom de juros que caíram na conta.'
             : kind === 'resgate' ? html`<button type="button" class="link" data-fill="${centsToInput(pos.value)}">Resgatar tudo (${formatBRL(pos.value)})</button>` : '' })}
         ${dateField({ label: 'Data', name: 'date', value: todayISO(), max: todayISO() })}
+        ${inv.ticker && ['aporte', 'venda', 'resgate'].includes(kind) ? html`
+          <div class="field">
+            <label class="field__label" for="mov-qty">Cotas ${kind === 'aporte' ? 'compradas' : 'vendidas'}${pos.qty ? ` (você tem ${pos.qty.toLocaleString('pt-BR')})` : ''}</label>
+            <input class="input" id="mov-qty" name="qty" inputmode="decimal" autocomplete="off">
+          </div>` : ''}
         ${kind === 'aporte' ? switchField({ label: 'Descontar do saldo do mês', name: 'asExpense', checked: Boolean(store.ui.filters.investAsExpense), hint: 'Lança também um gasto pago na categoria Investimentos, para o Painel mostrar que o dinheiro saiu da conta.' }) : ''}
         ${field({ label: 'Observação (opcional)', name: 'note', full: true, extra: { maxlength: 120, autocomplete: 'off' } })}
       </div>`,
@@ -156,7 +180,8 @@ export function movementDialog(inv, kind = 'aporte') {
       const value = toCents(form.cents.value);
       if (!Number.isFinite(value) || (kind === 'saldo' ? value < 0 : value <= 0)) throw new A.ValidationError('Informe um valor.', 'cents');
       const asExpense = kind === 'aporte' && form.asExpense.checked;
-      A.addInvestmentMovement(inv.id, { kind, cents: value, date: form.date.value, note: form.note.value, asExpense });
+      const qty = form.qty ? Number(String(form.qty.value).replace(',', '.')) || 0 : 0;
+      A.addInvestmentMovement(inv.id, { kind, cents: value, date: form.date.value, note: form.note.value, asExpense, qty });
       if (kind === 'aporte') store.setUI({ filters: { ...store.ui.filters, investAsExpense: asExpense } });
       toast(t.done);
     },

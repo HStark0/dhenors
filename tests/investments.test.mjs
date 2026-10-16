@@ -131,7 +131,8 @@ test('operações: aporte com gasto no mês, resgate validado, exclusão e backu
 test('configurações: carteira ideal precisa somar 100%', () => {
   assert.throws(() => A.saveInvestingSettings({ cdiBp: 1400, ipcaBp: 400, targets: { rf: 60, rv: 30 } }), /100%/);
   A.saveInvestingSettings({ cdiBp: 1400, ipcaBp: 400, monthlyTargetCents: 50000, targets: { rf: 70, rv: 30 } });
-  assert.deepEqual(store.data.settings.investing, { cdiBp: 1400, ipcaBp: 400, monthlyTargetCents: 50000, targets: { rf: 70, rv: 30 } });
+  const { cdiBp, ipcaBp, monthlyTargetCents, targets } = store.data.settings.investing;
+  assert.deepEqual({ cdiBp, ipcaBp, monthlyTargetCents, targets }, { cdiBp: 1400, ipcaBp: 400, monthlyTargetCents: 50000, targets: { rf: 70, rv: 30 } });
   A.saveInvestingSettings({ cdiBp: 1400, ipcaBp: 400, targets: {} });
   assert.deepEqual(store.data.settings.investing.targets, {});
 });

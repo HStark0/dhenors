@@ -1,12 +1,15 @@
 // =============================================================
 // toast.js — Avisos rápidos (com botão "Desfazer" opcional)
-// Anunciados por leitores de tela (aria-live).
+// -------------------------------------------------------------
+// Anunciados por leitores de tela (aria-live). `persist: true`
+// deixa o aviso aberto até a pessoa agir (ex.: "Nova versão
+// disponível · Atualizar"). announce() fala sem mostrar nada.
 // =============================================================
 
 import { html, fragment } from './dom.js';
 import { icon } from './icons.js';
 
-const ICONS = { success: 'circle-check', error: 'triangle-alert', info: 'info' };
+const ICONS = { success: 'circle-check', error: 'triangle-alert', info: 'info', update: 'rocket' };
 
 function region() {
   let el = document.getElementById('toasts');
@@ -24,10 +27,12 @@ function region() {
 /**
  * toast('Salvo!')
  * toast('Conta paga', { type: 'success', action: { label: 'Desfazer', run: fn } })
+ * toast('Nova versão', { type: 'update', persist: true, action: { label: 'Atualizar', run } })
  */
-export function toast(message, { type = 'success', action = null, duration = 4500 } = {}) {
+export function toast(message, { type = 'success', action = null, duration = 4500, persist = false, id = null } = {}) {
+  if (id) document.querySelector(`.toast[data-id="${id}"]`)?.remove();
   const el = fragment(html`
-    <div class="toast toast--${type}">
+    <div class="toast toast--${type}" ${id ? html`data-id="${id}"` : ''}>
       ${icon(ICONS[type] || 'info')}
       <span class="toast__msg">${message}</span>
       ${action ? html`<button type="button" class="toast__action">${action.label}</button>` : ''}
@@ -40,17 +45,31 @@ export function toast(message, { type = 'success', action = null, duration = 450
   };
   el.querySelector('.toast__close').addEventListener('click', close);
   if (action) {
-    el.querySelector('.toast__action').addEventListener('click', () => { action.run(); close(); });
+    el.querySelector('.toast__action').addEventListener('click', () => {
+      try { action.run(); } catch (err) { toastError(err.message || 'Não foi possível.'); }
+      close();
+    });
   }
 
   const container = region();
   container.append(el);
   while (container.children.length > 3) container.firstElementChild.remove();
 
-  let timer = setTimeout(close, action ? duration + 2500 : duration);
-  el.addEventListener('mouseenter', () => clearTimeout(timer));
-  el.addEventListener('mouseleave', () => { timer = setTimeout(close, 2000); });
+  if (!persist) {
+    let timer = setTimeout(close, action ? duration + 2500 : duration);
+    el.addEventListener('mouseenter', () => clearTimeout(timer));
+    el.addEventListener('mouseleave', () => { timer = setTimeout(close, 2000); });
+  }
   return close;
 }
 
 export const toastError = (message) => toast(message, { type: 'error', duration: 6000 });
+
+/** Fala uma frase para leitores de tela, sem aviso visual (ex.: "Conta marcada como paga"). */
+export function announce(message) {
+  const el = document.getElementById('announcer');
+  if (!el) return;
+  el.textContent = '';
+  // limpa e escreve em seguida: leitores de tela repetem a mesma frase
+  setTimeout(() => { el.textContent = message; }, 30);
+}

@@ -1,33 +1,39 @@
 /* =============================================================
-   tokens.css — Design tokens (cores, tipografia, espaçamento)
+   tokens.css — Design tokens
    -------------------------------------------------------------
-   Visual 3.0: superfícies "vidro" sobre um fundo com brilho
-   suave, gradiente da marca (azul → ciano), cantos generosos.
-   Os pares texto/fundo mantêm contraste WCAG AA (4,5:1).
+   Linguagem visual: superfícies neutras, elevação sutil e cor só
+   onde comunica algo (valores, ícones, selos). Inspirada nos
+   sistemas de design de plataforma (Apple HIG, Fluent): paleta de
+   sistema, tipografia com hierarquia clara e movimento amortecido.
+   Pares texto/fundo com contraste WCAG AA (4,5:1).
    Tema: <html data-theme="light|dark"> (definido no index.html).
    ============================================================= */
 
 :root {
-  /* Tipografia — fontes do sistema: zero download, ótima leitura */
+  /* Tipografia */
   --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
-  --font-num: ui-rounded, 'SF Pro Rounded', var(--font);
-  --fs-xs: 0.75rem;    /* 12px — mínimo usado no app */
-  --fs-sm: 0.8125rem;  /* 13px */
-  --fs-md: 0.9375rem;  /* 15px — texto padrão */
-  --fs-lg: 1.125rem;   /* 18px */
-  --fs-xl: 1.375rem;   /* 22px */
-  --fs-2xl: 1.75rem;   /* 28px */
-  --fs-3xl: 2.25rem;   /* 36px */
+  --font-num: var(--font);
+  --fs-xs: 0.75rem;    /* 12px — legendas */
+  --fs-sm: 0.8125rem;  /* 13px — texto secundário */
+  --fs-md: 0.9375rem;  /* 15px — corpo */
+  --fs-lg: 1.0625rem;  /* 17px — títulos de seção */
+  --fs-xl: 1.375rem;   /* 22px — valores */
+  --fs-2xl: 1.75rem;   /* 28px — título da tela */
+  --fs-3xl: 2.5rem;    /* 40px — número de destaque */
   --lh: 1.5;
+  --track-tight: -0.022em;  /* títulos e números grandes */
+  --track-snug: -0.011em;   /* corpo */
 
   /* Espaçamento (múltiplos de 4px) */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
 
-  --radius-sm: 10px;
-  --radius: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 28px;
+  /* Raios: proporcionais ao tamanho do elemento */
+  --radius-xs: 6px;
+  --radius-sm: 10px;   /* botões, campos */
+  --radius: 14px;      /* blocos internos */
+  --radius-lg: 18px;   /* cards */
+  --radius-xl: 24px;   /* janelas */
   --radius-full: 999px;
 
   /* Camadas (z-index) — escala única */
@@ -37,137 +43,140 @@
   --z-toast: 50;
   --z-lock: 90;
 
-  --sidebar-w: 248px;
-  --tabbar-h: 68px;
-  --content-max: 1280px;
-  --ease: cubic-bezier(.2, .7, .3, 1);
-  --spring: cubic-bezier(.34, 1.56, .64, 1);
-  --dur: 180ms;
+  --sidebar-w: 256px;
+  --tabbar-h: 64px;
+  --content-max: 1240px;
 
-  /* Marca */
-  --brand-1: #2563EB;
-  --brand-2: #06B6D4;
-  /* Cores da logo: verde-limão → turquesa → azul (de cima para baixo) */
+  /* Movimento: desaceleração suave e mola discreta */
+  --ease: cubic-bezier(.25, .1, .25, 1);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --spring: cubic-bezier(.3, 1.3, .5, 1);
+  --dur: 160ms;
+  --dur-slow: 320ms;
+
+  /* Marca: o degradê fica SÓ na logo (sprite #g-brand) */
   --logo-1: #86EF6F;
   --logo-2: #2DD4BF;
   --logo-3: #1E7BE8;
   --brand-grad: linear-gradient(160deg, var(--logo-1) 0%, var(--logo-2) 45%, var(--logo-3) 100%);
-  /* Na horizontal (barras de progresso, filetes): cresce do azul para o verde */
-  --brand-grad-h: linear-gradient(90deg, var(--logo-3) 0%, var(--logo-2) 55%, var(--logo-1) 100%);
-  /* Versão escura, para fundos com ícone branco (contraste ≥ 3:1) */
-  --brand-grad-deep: linear-gradient(150deg, #15803D 0%, #0F766E 45%, #1D4ED8 100%);
-  /* Botões: gradiente que mantém branco legível (≥ 4,5:1) */
-  --btn-grad: linear-gradient(135deg, #2563EB 0%, #1D4ED8 50%, #0F766E 100%);
+  --brand-grad-h: var(--primary);
+  --brand-grad-deep: var(--primary);
+  --btn-grad: var(--primary);
+  --brand-1: var(--primary);
+  --brand-2: var(--primary);
 }
 
 /* ---------- Tema claro ---------- */
 :root,
 [data-theme="light"] {
   color-scheme: light;
-  --bg: #F4F6FB;
-  --bg-glow:
-    radial-gradient(900px 500px at 8% -10%, rgb(37 99 235 / .10), transparent 60%),
-    radial-gradient(800px 480px at 100% 0%, rgb(6 182 212 / .10), transparent 60%),
-    radial-gradient(700px 420px at 60% 110%, rgb(134 239 111 / .10), transparent 60%);
+  --bg: #F5F5F7;
+  --bg-glow: none;
   --surface: #FFFFFF;
-  --surface-glass: rgb(255 255 255 / .78);
-  --surface-2: #F1F4F9;
-  --surface-3: #E6EBF3;
-  --border: rgb(15 23 42 / .08);
-  --border-strong: #CBD5E1;
+  --surface-glass: rgb(255 255 255 / .72);
+  --surface-2: #F2F2F5;       /* preenchimentos (campos, blocos internos) */
+  --surface-3: #E8E8ED;       /* trilhos, hover sobre preenchimento */
+  --fill: rgb(120 120 128 / .08);
+  --fill-strong: rgb(120 120 128 / .14);
+  --border: rgb(0 0 0 / .07);  /* linha fina */
+  --border-strong: rgb(0 0 0 / .14);
+  --separator: rgb(60 60 67 / .12);
 
-  --text: #0B1324;        /* 17,8:1 */
-  --text-2: #334155;      /* 10,4:1 */
-  --muted: #5A6A80;       /* 5,3:1 */
+  --text: #1D1D1F;        /* 16,6:1 */
+  --text-2: #424245;      /* 10,1:1 */
+  --muted: #6E6E73;       /* 5,1:1 */
 
-  --primary: #2563EB;     /* branco sobre ele: 5,2:1 */
-  --primary-hover: #1D4ED8;
-  --primary-soft: #EAF1FF;
-  --primary-text: #1D4ED8;
+  --primary: #0071E3;     /* branco sobre ele: 4,6:1 */
+  --primary-hover: #0062C4;
+  --primary-soft: #E8F1FC;
+  --primary-text: #0066CC;
   --on-primary: #FFFFFF;
 
-  --pos: #047857;         /* dinheiro entrando / pago — 5,5:1 */
-  --pos-soft: #E3F7EE;
-  --neg: #B91C1C;         /* atraso / negativo — 6,4:1 */
-  --neg-soft: #FDECEC;
-  --warn: #A16207;        /* atenção — 5,0:1 */
-  --warn-soft: #FEF6E4;
-  --info: #0369A1;
-  --info-soft: #E6F4FB;
+  --pos: #1E7A34;         /* positivo — 5,3:1 */
+  --pos-soft: #E6F4EA;
+  --neg: #D70015;         /* negativo — 5,0:1 */
+  --neg-soft: #FDEBED;
+  --warn: #B93E00;        /* atenção / na média — 5,1:1 */
+  --warn-soft: #FFF0E5;
+  --neutral: #0066CC;     /* neutro / informativo */
+  --neutral-soft: #E8F1FC;
+  --info: #0066CC;
+  --info-soft: #E8F1FC;
 
   /* Cores de gráfico (preenchimento, não texto) */
-  --chart-income: #10B981;
-  --chart-spent: #6366F1;
-  --chart-fixed: #F59E0B;
-  --chart-variable: #3B82F6;
-  --chart-balance: #2563EB;
-  --chart-grid: #E2E8F0;
+  --chart-income: #34C759;
+  --chart-spent: #5E5CE6;
+  --chart-fixed: #FF9F0A;
+  --chart-variable: #0A84FF;
+  --chart-balance: #0071E3;
+  --chart-grid: rgb(60 60 67 / .10);
 
-  --hero-bg:
-    radial-gradient(600px 300px at 110% -20%, rgb(6 182 212 / .45), transparent 60%),
-    radial-gradient(500px 300px at -10% 120%, rgb(99 102 241 / .45), transparent 60%),
-    linear-gradient(135deg, #0B1B3F 0%, #12306A 55%, #0D4F66 100%);
-  --hero-text: #F8FAFC;
-  --hero-muted: #C7D2E4;
+  /* O "cartão de saldo" é uma superfície como as outras */
+  --hero-bg: var(--surface);
+  --hero-text: var(--text);
+  --hero-muted: var(--muted);
 
-  --shadow-sm: 0 1px 2px rgb(15 23 42 / .05);
-  --shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -6px rgb(15 23 42 / .08);
-  --shadow-lg: 0 24px 60px -12px rgb(15 23 42 / .25);
-  --shadow-glow: 0 10px 30px -8px rgb(37 99 235 / .45);
-  --backdrop: rgb(15 23 42 / .45);
-  --focus: 0 0 0 3px rgb(37 99 235 / .35);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .05);
+  --shadow: 0 1px 2px rgb(0 0 0 / .04), 0 2px 12px rgb(0 0 0 / .04);
+  --shadow-md: 0 2px 6px rgb(0 0 0 / .05), 0 12px 32px rgb(0 0 0 / .08);
+  --shadow-lg: 0 8px 24px rgb(0 0 0 / .08), 0 32px 64px rgb(0 0 0 / .14);
+  --shadow-glow: var(--shadow-md);
+  --backdrop: rgb(0 0 0 / .32);
+  --focus: 0 0 0 4px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
 /* ---------- Tema escuro ---------- */
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #060A14;
-  --bg-glow:
-    radial-gradient(900px 520px at 5% -10%, rgb(37 99 235 / .22), transparent 60%),
-    radial-gradient(800px 480px at 100% 0%, rgb(6 182 212 / .14), transparent 60%),
-    radial-gradient(700px 420px at 60% 110%, rgb(134 239 111 / .07), transparent 60%);
-  --surface: #0E1526;
-  --surface-glass: rgb(14 21 38 / .72);
-  --surface-2: #141D33;
-  --surface-3: #1B2642;
-  --border: rgb(148 163 184 / .12);
-  --border-strong: #2C3A5C;
+  --bg: #0B0B0D;
+  --bg-glow: none;
+  --surface: #161618;
+  --surface-glass: rgb(22 22 24 / .72);
+  --surface-2: #1F1F22;
+  --surface-3: #2A2A2E;
+  --fill: rgb(120 120 128 / .16);
+  --fill-strong: rgb(120 120 128 / .24);
+  --border: rgb(255 255 255 / .07);
+  --border-strong: rgb(255 255 255 / .14);
+  --separator: rgb(84 84 88 / .40);
 
-  --text: #E8EDF6;
-  --text-2: #C3CCDB;
-  --muted: #98A4BA;       /* 6,4:1 sobre --surface */
+  --text: #F5F5F7;
+  --text-2: #D1D1D6;
+  --muted: #98989F;       /* 6,6:1 sobre --surface */
 
-  --primary: #2563EB;
-  --primary-hover: #3B74F0;
-  --primary-soft: #16244A;
-  --primary-text: #93B6FF;
+  --primary: #0A84FF;
+  --primary-hover: #3395FF;
+  --primary-soft: #0F2740;
+  --primary-text: #4DA3FF;
   --on-primary: #FFFFFF;
 
-  --pos: #4ADE9B;
-  --pos-soft: #0D2A22;
-  --neg: #FF8A8A;
-  --neg-soft: #35161E;
-  --warn: #F7C14B;
-  --warn-soft: #30250D;
-  --info: #7CC7F2;
-  --info-soft: #0E2638;
+  --pos: #30D158;
+  --pos-soft: #10291A;
+  --neg: #FF6961;
+  --neg-soft: #33161A;
+  --warn: #FF9F0A;
+  --warn-soft: #33220A;
+  --neutral: #4DA3FF;
+  --neutral-soft: #0F2740;
+  --info: #4DA3FF;
+  --info-soft: #0F2740;
 
-  --chart-income: #34D399;
-  --chart-spent: #818CF8;
-  --chart-fixed: #FBBF24;
-  --chart-variable: #60A5FA;
-  --chart-balance: #60A5FA;
-  --chart-grid: #1F2A44;
+  --chart-income: #30D158;
+  --chart-spent: #7D7AFF;
+  --chart-fixed: #FFB340;
+  --chart-variable: #409CFF;
+  --chart-balance: #4DA3FF;
+  --chart-grid: rgb(255 255 255 / .07);
 
-  --hero-bg:
-    radial-gradient(600px 300px at 110% -20%, rgb(6 182 212 / .35), transparent 60%),
-    radial-gradient(500px 300px at -10% 120%, rgb(99 102 241 / .40), transparent 60%),
-    linear-gradient(135deg, #0F2150 0%, #15326B 55%, #0E4C60 100%);
+  --hero-bg: var(--surface);
+  --hero-text: var(--text);
+  --hero-muted: var(--muted);
 
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / .3);
-  --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 10px 30px -8px rgb(0 0 0 / .45);
-  --shadow-lg: 0 30px 70px -10px rgb(0 0 0 / .6);
-  --shadow-glow: 0 10px 34px -8px rgb(37 99 235 / .6);
-  --backdrop: rgb(2 6 15 / .65);
-  --focus: 0 0 0 3px rgb(147 182 255 / .45);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
+  --shadow: 0 1px 2px rgb(0 0 0 / .3);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / .35), 0 16px 40px rgb(0 0 0 / .35);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / .45), 0 40px 80px rgb(0 0 0 / .5);
+  --shadow-glow: var(--shadow-md);
+  --backdrop: rgb(0 0 0 / .55);
+  --focus: 0 0 0 4px color-mix(in srgb, var(--primary) 40%, transparent);
 }

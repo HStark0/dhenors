@@ -133,6 +133,7 @@ export function editSalaryBase(ym = store.ui.ym) {
           hint: current?.legacyNet ? `Antes você informou ${formatBRL(current.grossCents)} já líquido.` : '' })}
         ${monthField({ label: 'Vale a partir de', name: 'fromYM', value: ym, hint: 'Meses anteriores continuam com o valor antigo.' })}
         ${numberField({ label: 'Dependentes (IR)', name: 'dependents', value: current?.dependents || 0, min: 0, max: 20, hint: 'R$ 189,59 de dedução cada.' })}
+        ${field({ label: 'Motivo da mudança (opcional)', name: 'note', value: current?.note || '', placeholder: 'Ex.: dissídio 2026, promoção', full: true, extra: { maxlength: 120, autocomplete: 'off' } })}
       </div>
 
       <h3 class="dialog__subtitle">Quando o salário cai</h3>
@@ -208,6 +209,7 @@ export function editSalaryBase(ym = store.ui.ym) {
         fromYM: form.fromYM.value,
         grossCents: form.grossCents.value.trim() ? toCents(form.grossCents.value) : 0,
         dependents: Number(form.dependents.value || 0),
+        note: form.note.value,
       });
       A.savePayday({
         mode: form.querySelector('[name="paydayMode"]:checked').value,

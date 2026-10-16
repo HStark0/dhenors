@@ -8,6 +8,7 @@
 
 const DB_NAME = 'dhenors';
 const STORE = 'kv';
+const FILES = 'files'; // anexos (fotos de comprovantes, boletos) — só neste aparelho
 const KEY = 'state';
 const LS_KEY = 'dhenors:state';
 
@@ -17,8 +18,12 @@ function openDB() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
     if (!('indexedDB' in globalThis)) return reject(new Error('IndexedDB indisponível'));
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      if (!db.objectStoreNames.contains(FILES)) db.createObjectStore(FILES);
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
     req.onblocked = () => reject(new Error('Banco bloqueado por outra aba'));
@@ -26,10 +31,10 @@ function openDB() {
   return dbPromise;
 }
 
-function idbRequest(mode, fn) {
+function idbRequest(mode, fn, storeName = STORE) {
   return openDB().then((db) => new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, mode);
-    const req = fn(tx.objectStore(STORE));
+    const tx = db.transaction(storeName, mode);
+    const req = fn(tx.objectStore(storeName));
     tx.oncomplete = () => resolve(req?.result);
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error || new Error('Transação abortada'));
@@ -85,11 +90,21 @@ export async function setItem(key, value) {
   }
 }
 
-/** Apaga tudo deste aparelho. */
+/** Apaga tudo deste aparelho (inclusive anexos). */
 export async function clearState() {
   try { await idbRequest('readwrite', (s) => s.delete(KEY)); } catch { /* ignora */ }
+  try { await idbRequest('readwrite', (s) => s.clear(), FILES); } catch { /* ignora */ }
   try { localStorage.removeItem(LS_KEY); } catch { /* ignora */ }
 }
+
+// ---------- Anexos (arquivos) ----------
+// Guardados como { type, name, size, iv?, data } — `data` é um Blob ou,
+// com PIN, bytes cifrados. Nunca vão para a nuvem nem para o backup.
+
+export const putFile = (id, record) => idbRequest('readwrite', (s) => s.put(record, id), FILES);
+export const getFile = (id) => idbRequest('readonly', (s) => s.get(id), FILES);
+export const deleteFile = (id) => idbRequest('readwrite', (s) => s.delete(id), FILES);
+export const listFileIds = () => idbRequest('readonly', (s) => s.getAllKeys(), FILES);
 
 /**
  * Pede ao navegador para não apagar os dados quando faltar espaço.

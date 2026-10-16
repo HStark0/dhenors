@@ -1,15 +1,30 @@
 {
   "name": "dhenors",
-  "version": "3.2.0",
+  "version": "1.0.0",
   "description": "Controle financeiro pessoal — funciona no navegador, offline, sem servidor.",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "npx --yes serve@14.2.4 -l 5173 .",
-    "test": "node --test tests/ledger.test.mjs tests/actions.test.mjs tests/features.test.mjs tests/payslip.test.mjs tests/merge.test.mjs tests/investments.test.mjs",
-    "build": "node tools/build.mjs"
+    "start": "node tools/serve.mjs 5173",
+    "test": "node --test",
+    "sync": "node tools/sync-version.mjs",
+    "build": "node tools/sync-version.mjs && node tools/build.mjs",
+    "icons": "node tools/icons.mjs",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -p jsconfig.json",
+    "e2e": "playwright test",
+    "e2e:update": "playwright test --update-snapshots",
+    "check": "npm run lint && npm run typecheck && npm test"
   },
   "devDependencies": {
-    "esbuild": "0.24.0"
+    "@eslint/js": "9.13.0",
+    "@playwright/test": "1.48.2",
+    "esbuild": "0.24.0",
+    "eslint": "9.13.0",
+    "globals": "15.11.0",
+    "prettier": "3.3.3",
+    "typescript": "5.6.3"
   }
 }

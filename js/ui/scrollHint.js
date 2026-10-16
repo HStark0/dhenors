@@ -26,7 +26,7 @@ let cue = null;
 function updatePage() {
   const doc = document.documentElement;
   const more = doc.scrollHeight - window.scrollY - window.innerHeight > SLACK * 5;
-  cue.classList.toggle('is-visible', more && !document.body.classList.contains('is-locked'));
+  cue.classList.toggle('is-visible', more && !document.body.classList.contains('is-locked') && !document.querySelector('dialog[open]'));
 }
 
 function updateAll() {

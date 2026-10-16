@@ -1,3 +1,4 @@
+// @ts-check
 // =============================================================
 // planning.js — Orçamentos, pontuação financeira, simulador e agenda
 // -------------------------------------------------------------
@@ -5,12 +6,15 @@
 // =============================================================
 
 import { sumCents, percent, plural } from '../core/money.js';
-import { addMonthsYM, dateInMonth, ymOf, todayISO, parseYM, daysInMonth, toISO, addDaysISO } from '../core/dates.js';
-import { computeMonth, overdueBefore, goalPlan, installmentSummary } from './ledger.js';
+import { addMonthsYM, dateInMonth, ymOf, todayISO, parseYM, daysInMonth, toISO, addDaysISO, diffDays } from '../core/dates.js';
+import { computeMonth, overdueBefore, goalPlan, installmentSummary, incomeFor } from './ledger.js';
 import { monthSeries, projection, median } from './analysis.js';
 import { payrollProfileFor, thirteenthFor, vacationIn, paydayIn } from './payroll.js';
 import { newId } from './schema.js';
 import { positionAt, investingOf } from './investments.js';
+import { accountsSummary } from './accounts.js';
+import { shiftsIn, shiftTypeOf } from './shifts.js';
+import { invoicesIn } from './cards.js';
 
 // ---------- Orçamento por categoria ----------
 
@@ -42,24 +46,50 @@ export function budgetStatus(state, ym, today = todayISO()) {
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
+/** Valor atual dos investimentos ligados a uma meta. */
+export function linkedValue(state, goal, today = todayISO()) {
+  if (!goal.investmentIds?.length) return 0;
+  const investing = investingOf(state.settings);
+  return sumCents((state.investments || []).filter((i) => goal.investmentIds.includes(i.id))
+    .map((i) => positionAt(i, investing, today, state.settings.quotes).value));
+}
+
+/** Progresso da meta contando os investimentos ligados a ela. */
+export const goalProgress = (state, goal, today = todayISO()) => goalPlan(goal, today, linkedValue(state, goal, today));
+
 /**
  * Quanto a reserva de emergência cobre de meses de gastos.
- * Conta as metas de reserva e os investimentos marcados como reserva.
+ * Conta SÓ o que foi marcado como reserva (metas com "É a reserva de
+ * emergência" e investimentos marcados), nunca pelo nome.
+ * Sem contar em dobro:
+ *  • investimento ligado a uma meta de reserva conta uma vez (dentro da meta);
+ *  • meta de reserva SEM investimento ligado + investimento de reserva solto
+ *    provavelmente são o mesmo dinheiro: vale o maior e o app sugere ligar
+ *    a meta ao investimento (overlap = true).
  */
 export function emergencyCoverage(state, ym, today = todayISO()) {
-  const goals = state.goals.filter((g) => g.emergency || /reserva|emerg/i.test(g.description));
+  const goals = state.goals.filter((g) => g.emergency);
   const investing = investingOf(state.settings);
-  const invs = (state.investments || []).filter((i) => i.emergency);
-  const saved = sumCents(goals.map((g) => goalPlan(g, today).saved))
-    + sumCents(invs.map((i) => positionAt(i, investing, today).value));
+  const linkedIds = new Set(goals.flatMap((g) => g.investmentIds || []));
+  const goalSaved = sumCents(goals.map((g) => goalProgress(state, g, today).saved));
+  const invs = (state.investments || []).filter((i) => i.emergency && !linkedIds.has(i.id));
+  const invSaved = sumCents(invs.map((i) => positionAt(i, investing, today, state.settings.quotes).value));
+  const looseGoals = goals.filter((g) => !(g.investmentIds || []).length && sumCents(g.contributions.map((c) => c.cents)) > 0);
+  const overlap = looseGoals.length > 0 && invSaved > 0;
+  const saved = overlap ? Math.max(goalSaved, invSaved) : goalSaved + invSaved;
   const spent = monthSeries(state, addMonthsYM(ym, -1), 3, today).map((m) => m.spent).filter((v) => v > 0);
   const monthly = spent.length ? median(spent) : computeMonth(state, ym, today).totals.all;
-  return { saved, monthly, months: monthly > 0 ? saved / monthly : 0, hasGoal: goals.length + invs.length > 0 };
+  return { saved, goalSaved, invSaved, overlap, monthly, months: monthly > 0 ? saved / monthly : 0, hasGoal: goals.length + invs.length > 0 };
 }
 
 /**
  * Pontuação com 5 fatores. Cada fator traz uma dica prática.
- * → { score, grade, tone, factors: [{ key, label, value, points, max, tip }] }
+ * Calibrada: contas atrasadas pesam mais (1 atrasada já tira
+ * 1/3 do fator; 3 zeram) e há TETOS que impedem nota boa com problema
+ * grave: 3+ atrasadas → no máximo 49 ("Atenção"); meta de gastos
+ * estourada → no máximo 69; mês no vermelho → no máximo 59;
+ * qualquer atraso → no máximo 79.
+ * → { score, raw, grade, tone, factors: [{ key, label, value, points, max, tip }], caps: [{ max, reason }] }
  */
 export function financialScore(state, ym, today = todayISO()) {
   const series = monthSeries(state, ym, 3, today).filter((m) => m.income > 0 || m.spent > 0);
@@ -72,6 +102,8 @@ export function financialScore(state, ym, today = todayISO()) {
   const savingsRate = percent(income - spent, income);
   const fixedRate = percent(fixed, income);
   const spendRatio = percent(month.totals.all, month.income.total || 1);
+  const limit = state.settings.spendingLimitCents || 0;
+  const limitUsed = limit > 0 ? percent(month.totals.all, limit) : 0;
 
   const factors = [
     {
@@ -89,7 +121,7 @@ export function financialScore(state, ym, today = todayISO()) {
     {
       key: 'overdue', label: 'Contas em dia', max: 20,
       value: overdue ? `${overdue} em atraso` : 'nenhuma atrasada',
-      points: Math.max(0, 20 - overdue * 5),
+      points: 20 * Math.max(0, 1 - overdue / 3),
       tip: overdue ? 'Pague ou renegocie as atrasadas: juros e multas corroem a renda.' : 'Perfeito, nenhuma conta atrasada.',
     },
     {
@@ -99,17 +131,142 @@ export function financialScore(state, ym, today = todayISO()) {
       tip: reserve.hasGoal ? (reserve.months >= 6 ? 'Reserva completa (6+ meses).' : 'Meta: 6 meses de gastos guardados.') : 'Crie uma meta de "reserva de emergência" ou marque um investimento como reserva.',
     },
     {
-      key: 'month', label: 'Gastos do mês × renda', max: 15,
-      value: month.income.total ? `${spendRatio.toFixed(0)}% da renda` : '—',
-      points: month.income.total ? 15 * clamp01((110 - spendRatio) / 20) : 0,
-      tip: spendRatio <= 90 ? 'Mês equilibrado.' : 'O mês está gastando quase tudo (ou mais) do que entra.',
+      key: 'month', label: limit ? 'Gastos do mês × renda e meta' : 'Gastos do mês × renda', max: 15,
+      value: month.income.total ? `${spendRatio.toFixed(0)}% da renda${limit ? ` · ${limitUsed.toFixed(0)}% da meta` : ''}` : '—',
+      points: month.income.total ? 15 * clamp01((110 - spendRatio) / 20) * (limitUsed > 100 ? 0 : limitUsed >= 90 ? 0.5 : 1) : 0,
+      tip: limitUsed > 100 ? 'A meta de gastos do mês estourou: segure os gastos variáveis até o próximo salário.'
+        : spendRatio <= 90 ? 'Mês equilibrado.' : 'O mês está gastando quase tudo (ou mais) do que entra.',
     },
   ].map((f) => ({ ...f, points: Math.round(f.points) }));
 
-  const score = Math.round(factors.reduce((s, f) => s + f.points, 0));
+  const caps = [];
+  if (overdue >= 3) caps.push({ max: 49, reason: `${overdue} contas atrasadas` });
+  else if (overdue >= 1) caps.push({ max: 79, reason: overdue === 1 ? '1 conta atrasada' : `${overdue} contas atrasadas` });
+  if (limitUsed > 100) caps.push({ max: 69, reason: `meta de gastos estourada (${limitUsed.toFixed(0)}%)` });
+  if (month.balance < 0) caps.push({ max: 59, reason: 'mês no vermelho' });
+  const raw = Math.round(factors.reduce((s, f) => s + f.points, 0));
+  const cap = caps.length ? Math.min(...caps.map((c) => c.max)) : 100;
+  const score = Math.min(raw, cap);
   const grade = score >= 80 ? 'Excelente' : score >= 60 ? 'Boa' : score >= 40 ? 'Atenção' : 'Crítica';
   const tone = score >= 80 ? 'good' : score >= 60 ? 'info' : score >= 40 ? 'warn' : 'bad';
-  return { score, grade, tone, factors };
+  return { score, raw, grade, tone, factors, caps: raw > cap ? caps.filter((c) => c.max < raw) : [] };
+}
+
+/** Nota de cada um dos últimos `months` meses (fechados usam a nota guardada no fechamento). */
+export function scoreHistory(state, endYM, months = 12, today = todayISO()) {
+  const out = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const ym = addMonthsYM(endYM, -i);
+    if (state.scoreHistory?.[ym] != null) { out.push({ ym, score: state.scoreHistory[ym], saved: true }); continue; }
+    const { y, m } = parseYM(ym);
+    const end = toISO(y, m, daysInMonth(y, m));
+    const day = end < today ? end : today;
+    const hasData = monthSeries(state, ym, 3, day).some((x) => x.income > 0 || x.spent > 0);
+    out.push({ ym, score: hasData ? financialScore(state, ym, day).score : null, saved: false });
+  }
+  return out;
+}
+
+// ---------- Quanto dá para gastar por dia ----------
+
+/**
+ * "Dá para gastar R$ X/dia até o próximo salário", separando o que vence
+ * ANTES do próximo salário (sai do dinheiro de agora) do que vence DEPOIS
+ * (será pago com o salário seguinte).
+ *
+ *  dinheiro agora = saldo das contas (se você cadastrou contas com saldo)
+ *                   ou, sem contas: sobra do mês passado (se o salário deste
+ *                   mês ainda não caiu) + o que já entrou no mês − o que já foi pago
+ *  livre          = dinheiro agora − contas não pagas até a véspera do salário
+ *                   (inclui atrasadas)
+ *  por dia        = livre ÷ dias até o salário
+ *
+ * → { perDay, free, cash, dueBefore, dueAfter, nextPay, days, source, before: [itens], after: [itens] }
+ */
+export function spendingRoom(state, today = todayISO()) {
+  const s = state.settings;
+  const ym = ymOf(today);
+  let nextPay = paydayIn(s, ym);
+  if (nextPay <= today) nextPay = paydayIn(s, addMonthsYM(ym, 1));
+  const days = Math.max(1, diffDays(today, nextPay));
+  const m = computeMonth(state, ym, today);
+
+  const salaryFn = (month) => {
+    const inc = incomeFor(state, month);
+    return { date: paydayIn(s, month), cents: inc.salary + (inc.payrollExtrasNet || 0) };
+  };
+  const anchored = (state.accounts || []).filter((a) => !a.archived && a.anchor?.date);
+  let cash;
+  let source;
+  if (anchored.length) {
+    cash = accountsSummary({ ...state, accounts: anchored }, today, { salaryFn }).total;
+    source = 'accounts';
+  } else {
+    const received = sumCents(incomeEvents(state, ym).filter((e) => e.date <= today).map((e) => e.cents));
+    const salaryArrived = paydayIn(s, ym) <= today;
+    const prev = computeMonth(state, addMonthsYM(ym, -1), today);
+    const carry = salaryArrived ? 0 : Math.max(0, prev.income.total - prev.totals.paid);
+    cash = carry + received - m.totals.paid;
+    source = 'estimate';
+  }
+
+  const nextMonthItems = ymOf(nextPay) !== ym ? computeMonth(state, ymOf(nextPay), today).items : [];
+  const open = [...overdueBefore(state, ym, today), ...m.items, ...nextMonthItems].filter((i) => i.status !== 'paid');
+  const before = open.filter((i) => i.dueDate < nextPay);
+  const after = m.items.filter((i) => i.status !== 'paid' && i.dueDate >= nextPay);
+  const dueBefore = sumCents(before.map((i) => i.cents));
+  const dueAfter = sumCents(after.map((i) => i.cents));
+  const free = cash - dueBefore;
+  return { perDay: Math.max(0, Math.floor(free / days)), free, cash, dueBefore, dueAfter, nextPay, days, source, before, after };
+}
+
+/** Entradas de dinheiro previstas no mês, com data. → [{ date, cents, label }] */
+export function incomeEvents(state, ym) {
+  const s = state.settings;
+  const inc = incomeFor(state, ym);
+  const out = [];
+  const salaryCash = inc.salary + (inc.payrollExtrasNet || 0);
+  if (salaryCash) out.push({ date: paydayIn(s, ym), cents: salaryCash, label: 'Salário' });
+  for (const x of inc.extras) if (!x.payroll) out.push({ date: x.date || `${ym}-01`, cents: x.cents, label: x.description });
+  if (inc.thirteenth) out.push({ date: dateInMonth(ym, inc.thirteenth.part === 1 ? 30 : 20), cents: inc.thirteenth.net, label: inc.thirteenth.label });
+  if (inc.vacation) {
+    const d = addDaysISO(inc.vacation.start, -2);
+    out.push({ date: d < `${ym}-01` ? `${ym}-01` : d, cents: inc.vacation.net, label: 'Férias' });
+  }
+  for (const b of inc.benefits?.cash || []) out.push({ date: paydayIn(s, ym), cents: b.net, label: b.name });
+  for (const j of inc.jobs?.list || []) out.push({ date: dateInMonth(ym, j.job.day || 5), cents: j.net, label: j.job.name });
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Fluxo de caixa DIA A DIA de hoje até o fim do próximo ciclo de salário
+ * (ou `untilDays` dias), mostrando onde o dinheiro aperta.
+ * → { points: [{ date, balance, in, out, events }], min: { date, balance }, start, nextPay }
+ */
+export function dailyCashflow(state, today = todayISO(), untilDays = null) {
+  const room = spendingRoom(state, today);
+  const end = untilDays ? addDaysISO(today, untilDays) : addDaysISO(paydayIn(state.settings, addMonthsYM(ymOf(room.nextPay), 1)), -1);
+  const months = new Set();
+  for (let ym = ymOf(today); ym <= ymOf(end); ym = addMonthsYM(ym, 1)) months.add(ym);
+  const bills = [];
+  const incomes = [];
+  for (const ym of months) {
+    for (const i of computeMonth(state, ym, today).items) if (i.status !== 'paid' && i.dueDate > today && i.dueDate <= end) bills.push(i);
+    for (const e of incomeEvents(state, ym)) if (e.date > today && e.date <= end) incomes.push(e);
+  }
+  const overdue = room.before.filter((i) => i.dueDate <= today);
+  let balance = room.cash - sumCents(overdue.map((i) => i.cents));
+  const points = [{ date: today, balance, in: 0, out: sumCents(overdue.map((i) => i.cents)), events: overdue.map((i) => i.description) }];
+  for (let d = addDaysISO(today, 1); d <= end; d = addDaysISO(d, 1)) {
+    const outs = bills.filter((i) => i.dueDate === d);
+    const ins = incomes.filter((e) => e.date === d);
+    const o = sumCents(outs.map((i) => i.cents));
+    const n = sumCents(ins.map((e) => e.cents));
+    balance += n - o;
+    points.push({ date: d, balance, in: n, out: o, events: [...ins.map((e) => `+ ${e.label}`), ...outs.map((i) => i.description)] });
+  }
+  const min = points.reduce((a, p) => (p.balance < a.balance ? p : a), points[0]);
+  return { points, min, start: room.cash, nextPay: room.nextPay };
 }
 
 // ---------- Simulador "e se" ----------
@@ -212,6 +369,24 @@ export function calendarEvents(state, ym, today = todayISO()) {
   const investing = investingOf(state.settings);
   for (const inv of state.investments || []) {
     if (inv.maturity && ymOf(inv.maturity) === ym) add(inv.maturity, { type: 'invest', label: `Vencimento: ${inv.name}`, cents: positionAt(inv, investing, inv.maturity).value });
+  }
+  for (const s of shiftsIn(state, ym)) {
+    const t = shiftTypeOf(state, s.typeId);
+    add(s.date, { type: 'shift', label: t ? t.name : 'Plantão', cents: s.cents ?? t?.cents ?? 0 });
+  }
+  for (const inv of invoicesIn(state, ym, today)) {
+    if (ymOf(inv.closing) === ym) add(inv.closing, { type: 'card', label: `Fechamento: ${inv.card.name}`, cents: inv.total });
+  }
+  for (const card of state.cards || []) {
+    const next = addMonthsYM(ym, 1);
+    const closing = dateInMonth(card.dueDay > card.closingDay ? next : ym, card.closingDay);
+    if (ymOf(closing) === ym && !(out[closing] || []).some((e) => e.type === 'card')) add(closing, { type: 'card', label: `Fechamento: ${card.name}`, cents: 0 });
+  }
+  for (const r of state.receivables || []) {
+    if (!r.receivedAt && r.dueDate && ymOf(r.dueDate) === ym) add(r.dueDate, { type: 'receivable', label: `A receber: ${r.person || r.description}`, cents: r.cents });
+  }
+  for (const r of state.recurring || []) {
+    if (r.subscription && r.renewal && ymOf(r.renewal) === ym) add(r.renewal, { type: 'renewal', label: `Renovação: ${r.description}`, cents: r.cents });
   }
   return out;
 }

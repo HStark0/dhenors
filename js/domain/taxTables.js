@@ -1,9 +1,14 @@
+// @ts-check
 // =============================================================
 // taxTables.js — Tabelas oficiais de INSS e Imposto de Renda
 // -------------------------------------------------------------
 // Valores em REAIS (como publicados). O cálculo converte para centavos.
-// Para um ano novo: copie o último bloco, troque o ano e os valores.
-// Meses de anos sem tabela usam a tabela mais próxima disponível.
+// Para um ano novo: copie o último bloco, troque o ano e os valores —
+// ou cadastre pelo app (Salário → Tabelas), que guarda em
+// settings.taxTables e vale só para você.
+// Meses de anos sem tabela usam a tabela mais próxima disponível, mas
+// o resultado vem com "missing: true" e o app AVISA
+// ("tabelas de 2027 ainda não disponíveis").
 //
 // Fontes (2026):
 //  • INSS: tabela de contribuição do empregado vigente desde jan/2026 —
@@ -64,11 +69,37 @@ export const TAX_TABLES = {
   },
 };
 
-/** Tabela do ano (ou do ano mais próximo disponível). */
+// Tabelas cadastradas pelo usuário (settings.taxTables), registradas
+// a cada cálculo (ledger.payslipIncome) para valerem em todo o app.
+let custom = {};
+
+/** Registra as tabelas do usuário: { "2027": tabela }. */
+export function registerCustomTables(tables) {
+  custom = tables && typeof tables === 'object' ? tables : {};
+}
+
+const allTables = () => ({ ...TAX_TABLES, ...Object.fromEntries(Object.entries(custom).map(([y, t]) => [Number(y), t])) });
+
+/**
+ * Tabela do ano (ou do ano mais próximo disponível).
+ * → { year (o da tabela usada), requested, missing, custom, ...tabela }
+ */
 export function tablesFor(year) {
-  const years = Object.keys(TAX_TABLES).map(Number).sort((a, b) => a - b);
+  const tables = allTables();
+  const years = Object.keys(tables).map(Number).sort((a, b) => a - b);
   const pick = years.filter((y) => y <= year).pop() ?? years[0];
-  return { year: pick, ...TAX_TABLES[pick] };
+  return { year: pick, requested: year, missing: pick !== year, custom: Boolean(custom[pick]), ...tables[pick] };
 }
 
 export const LATEST_TAX_YEAR = Math.max(...Object.keys(TAX_TABLES).map(Number));
+
+/** Ano mais recente com tabela (oficial ou sua). */
+export const latestTaxYear = () => Math.max(...Object.keys(allTables()).map(Number));
+
+/** Anos (de `from` até `to`) que ainda não têm tabela. */
+export function missingTaxYears(from, to) {
+  const tables = allTables();
+  const out = [];
+  for (let y = from; y <= to; y++) if (!tables[y]) out.push(y);
+  return out;
+}

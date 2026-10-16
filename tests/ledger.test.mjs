@@ -241,7 +241,7 @@ test('consignado parcelado: desconta só entre o início e o fim', () => {
   assert.equal(computePayroll(p, '2026-12').deductionsTotal, 0);       // quitado: sai sozinho
 });
 
-// ---------- 2.3: variáveis, faixa do INSS, regime fixo, 13º, conferência ----------
+// ---------- Variáveis, faixa do INSS, regime fixo, 13º, conferência ----------
 
 test('INSS: faixa nominal (o "12%" do holerite) x efetivo', () => {
   const t = tablesFor(2026);

@@ -18,7 +18,7 @@ import { store } from '../core/store.js';
 import { formatBRL, toCents } from '../core/money.js';
 import { formatMonth, formatMonthShort } from '../core/dates.js';
 import { pdfToText } from '../core/pdftext.js';
-import { parsePayslipText, planFromPayslip, friendlyName } from '../domain/payslip.js';
+import { parsePayslipText, planFromPayslip, friendlyName, compareLines } from '../domain/payslip.js';
 import { payrollFor } from '../domain/payroll.js';
 import * as A from '../domain/actions.js';
 
@@ -77,6 +77,11 @@ async function readFile(file, dlg, ym) {
     toastError(err.message || 'Não consegui ler o PDF. Tente colar o texto.');
     dlg.querySelector('details')?.setAttribute('open', '');
   }
+}
+
+/** Texto já extraído (ex.: PDF compartilhado) → revisão direta. */
+export function reviewPayslipText(text, ym = store.ui.ym) {
+  return startReview(text, { close() {} }, ym);
 }
 
 /** Analisa o texto; se achou verbas, abre a revisão. */
@@ -159,7 +164,8 @@ function reviewDialog(plan) {
             </div>
             ${diff == null ? '' : diff === 0
               ? html`<p class="pcompare__ok">${icon('circle-check', 'icon--xs')} O cálculo do app bate centavo a centavo com o holerite.</p>`
-              : html`<p class="pcompare__warn">${icon('info', 'icon--xs')} Diferença de ${formatBRL(Math.abs(diff))}. Confira as verbas marcadas — ${diff > 0 ? 'o app calculou a mais' : 'o app calculou a menos'}. O líquido conferido do holerite continua valendo na renda.</p>`}`.toString();
+              : html`<p class="pcompare__warn">${icon('info', 'icon--xs')} Diferença de ${formatBRL(Math.abs(diff))}. Confira as verbas marcadas — ${diff > 0 ? 'o app calculou a mais' : 'o app calculou a menos'}. O líquido conferido do holerite continua valendo na renda.</p>`}
+            ${lineTable(plan.items, p)}`.toString();
         } catch (err) {
           box.innerHTML = html`<p class="pcompare__warn">${icon('info', 'icon--xs')} ${err.message}</p>`.toString();
         }
@@ -175,6 +181,30 @@ function reviewDialog(plan) {
       toast(`Holerite de ${formatMonth(final.competence)} importado.`);
     },
   });
+}
+
+/** Tabela verba a verba: holerite × app (sugestão 49). */
+function lineTable(items, p) {
+  const rows = compareLines(items, p);
+  if (!rows.length) return '';
+  const cell = (v, sign) => (v == null ? html`<span class="muted">—</span>` : `${sign < 0 ? '−' : ''}${formatBRL(v)}`);
+  const bad = rows.filter((r) => r.diff != null && Math.abs(r.diff) > 1).length;
+  return html`
+    <details class="details" ${bad ? 'open' : ''}>
+      <summary>${icon('list-checks', 'icon--xs')} Conferir verba a verba${bad ? ` (${bad} com diferença)` : ''}</summary>
+      <div class="table-wrap">
+        <table class="table table--compact">
+          <thead><tr><th scope="col" class="text-left">Verba</th><th scope="col" class="num">Holerite</th><th scope="col" class="num">App</th><th scope="col" class="num">Diferença</th></tr></thead>
+          <tbody>${rows.map((r) => html`
+            <tr>
+              <th scope="row" class="text-left">${friendlyName(r.label)}</th>
+              <td class="num money">${cell(r.payslip, r.sign)}</td>
+              <td class="num money">${cell(r.app, r.sign)}</td>
+              <td class="num money ${r.diff == null ? 'muted' : Math.abs(r.diff) <= 1 ? 'pos' : 'neg'}">${r.diff == null ? 'só de um lado' : Math.abs(r.diff) <= 1 ? 'ok' : `${r.diff > 0 ? '+' : '−'}${formatBRL(Math.abs(r.diff))}`}</td>
+            </tr>`)}</tbody>
+        </table>
+      </div>
+    </details>`;
 }
 
 const inssOf = (plan) => plan.items.find((x) => /^i\.?\s?n\.?\s?s\.?\s?s/i.test(x.description))?.desconto || 0;

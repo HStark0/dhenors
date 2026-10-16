@@ -253,7 +253,7 @@ export function computePayroll(profile, ym, { extras = 0, loans = [], variable =
     return { ...empty, inss: pension.value, inssBand: pension.band, ir, net: extras - pension.value - ir.value };
   }
 
-  // Perfis antigos (v1) guardavam o salário já líquido: sem cálculo de impostos
+  // Perfis do formato antigo guardavam o salário já líquido: sem cálculo de impostos
   if (profile.legacyNet) {
     return { ...empty, base: profile.grossCents, gross: profile.grossCents + extras, taxable: 0, net: profile.grossCents + extras, legacyNet: true, hasProfile: true };
   }
@@ -314,7 +314,7 @@ export function computePayroll(profile, ym, { extras = 0, loans = [], variable =
     }
   }
 
-  const additions = [...money.map(({ fixedMonthly, ...a }) => a), ...hours];
+  const additions = [...money.map(({ fixedMonthly: _fixed, ...a }) => a), ...hours];
   const remuneration = base + extras + additions.filter((a) => a.taxable).reduce((s, a) => s + a.cents, 0);
 
   // Salário-família (não tributável): cota por filho até o limite de remuneração

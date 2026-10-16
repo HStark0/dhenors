@@ -4,7 +4,7 @@
 
 import { html, attrs } from './dom.js';
 import { icon } from './icons.js';
-import { centsToInput } from '../core/money.js';
+import { toCents } from '../core/money.js';
 
 let seq = 0;
 const uid = (name) => `f-${name}-${++seq}`;
@@ -49,15 +49,154 @@ export function field({ label, name, type = 'text', value = '', required = false
     </div>`;
 }
 
-/** Valor em reais. Aceita "12,50" e "1.234,56" (o teclado do celular mostra números). */
-export function moneyField({ label, name, cents = null, required = true, hint = '', full = false }) {
+/**
+ * Valor em reais, com máscara enquanto digita: "123456" vira "1.234,56".
+ * O teclado do celular mostra números (inputmode="decimal").
+ * `negative`: aceita estorno/saldo negativo (digite "-").
+ */
+export function moneyField({ label, name, cents = null, required = true, hint = '', full = false, negative = false }) {
   return field({
     label, name, required, hint, full,
-    value: cents != null && cents !== 0 ? centsToInput(cents) : '',
+    value: cents != null && cents !== 0 ? maskCents(cents) : '',
     placeholder: '0,00',
     prefix: 'R$',
-    extra: { inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'next' },
+    extra: { inputmode: 'decimal', autocomplete: 'off', enterkeyhint: 'next', 'data-money': negative ? 'neg' : '1' },
   });
+}
+
+/** Centavos → "1.234,56" (com o sinal, se negativo). */
+export function maskCents(cents) {
+  if (!Number.isFinite(cents)) return '';
+  const s = (Math.abs(cents) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return cents < 0 ? `-${s}` : s;
+}
+
+// Máscara de dinheiro: um listener para todos os campos [data-money].
+globalThis.document?.addEventListener('input', (ev) => {
+  const el = ev.target;
+  if (!el.matches?.('[data-money]')) return;
+  const neg = el.dataset.money === 'neg' && /^\s*-/.test(el.value);
+  const digits = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 13);
+  if (!digits) { el.value = neg ? '-' : ''; return; }
+  el.value = maskCents((neg ? -1 : 1) * Number(digits));
+  try { el.setSelectionRange(el.value.length, el.value.length); } catch { /* sem seleção */ }
+});
+// Colar "1234.5" ou "R$ 1.234,56": interpreta o valor inteiro, não só os dígitos
+globalThis.document?.addEventListener('paste', (ev) => {
+  const el = ev.target;
+  if (!el.matches?.('[data-money]')) return;
+  const text = ev.clipboardData?.getData('text') || '';
+  const value = toCents(text);
+  if (!Number.isFinite(value)) return;
+  ev.preventDefault();
+  el.value = maskCents(el.dataset.money === 'neg' ? value : Math.abs(value));
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}, true);
+
+/** Etiquetas livres (#viagem-natal, #reforma), separadas por espaço ou vírgula. */
+export function tagsField({ value = [], hint = 'Ex.: #viagem-natal #reforma — para cruzar gastos de várias categorias.', suggestions = [] } = {}) {
+  const id = uid('tags');
+  return html`
+    <div class="field field--full">
+      <label class="field__label" for="${id}">Etiquetas (opcional)</label>
+      <div class="field__control has-prefix">
+        <span class="field__prefix" aria-hidden="true">#</span>
+        <input class="input" id="${id}" name="tags" value="${(value || []).map((t) => `#${t}`).join(' ')}" autocomplete="off" placeholder="viagem-natal reforma" list="${id}-list" aria-describedby="${id}-hint">
+      </div>
+      ${suggestions.length ? html`<datalist id="${id}-list">${suggestions.map((t) => html`<option value="#${t}">`)}</datalist>` : ''}
+      <p class="field__hint" id="${id}-hint">${hint}</p>
+    </div>`;
+}
+
+/** Conta/carteira de onde sai (ou entra) o dinheiro. */
+export function accountField(data, accountId = '', { label = 'Conta (opcional)', name = 'accountId' } = {}) {
+  const list = (data.accounts || []).filter((a) => !a.archived || a.id === accountId);
+  if (!list.length) return '';
+  return selectField({
+    label, name, value: accountId || '',
+    options: [{ value: '', label: 'Não informar' }, ...list.map((a) => ({ value: a.id, label: a.name }))],
+  });
+}
+
+/** Cartão de crédito. */
+export function cardField(data, cardId = '', { label = 'Cartão', name = 'cardId', none = null } = {}) {
+  const list = (data.cards || []).filter((c) => !c.archived || c.id === cardId);
+  return selectField({
+    label, name, value: cardId || '',
+    options: [...(none ? [{ value: '', label: none }] : []), ...list.map((c) => ({ value: c.id, label: c.name }))],
+  });
+}
+
+/**
+ * Divisão de um gasto entre categorias (ex.: o mercado entre essenciais e
+ * supérfluos). Começa fechada; "Dividir" abre as linhas.
+ */
+export function splitsField(data, splits = []) {
+  const rows = splits.length ? splits : [{}, {}];
+  const opts = [{ value: '', label: 'Sem categoria' }, ...data.categories.map((c) => ({ value: c.id, label: catText(c) }))];
+  return html`
+    <details class="field field--full splits" ${splits.length ? 'open' : ''}>
+      <summary class="splits__toggle">Dividir em várias categorias</summary>
+      <p class="field__hint">As partes precisam somar o valor total. Deixe fechado para usar uma categoria só.</p>
+      <div class="splits__rows" data-splits>
+        ${rows.map((s, i) => splitRow(opts, s, i))}
+      </div>
+      <div class="splits__foot">
+        <button type="button" class="btn btn--ghost btn--sm" data-split-add>${icon('plus', 'icon--xs')} Parte</button>
+        <span class="small muted" data-split-left aria-live="polite"></span>
+      </div>
+    </details>`;
+}
+
+function splitRow(opts, s, i) {
+  return html`
+    <div class="splits__row">
+      <label class="sr-only" for="split-cat-${i}">Categoria da parte ${i + 1}</label>
+      <select class="input select" id="split-cat-${i}" data-split-cat>${opts.map((o) => html`<option value="${o.value}" ${o.value === (s.categoryId || '') ? 'selected' : ''}>${o.label}</option>`)}</select>
+      <label class="sr-only" for="split-val-${i}">Valor da parte ${i + 1}</label>
+      <div class="field__control has-prefix"><span class="field__prefix" aria-hidden="true">R$</span><input class="input" id="split-val-${i}" data-split-val data-money="1" inputmode="decimal" value="${s.cents ? maskCents(s.cents) : ''}" placeholder="0,00"></div>
+      <button type="button" class="icon-btn icon-btn--sm" data-split-del aria-label="Remover parte">${icon('x')}</button>
+    </div>`;
+}
+
+/** Liga os botões da divisão e mostra quanto falta. `totalInput`: campo do valor total. */
+export function bindSplits(root, data) {
+  const box = root.querySelector('[data-splits]');
+  if (!box) return;
+  const opts = [{ value: '', label: 'Sem categoria' }, ...data.categories.map((c) => ({ value: c.id, label: catText(c) }))];
+  const total = () => toCents(root.querySelector('[name="cents"]')?.value || '');
+  const update = () => {
+    const sum = [...box.querySelectorAll('[data-split-val]')].reduce((a, el) => a + (toCents(el.value) || 0), 0);
+    const left = total() - sum;
+    const out = root.querySelector('[data-split-left]');
+    if (out) out.textContent = Number.isFinite(left) && sum ? (left === 0 ? 'Divisão completa ✓' : `${left > 0 ? 'Faltam' : 'Sobram'} R$ ${maskCents(Math.abs(left))}`) : '';
+  };
+  root.addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-split-add]')) {
+      box.insertAdjacentHTML('beforeend', String(splitRow(opts, {}, box.children.length + Date.now() % 1000)));
+      update();
+    }
+    const del = ev.target.closest('[data-split-del]');
+    if (del && box.children.length > 2) { del.closest('.splits__row').remove(); update(); }
+  });
+  root.addEventListener('input', update);
+  update();
+}
+
+/** Lê as partes da divisão (só se o bloco estiver aberto e preenchido). */
+export function readSplits(root) {
+  const details = root.querySelector('details.splits');
+  if (!details?.open) return [];
+  return [...root.querySelectorAll('.splits__row')].map((row) => ({
+    categoryId: row.querySelector('[data-split-cat]').value || null,
+    cents: toCents(row.querySelector('[data-split-val]').value),
+  })).filter((s) => Number.isFinite(s.cents) && s.cents > 0);
+}
+
+/** Texto curto de categoria para listas sem HTML (selects): emoji antigo + nome, ou só o nome. */
+export function catText(c) {
+  if (!c) return 'Sem categoria';
+  return String(c.icon || '').startsWith('i:') ? c.name : `${c.icon} ${c.name}`;
 }
 
 export function dateField({ label, name, value = '', required = true, hint = '', min = '', max = '' }) {
@@ -100,7 +239,7 @@ export function categoryFields(data, { categoryId = '', subcategoryId = '' } = {
   return html`
     ${selectField({
       label: 'Categoria', name: 'categoryId', value: categoryId,
-      options: [{ value: '', label: 'Sem categoria' }, ...data.categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name}` }))],
+      options: [{ value: '', label: 'Sem categoria' }, ...data.categories.map((c) => ({ value: c.id, label: catText(c) }))],
     })}
     ${selectField({
       label: 'Subcategoria', name: 'subcategoryId', value: subcategoryId,

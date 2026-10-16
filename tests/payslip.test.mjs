@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createEmptyState } from '../js/domain/schema.js';
-import { computePayroll, payrollFor, inssFor, absencesIn, formatHours } from '../js/domain/payroll.js';
+import { payrollFor, inssFor, absencesIn, formatHours } from '../js/domain/payroll.js';
 import { incomeFor, payslipIncome } from '../js/domain/ledger.js';
 import { calendarEvents } from '../js/domain/planning.js';
 import { dsrDaysIn } from '../js/core/calendar.js';
