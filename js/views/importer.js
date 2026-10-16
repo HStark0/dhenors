@@ -1,5 +1,5 @@
 // =============================================================
-// Importar — extrato do banco (OFX / CSV / Open Finance) ou
+// Importar — extrato do banco (OFX / CSV) ou
 // fatura do cartão (PDF ou texto colado)
 // -------------------------------------------------------------
 // 1. Escolha o arquivo  2. Revise (categorias sugeridas e contas já
@@ -343,7 +343,7 @@ export function pickFile() {
   input.click();
 }
 
-/** Linhas já no formato do importador (Open Finance, compartilhar) → tela de revisão do extrato. */
+/** Linhas já no formato do importador (compartilhar) → tela de revisão do extrato. */
 export function loadRows(rows, filename, format = 'Extrato') {
   if (!rows.length) return toastError('Nenhum lançamento encontrado.');
   session = { kind: 'statement', filename, format, learn: true, accountId: null, rows: rows.map(prepare).sort((a, b) => a.date.localeCompare(b.date)) };

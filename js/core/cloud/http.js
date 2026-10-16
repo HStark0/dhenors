@@ -64,7 +64,7 @@ export function translate(msg, status) {
   if (/Invalid login credentials/i.test(m)) return 'E-mail ou senha incorretos.';
   if (/Email not confirmed/i.test(m)) return 'Confirme o e-mail (veja sua caixa de entrada) e entre de novo.';
   if (/User already registered/i.test(m)) return 'Este e-mail já tem conta. Use "Entrar".';
-  if (/Signups not allowed|signup.*disabled/i.test(m)) return 'Este servidor não aceita contas novas. Peça ao dono do projeto Supabase para criar a sua.';
+  if (/Signups not allowed|signup.*disabled/i.test(m)) return 'O cadastro de contas novas está desligado no Supabase deste servidor. Tente de novo mais tarde.';
   if (/Password should be at least/i.test(m)) return 'A senha precisa ter pelo menos 6 caracteres.';
   if (/rate limit/i.test(m)) return 'Muitas tentativas. Espere um pouco e tente de novo.';
   if (/only request this after|security purposes/i.test(m)) return 'Por segurança, espere alguns segundos antes de pedir outro e-mail.';

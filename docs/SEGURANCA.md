@@ -33,11 +33,9 @@ O Dhenors protege seus dados contra **quem tem acesso ao servidor** (Supabase, G
 - **Integridade**: cada bloco é cifrado com AAD `usuário|nome|rev` e o índice com `usuário|manifest|versão`; depois de abrir, o hash de cada bloco é conferido com o índice. O app recusa um índice com versão menor do que a que já conhecia (servidor tentando "voltar no tempo"). Blocos antigos, sem AAD, ainda abrem e são recifrados no próximo envio.
 - A frase **não pode ser recuperada** por ninguém. Trocar a frase (Ajustes → Nuvem) recriptografa tudo. Contas antigas (310 mil iterações) são recifradas com 600 mil na próxima vez que a frase é digitada.
 - **Lembrar neste aparelho**: só na sessão, 30 dias ou sempre. Com **senha** no app, a chave lembrada fica cifrada por ela. Com **PIN numérico**, a chave fica **só na memória** (a frase é pedida de novo ao reabrir o app): um PIN de 4–8 números pode ser testado inteiro fora do app, e isso não pode entregar a chave da nuvem. Sem PIN nem senha, a chave fica no navegador.
-- **RLS** (Row Level Security) em todas as tabelas: cada conta só lê e escreve as próprias linhas. Limites de tamanho por linha e uma **cota por conta** (50 MB) evitam abuso do espaço. Recomendado: **desligar o cadastro aberto** no Supabase depois de criar a sua conta (docs/NUVEM.md).
+- **RLS** (Row Level Security) em todas as tabelas: cada conta só lê e escreve as próprias linhas. Limites de tamanho por linha e uma **cota por conta** (50 MB) evitam abuso do espaço. Cada pessoa cria a própria conta e a confirma pelo e-mail (docs/NUVEM.md).
 - **Aparelhos conectados**: "Desconectar" marca o aparelho e **encerra no servidor as sessões de todos os outros aparelhos** (o Supabase não revoga uma sessão específica pela API pública). Um gatilho no banco impede que o aparelho desconectado volte `revoked` para falso; para voltar, é preciso entrar de novo com e-mail e senha.
 - **"Apagar todos os dados"** desliga a nuvem deste aparelho antes de apagar: o estado vazio nunca é enviado aos outros aparelhos.
-- **Open Finance** (opcional): a função confere que cada conexão/conta da Pluggy pertence ao usuário logado antes de devolver qualquer dado.
-
 ## Backups
 
 - O arquivo de backup pode ser **criptografado com senha** (mesma criptografia). Sem senha, é JSON legível — guarde com cuidado.

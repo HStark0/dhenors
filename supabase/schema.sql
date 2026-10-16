@@ -14,8 +14,8 @@
 --
 -- Proteções extras (mais abaixo): aparelho desconectado não volta a
 -- "revoked = false" sozinho, e cada conta tem uma cota de espaço.
--- Depois de criar a SUA conta, desligue o cadastro aberto (Authentication
--- → Sign In / Providers → "Allow new users to sign up"): veja docs/NUVEM.md.
+-- Cadastro aberto com confirmação por e-mail (Authentication → Sign In /
+-- Providers → "Allow new users to sign up" e "Confirm email"): veja docs/NUVEM.md.
 -- =============================================================
 
 -- ---------- Estado (índice) ----------

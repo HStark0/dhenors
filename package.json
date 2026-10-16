@@ -1,6 +1,6 @@
 {
   "name": "dhenors",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "description": "Controle financeiro pessoal — funciona no navegador, offline, sem servidor.",
   "private": true,
   "type": "module",

@@ -523,6 +523,8 @@ async function dailyChores() {
 // ---------- Inicialização ----------
 
 async function start() {
+  // configuração de um recurso removido na 3.3.1, que ficava no aparelho
+  try { localStorage.removeItem('dhenors:openfinance'); } catch { /* ignora */ }
   initErrorLog();
   // Volta de um link de e-mail do Supabase (#access_token=…&type=… ou #error=…):
   // confirmação de cadastro ou "Esqueci minha senha"

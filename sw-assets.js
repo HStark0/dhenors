@@ -1,7 +1,7 @@
 // Gerado por tools/sync-version.mjs — não edite à mão.
 // Versão e arquivos que o service worker (sw.js) guarda para uso offline.
-self.DHENORS_VERSION = '3.3.0';
-self.DHENORS_BUILD = 'f44f540176ab';
+self.DHENORS_VERSION = '3.3.1';
+self.DHENORS_BUILD = '834093ff9aa8';
 self.DHENORS_ASSETS = [
   './',
   './assets/fonts/InterVariable-ext.woff2',
@@ -38,7 +38,6 @@ self.DHENORS_ASSETS = [
   './js/core/market.js',
   './js/core/memo.js',
   './js/core/money.js',
-  './js/core/openfinance.js',
   './js/core/pdftext.js',
   './js/core/push.js',
   './js/core/realtime.js',

@@ -7,6 +7,22 @@
 
 export const CHANGELOG = [
   {
+    version: '3.3.1',
+    date: '2026-10-16',
+    title: 'Nuvem mais resistente',
+    groups: [
+      { title: 'Correções', items: [
+        'Nuvem: o erro "Uma parte dos dados da nuvem não foi encontrada" não trava mais o desbloqueio. As partes que sumiram são recuperadas do histórico ou deste aparelho e reenviadas.',
+      ] },
+      { title: 'Mudanças', items: [
+        'Nuvem: cada pessoa cria a própria conta pelo app e a confirma pelo e-mail que o Supabase envia.',
+      ] },
+      { title: 'Removido', items: [
+        'Open Finance (Pluggy): a opção saiu de Ajustes → Dados. Para trazer transações do banco, use a importação de extrato (OFX, CSV ou PDF da fatura).',
+      ] },
+    ],
+  },
+  {
     version: '3.3.0',
     date: '2026-10-16',
     title: 'Mais confiável e mais seguro',

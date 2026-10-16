@@ -27,8 +27,8 @@ Tempo: uns 15 minutos. Tudo nos planos **gratuitos**.
    > Nunca use a chave `service_role`/`secret` no app.
 5. **Authentication → Sign In / Providers → Email**:
    - Deixe *Email* ligado.
-   - **Confirm email**: pode deixar ligado (mais seguro: você confirma pelo e-mail uma vez) ou desligar (entra direto).
-   - **Feche o cadastro depois de criar a sua conta** (importante): com o cadastro aberto, qualquer pessoa que descubra a URL e a chave pública (elas ficam no site) pode criar contas e ocupar o espaço gratuito do projeto (500 MB). Depois da Parte 3 (conta criada e funcionando), vá em **Authentication → Sign In / Providers** e desligue **Allow new users to sign up**. Para usar em outro aparelho, basta *entrar* com a mesma conta. Precisa de outra conta (ex.: da família)? Ligue por um minuto, crie e desligue de novo — ou crie em **Authentication → Users → Add user**.
+   - Deixe **Allow new users to sign up** ligado: cada pessoa cria a própria conta pelo app (Ajustes → Nuvem → Criar conta).
+   - Deixe **Confirm email** ligado: o Supabase manda um e-mail de confirmação e a conta só entra depois que a pessoa clica no link.
    - O `schema.sql` também põe uma **cota por conta** (50 MB de partes + histórico). Passou disso, o app avisa e para de enviar até você apagar dados antigos. Para mudar o limite, edite `dhenors_quota_bytes()` no arquivo e rode de novo.
 6. (Depois da Parte 2) **Authentication → URL Configuration**:
    - **Site URL**: cole o endereço do seu site (`https://SEU-USUARIO.github.io/dhenors/`). É para onde o link de confirmação de e-mail leva.
@@ -116,19 +116,11 @@ Esqueceu a frase secreta? Os dados continuam a salvo **nos aparelhos que já est
 
 Privacidade: cada aparelho envia só **quantas** contas vencem em cada dia — nunca valores ou nomes.
 
-## (Opcional) Open Finance pela Pluggy
-
-Vai contra o princípio "nada sai do aparelho", por isso fica **desligado** até você ligar.
-
-1. Crie uma conta em **pluggy.ai** e pegue `CLIENT_ID` e `CLIENT_SECRET`.
-2. `supabase functions deploy open-finance` e `supabase secrets set PLUGGY_CLIENT_ID=... PLUGGY_CLIENT_SECRET=...`. Publique de novo ao atualizar o app: a função confere que cada conexão e conta da Pluggy pertence a quem pede (`clientUserId` = sua conta).
-3. No app: Ajustes → Dados → **Open Finance** → Ligar → Conectar banco. As transações abrem na tela de importação (com conciliação): nada é lançado sem a sua revisão.
-
 ## Segurança, em resumo
 
 - **Criptografia de ponta a ponta:** AES-256-GCM com chave derivada da sua frase (PBKDF2-SHA256, 600 mil iterações). O Supabase só guarda blocos ilegíveis.
 - **Integridade:** cada bloco é amarrado (AAD do AES-GCM) à conta, ao nome e à versão, e o hash é conferido depois de abrir. O servidor não consegue trocar blocos de lugar nem devolver um índice antigo como se fosse novo. Blocos de versões anteriores do app são recifrados no próximo envio.
-- **Isolamento:** as regras do banco (RLS) só deixam cada conta ler e alterar as próprias linhas; tamanhos máximos por linha e a **cota por conta** evitam abuso. Feche o cadastro aberto (Parte 1, passo 5).
+- **Isolamento:** as regras do banco (RLS) só deixam cada conta ler e alterar as próprias linhas; tamanhos máximos por linha e a **cota por conta** evitam abuso.
 - **Contas antigas** (frase criada com 310 mil iterações): na próxima vez que você digitar a frase, tudo é recifrado com 600 mil; os outros aparelhos pedem a frase (a mesma) uma vez.
 - **Sem dependências externas:** o app fala com o Supabase pela API REST e pelo WebSocket oficiais, sem bibliotecas de terceiros.
 - Detalhes em [SEGURANCA.md](SEGURANCA.md) e [PRIVACIDADE.md](PRIVACIDADE.md).

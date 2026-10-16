@@ -41,7 +41,7 @@ Planilhas cansam e a maioria dos apps de finanças não entende o contracheque b
 - **Contas e carteiras** com saldo real, transferências e conferência com o saldo do banco.
 - **Divisão** de um gasto entre categorias, **etiquetas** (#viagem), **fotos de comprovantes**, leitura de **boleto** e **Pix Copia e Cola**.
 - **Quem me deve** e **dívidas** com simulação de quitação (bola de neve × avalanche).
-- **Importe o extrato** (OFX/CSV) ou a **fatura em PDF**: as transações que batem com contas já lançadas são **conciliadas**, o resto entra categorizado. Open Finance opcional.
+- **Importe o extrato** (OFX/CSV) ou a **fatura em PDF**: as transações que batem com contas já lançadas são **conciliadas**, o resto entra categorizado.
 - Deslize para pagar, ações em lote, desfazer, **busca com filtros** e buscas salvas, **lançamento rápido** por texto ou voz ("gastei 50 no mercado").
 
 ### 📅 Planejamento e análise

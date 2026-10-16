@@ -26,16 +26,14 @@ import { ACCENTS, isDiscreet, setDiscreet } from '../core/theme.js';
 import { passwordStrength, PIN_KDF } from '../core/crypto.js';
 import { biometricAvailable, biometricEnabled, enableBiometric, disableBiometric } from '../core/biometric.js';
 import { errorLog, clearErrorLog } from '../core/errors.js';
-import { openFinanceSettings, saveOpenFinance, connectBank, listAccounts, fetchTransactions } from '../core/openfinance.js';
 import { cloud } from '../core/cloud.js';
 import { formatBRL, plural } from '../core/money.js';
-import { formatDateBR, currentYM, todayISO, addDaysISO, diffDays } from '../core/dates.js';
+import { formatDateBR, currentYM, todayISO, diffDays } from '../core/dates.js';
 import { payrollFor, payrollProfileFor, paydayLabel, nextPaydayFrom } from '../domain/payroll.js';
 import * as A from '../domain/actions.js';
 import { APP_VERSION } from '../version.js';
 import { CHANGELOG } from '../changelog.js';
 import { renderCategories, renderCreditors, categoryActions } from './settings/categories.js';
-import { loadRows } from './importer.js';
 
 const TABS = [
   { id: 'geral', label: 'Geral', icon: 'user-cog' },
@@ -133,9 +131,6 @@ export default {
       toast(`${plural(log.length, 'erro exportado', 'erros exportados')}. Anexe o arquivo numa issue do GitHub.`);
     },
     'err:clear': async () => { await clearErrorLog(); toast('Registro de erros limpo.'); store.setUI({ errors: null }); },
-    'of:toggle': () => openFinanceDialog(),
-    'of:connect': async () => { try { await connectBank(); } catch (err) { toastError(err.message); } },
-    'of:import': (el) => openFinanceImport(el.dataset.item),
   },
 
   onFilter(name, value) {
@@ -506,7 +501,6 @@ function data() {
   const st = storageCache;
   const errors = store.ui.errors || [];
   const last = d.lastBackupAt ? diffDays(todayISO(new Date(d.lastBackupAt)), todayISO()) : null;
-  const of = openFinanceSettings();
   return html`
     <div class="settings">
       <section class="card">
@@ -540,20 +534,6 @@ function data() {
       </section>
 
       <section class="card">
-        <h2 class="card__title">${icon('landmark')} Open Finance (opcional)</h2>
-        <p class="muted small">Puxa as transações direto do banco, pela Pluggy (regulada pelo Banco Central). <strong>Vai contra o princípio "nada sai do aparelho"</strong>: as transações passam pela Pluggy e por uma função no SEU Supabase. Fica desligado até você ligar.</p>
-        <div class="setting">
-          <div><strong>${of.enabled ? 'Ligado' : 'Desligado'}</strong><p class="muted small">${of.items.length ? `${of.items.length} conexão(ões)` : 'Nenhum banco conectado'}</p></div>
-          <button type="button" class="btn btn--ghost btn--sm" data-action="of:toggle">${of.enabled ? 'Configurar' : 'Ligar'}</button>
-        </div>
-        ${of.enabled ? html`
-          <div class="card__actions">
-            <button type="button" class="btn btn--secondary btn--sm" data-action="of:connect" ${cloud.linked ? '' : 'disabled'}>${icon('link', 'icon--xs')} Conectar banco</button>
-            ${of.items.map((it) => html`<button type="button" class="btn btn--ghost btn--sm" data-action="of:import" data-item="${it.id}">${icon('download', 'icon--xs')} Importar ${it.name}</button>`)}
-          </div>` : ''}
-      </section>
-
-      <section class="card">
         <h2 class="card__title">${icon('activity')} Registro de erros</h2>
         <div class="setting">
           <div><strong>${errors.length ? plural(errors.length, 'erro registrado', 'erros registrados') : 'Nenhum erro registrado'}</strong>
@@ -577,38 +557,6 @@ function data() {
         </div>
       </section>
     </div>`;
-}
-
-function openFinanceDialog() {
-  const of = openFinanceSettings();
-  openDialog({
-    title: 'Open Finance',
-    size: 'sm',
-    submitLabel: 'Salvar',
-    body: html`
-      <div class="note note--warn">${icon('triangle-alert')}<span>As transações do banco passam pela Pluggy e pela função <code>open-finance</code> no seu Supabase (veja docs/NUVEM.md). Nada é lançado sem a sua revisão.</span></div>
-      <label class="check"><input type="checkbox" name="enabled" ${of.enabled ? 'checked' : ''}> Ligar o Open Finance neste aparelho</label>
-      ${field({ label: 'ID da conexão (item) da Pluggy', name: 'item', placeholder: 'Aparece depois de conectar o banco', full: true })}
-      ${field({ label: 'Nome para lembrar', name: 'name', placeholder: 'Ex.: Itaú', full: true })}
-      ${of.items.length ? html`<p class="small muted">Conexões: ${of.items.map((i) => i.name).join(', ')}</p>` : ''}`,
-    onSubmit: (form) => {
-      const next = { ...of, enabled: form.enabled.checked };
-      if (form.item.value.trim()) next.items = [...of.items.filter((i) => i.id !== form.item.value.trim()), { id: form.item.value.trim(), name: form.name.value.trim() || 'Banco' }];
-      saveOpenFinance(next);
-      store.setUI({});
-      toast(next.enabled ? 'Open Finance ligado.' : 'Open Finance desligado.');
-    },
-  });
-}
-
-async function openFinanceImport(itemId) {
-  try {
-    const accounts = await listAccounts(itemId);
-    if (!accounts.length) return toastError('Nenhuma conta encontrada nessa conexão.');
-    const acc = accounts[0];
-    const rows = await fetchTransactions(acc.id, addDaysISO(todayISO(), -60), todayISO());
-    loadRows(rows, `Open Finance · ${acc.name}`, 'Open Finance');
-  } catch (err) { toastError(err.message); }
 }
 
 // ---------- Ajuda, privacidade e novidades ----------
@@ -654,7 +602,7 @@ function privacy() {
         <p><strong>O que o Dhenors guarda:</strong> só o que você digita (contas, salário, metas…), no <strong>seu aparelho</strong> (IndexedDB do navegador). Não há cadastro obrigatório, anúncios, rastreadores nem análise de uso.</p>
         <p><strong>Nuvem (opcional):</strong> se você ligar, os dados vão para a SUA conta do Supabase <strong>criptografados no aparelho</strong> com uma frase que só você sabe. O servidor guarda blocos ilegíveis, a lista de aparelhos conectados (nome e data) e o e-mail da conta.</p>
         <p><strong>Notificações push (opcional):</strong> o servidor recebe só quantas contas vencem por dia, sem valores nem nomes.</p>
-        <p><strong>Serviços externos, só quando você usa:</strong> Banco Central (CDI, Selic, IPCA — nada é enviado), brapi (só os códigos dos ativos, ex.: PETR4), reconhecimento de voz do navegador (o áudio pode ser processado pelo fornecedor do navegador) e Open Finance pela Pluggy (desligado por padrão).</p>
+        <p><strong>Serviços externos, só quando você usa:</strong> Banco Central (CDI, Selic, IPCA — nada é enviado), brapi (só os códigos dos ativos, ex.: PETR4) e reconhecimento de voz do navegador (o áudio pode ser processado pelo fornecedor do navegador).</p>
         <p><strong>Anexos</strong> (fotos de comprovantes) ficam só no aparelho; com PIN, cifrados.</p>
         <p><strong>Seus direitos (LGPD):</strong> você pode exportar tudo (backup), apagar tudo (Dados → Apagar tudo) e apagar a conta da nuvem (Supabase → Authentication → Users).</p>
         <p class="muted small">Dúvidas: abra uma issue em github.com/HStark0/dhenors.</p>

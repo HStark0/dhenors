@@ -21,8 +21,6 @@ Somente quando **você liga** um destes recursos:
 | Atualizar taxas | Nada sobre você — só a consulta das séries públicas (CDI, Selic, IPCA, IGP-M) | Banco Central do Brasil (api.bcb.gov.br) |
 | Cotações | Os **códigos** dos seus ativos (ex.: PETR4), sem quantidades ou valores | brapi.dev |
 | Voz | O áudio do comando de voz | Reconhecimento de fala do navegador (pode ser processado pelo fornecedor do navegador) |
-| Open Finance | Autorização e transações do banco | Pluggy (regulada pelo Banco Central) e uma função no **seu** Supabase, que não guarda nada |
-
 Os arquivos que você importa (extratos, faturas, holerites) e os que chegam pelo "Compartilhar" do celular são lidos **no aparelho**.
 
 ## 3. Bases legais (LGPD)
@@ -35,7 +33,7 @@ Os arquivos que você importa (extratos, faturas, holerites) e os que chegam pel
 - **Acesso e portabilidade:** Ajustes → Dados → Baixar backup (JSON, opcionalmente com senha) e planilhas.
 - **Correção:** edite qualquer lançamento no app.
 - **Eliminação:** Ajustes → Dados → Apagar todos os dados (aparelho). Na nuvem: apague a conta no painel do Supabase (*Authentication → Users*) ou as linhas das tabelas `dhenors_*`.
-- **Revogação:** desligue a nuvem, os lembretes ou o Open Finance quando quiser.
+- **Revogação:** desligue a nuvem ou os lembretes quando quiser.
 
 ## 5. Retenção
 

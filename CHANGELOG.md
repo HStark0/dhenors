@@ -4,6 +4,17 @@ Todas as mudanças importantes do projeto. O app mostra o mesmo conteúdo em **A
 
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem [SemVer](https://semver.org/lang/pt-BR/). A versão vem do `package.json` e é espalhada por `npm run sync` (app, service worker e testes).
 
+## [3.3.1] — 2026-10-16
+
+### Corrigido
+- **Nuvem**: "Uma parte dos dados da nuvem não foi encontrada" impedia de desbloquear e sincronizar. Partes apagadas por engano (a limpeza das versões até a 1.0.0 removia partes ainda em uso) agora são recuperadas do histórico de versões ou dos dados do aparelho, e tudo é reenviado. A limpeza não apaga mais nada quando não consegue ler uma versão do histórico.
+
+### Alterado
+- **Nuvem**: cada pessoa cria a própria conta pelo app e a confirma pelo e-mail que o Supabase envia. A documentação não recomenda mais fechar o cadastro.
+
+### Removido
+- **Open Finance (Pluggy)**: a opção saiu de Ajustes → Dados. Para trazer transações do banco, use a importação de extrato (OFX, CSV ou PDF da fatura).
+
 ## [3.3.0] — 2026-10-16
 
 Revisão completa de qualidade: correções de perda de dados, de cálculos e de segurança. A versão volta a subir a partir da 3.2.0 (a 1.0.0 publicada antes foi um retrocesso de numeração), para que quem estava na 3.2.0 veja estas Novidades.

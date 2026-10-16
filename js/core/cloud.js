@@ -75,6 +75,7 @@ let wired = false;
 let realtime = null;
 let pollTimer = 0;
 let upgradePass = null; // frase digitada numa conta com PBKDF2 antigo: recifra tudo depois de ligar
+let repairOnLink = false; // faltavam partes na nuvem ao desbloquear: reenvia todas ao ligar
 
 const randomRev = () => (crypto.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).replace(/-/g, '').slice(0, 20);
 const uid = () => session.user.id;
@@ -191,10 +192,18 @@ async function fetchRow() {
 /** Última versão em comum com a nuvem (base do merge de 3 vias) — cifrada com o PIN. */
 const saveBase = (data) => store.setSecure('cloud:base', structuredClone(data));
 
-/** Baixa as partes listadas no índice que ainda não temos e monta o estado. */
-async function loadManifest(man, baseState = null) {
+const missingPart = () => Object.assign(new CloudError('Uma parte dos dados da nuvem não foi encontrada. Tente sincronizar de novo.'), { missing: true });
+
+/**
+ * Baixa as partes listadas no índice que ainda não temos e monta o estado.
+ * fill(nome): de onde tirar uma parte que sumiu da nuvem (→ valor ou undefined).
+ * → { state, repaired: partes que vieram do fill, lost: partes sem nenhuma cópia }
+ */
+async function loadManifest(man, baseState = null, fill = null) {
   const parts = {};
   const need = [];
+  const repaired = [];
+  const lost = [];
   const baseParts = baseState ? splitChunks(baseState) : {};
   const baseHashes = baseState ? await hashChunks(baseParts) : {};
   for (const [name, info] of Object.entries(man.chunks)) {
@@ -207,20 +216,80 @@ async function loadManifest(man, baseState = null) {
     const byRev = new Map((rows || []).map((r) => [r.rev, r]));
     for (const [name, info] of slice) {
       const row = byRev.get(info.rev);
-      if (!row) throw new CloudError('Uma parte dos dados da nuvem não foi encontrada. Tente sincronizar de novo.');
+      if (!row) {
+        if (!fill) throw missingPart();
+        const value = await fill(name);
+        if (value === undefined) lost.push(name);
+        else { parts[name] = value; repaired.push(name); }
+        continue;
+      }
       parts[name] = (await openPart(row.data, key, { userId: uid(), name, rev: info.rev, hash: info.hash })).value;
     }
   }
-  return joinChunks(parts);
+  return { state: joinChunks(parts), repaired, lost };
 }
 
-/** Linha remota → { remote, man|null } (aceita o formato antigo: estado inteiro). */
-async function readRemote(row, baseState) {
+/**
+ * Linha remota → { remote, man|null, damaged } (aceita o formato antigo: estado inteiro).
+ * Com fill, partes que sumiram da nuvem são completadas (damaged = true, man = null:
+ * o próximo envio manda todas as partes de novo). partial: aceita partes sem cópia.
+ */
+async function readRemote(row, baseState, { fill = null, partial = false } = {}) {
   const dec = await openManifest(row.data, key, { userId: uid(), version: row.version });
-  const remote = isManifest(dec) ? await loadManifest(dec, baseState) : dec;
-  assertSchema(remote);
-  return { remote, man: isManifest(dec) ? dec : null };
+  if (!isManifest(dec)) { assertSchema(dec); return { remote: dec, man: null, damaged: false }; }
+  const { state, repaired, lost } = await loadManifest(dec, baseState, fill);
+  if (lost.length && !partial) throw missingPart();
+  assertSchema(state);
+  const damaged = repaired.length + lost.length > 0;
+  return { remote: state, man: damaged ? null : dec, damaged };
 }
+
+/**
+ * Procura uma cópia de uma parte que sumiu no histórico de versões,
+ * da mais nova para a mais antiga. (Versões até a 1.0.0 apagavam, na
+ * limpeza, partes que o índice de outro aparelho ainda usava.)
+ */
+function historyFill() {
+  let list = null;
+  return async (name) => {
+    if (!list) {
+      try { list = (await http(`/rest/v1/${T.versions}?select=version,manifest&user_id=eq.${uid()}&order=version.desc`)) || []; } catch { list = []; }
+    }
+    for (const v of list) {
+      if (v.man === undefined) {
+        try { v.man = await openManifest(v.manifest, key, { userId: uid(), version: v.version }); } catch { v.man = null; }
+      }
+      const info = v.man?.chunks?.[name];
+      if (!info) continue;
+      const rows = await http(`/rest/v1/${T.chunks}?select=data&user_id=eq.${uid()}&rev=eq.${info.rev}`);
+      if (!rows?.[0]) continue;
+      try { return (await openPart(rows[0].data, key, { userId: uid(), name, rev: info.rev, hash: info.hash })).value; } catch { /* cópia ilegível: tenta a próxima */ }
+    }
+    return undefined;
+  };
+}
+
+/** Primeira fonte que tiver a parte. */
+const firstOf = (...fills) => async (name) => {
+  for (const f of fills) {
+    const value = await f(name);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+};
+
+/** readRemote que, se faltar parte na nuvem, completa com o histórico e com os dados deste aparelho. */
+async function readRemoteOrRepair(row, baseState) {
+  try {
+    return await readRemote(row, baseState);
+  } catch (err) {
+    if (!err.missing) throw err;
+    const local = splitChunks(store.data);
+    return readRemote(row, baseState, { fill: firstOf(historyFill(), (name) => local[name]), partial: true });
+  }
+}
+
+const REPAIRED_NOTICE = 'Algumas partes dos dados da nuvem tinham sumido. Foram recompostas com o histórico de versões e com este aparelho, e enviadas de novo.';
 
 /** Deixa só uma operação de rede por vez. */
 const serial = (fn) => { busy = busy.then(fn, fn); return busy; };
@@ -314,7 +383,8 @@ async function collectGarbage() {
   if (drop.length) await http(`/rest/v1/${T.versions}?user_id=eq.${uid()}&version=lt.${keep[keep.length - 1].version}`, { method: 'DELETE' });
   const used = new Set(Object.values(manifest?.chunks || {}).map((c) => c.rev));
   for (const v of keep) {
-    try { const m = await openManifest(v.manifest, key, { userId: uid(), version: v.version }); for (const c of Object.values(m.chunks || {})) used.add(c.rev); } catch { /* frase antiga */ }
+    // Versão ilegível: não dá para saber que partes ela usa, então não apaga nada desta vez
+    try { const m = await openManifest(v.manifest, key, { userId: uid(), version: v.version }); for (const c of Object.values(m.chunks || {})) used.add(c.rev); } catch { return; }
   }
   const before = new Date(Date.now() - ORPHAN_GRACE_MS).toISOString();
   const old = await http(`/rest/v1/${T.chunks}?select=rev&user_id=eq.${uid()}&created_at=lt.${encodeURIComponent(before)}`);
@@ -334,6 +404,7 @@ async function pull() {
   const row = await fetchRow();
   if (!row) {
     meta.version = null;
+    manifest = null; // o índice antigo pode citar partes que não existem mais: envia todas
     await saveMeta();
     return push();
   }
@@ -345,7 +416,8 @@ async function pull() {
     return setStatus('idle');
   }
   const base = await store.getSecure('cloud:base');
-  const { remote, man } = await readRemote(row, base);
+  const { remote, man, damaged } = await readRemoteOrRepair(row, base);
+  if (damaged) notify(REPAIRED_NOTICE);
   if (meta.dirty) {
     if (base) {
       // Mudanças dos dois lados: junta item a item usando a última versão em comum
@@ -376,6 +448,11 @@ async function pull() {
   meta.lastSync = Date.now();
   if (man) await store.setSecure('cloud:manifest', man);
   await saveBase(remote);
+  if (damaged) {
+    meta.dirty = true; // manifest = null: reenvia todas as partes e a nuvem volta a ficar inteira
+    await saveMeta();
+    return push();
+  }
   await saveMeta();
   setStatus('idle');
 }
@@ -670,14 +747,28 @@ export const cloud = {
     const k = await deriveKey(passphrase, salt, iterations, { extractable: true });
     let remote = null;
     let man = null;
+    let damaged = false;
     if (row) {
       key = k;
       try {
         ({ remote, man } = await readRemote(row, null));
       } catch (err) {
-        key = null;
-        if (err.badKey) throw new CloudError('Frase secreta incorreta. É a mesma que você criou no primeiro aparelho.');
-        throw err;
+        if (!err.missing) {
+          key = null;
+          if (err.badKey) throw new CloudError('Frase secreta incorreta. É a mesma que você criou no primeiro aparelho.');
+          throw err;
+        }
+        // A frase está certa (o índice abriu), mas faltam partes na nuvem.
+        // Aparelho já ligado: a sincronização completa com os dados dele.
+        // Aparelho novo: usa o histórico de versões e, sem cópia, segue sem aquela parte.
+        damaged = true;
+        if (meta.linked) {
+          meta.dirty = true; // mesmo sem mudanças locais, reenvia todas as partes
+          await store.setSecure('cloud:manifest', undefined);
+        } else {
+          ({ remote } = await readRemote(row, null, { fill: historyFill(), partial: true }));
+          if (remote?.schema == null) remote = null; // sem a parte "meta" não há o que aproveitar
+        }
       }
     }
     key = k;
@@ -686,10 +777,11 @@ export const cloud = {
     meta.remember = ['session', '30d', 'always'].includes(remember) ? remember : 'always';
     meta.rememberUntil = meta.remember === '30d' ? Date.now() + 30 * 86_400_000 : null;
     manifest = man;
+    repairOnLink = damaged;
     upgradePass = row && iterations < PIN_KDF.iterations ? String(passphrase) : null;
     await persistKey();
     await saveMeta();
-    return { remote, version: row?.version ?? null };
+    return { remote, version: row?.version ?? null, damaged };
   },
 
   /** Muda por quanto tempo a frase fica lembrada neste aparelho. */
@@ -710,13 +802,15 @@ export const cloud = {
       await store.applyRemote(remote);
       await saveBase(remote);
       meta.version = version;
-      meta.dirty = false;
+      meta.dirty = repairOnLink; // faltavam partes na nuvem: reenvia todas
       meta.lastSync = Date.now();
     } else {
       meta.version = version; // sobrescreve a versão atual da nuvem
       meta.dirty = true;
       manifest = null; // reenvia todas as partes
     }
+    if (!manifest) await store.setSecure('cloud:manifest', undefined); // init() não pode trazer um índice antigo de volta
+    repairOnLink = false;
     await saveMeta();
     await this.init();
   },
@@ -750,7 +844,7 @@ export const cloud = {
     const rows = await http(`/rest/v1/${T.versions}?select=manifest&user_id=eq.${uid()}&version=eq.${Number(version)}`);
     if (!rows?.[0]) throw new CloudError('Versão não encontrada.');
     const man = await openManifest(rows[0].manifest, key, { userId: uid(), version: Number(version) });
-    const old = await loadManifest(man, await store.getSecure('cloud:base'));
+    const { state: old } = await loadManifest(man, await store.getSecure('cloud:base'));
     assertSchema(old);
     return old;
   },

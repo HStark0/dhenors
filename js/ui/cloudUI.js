@@ -273,13 +273,17 @@ export async function passphraseDialog() {
         return undefined;
       }
       if (!result.remote) {
-        await cloud.link('local', null, null);
-        toast('Pronto! Seus dados agora ficam salvos na nuvem, criptografados.');
+        await cloud.link('local', null, result.version); // nuvem ilegível: substitui pela versão deste aparelho
+        toast(result.damaged
+          ? 'Os dados da nuvem estavam incompletos e não puderam ser recuperados. Os deste aparelho foram enviados no lugar.'
+          : 'Pronto! Seus dados agora ficam salvos na nuvem, criptografados.', { duration: result.damaged ? 9000 : undefined });
         return undefined;
       }
       if (!hasUserData(store.data)) {
         await cloud.link('cloud', result.remote, result.version);
-        toast('Dados da nuvem carregados neste aparelho.');
+        toast(result.damaged
+          ? 'Dados da nuvem carregados. Algumas partes tinham sumido e foram recuperadas do histórico; confira os lançamentos.'
+          : 'Dados da nuvem carregados neste aparelho.', { duration: result.damaged ? 9000 : undefined });
         return undefined;
       }
       setTimeout(() => chooseDialog(result), 50);
@@ -289,13 +293,14 @@ export async function passphraseDialog() {
 }
 
 /** Este aparelho já tem dados e a nuvem também: qual fica? */
-function chooseDialog({ remote, version }) {
+function chooseDialog({ remote, version, damaged }) {
   const count = countItems;
   openDialog({
     title: 'Quais dados manter?',
     size: 'sm',
     body: html`
       <p class="dialog__text">Este aparelho e a nuvem têm dados diferentes.</p>
+      ${damaged ? html`<div class="note note--warn">${icon('triangle-alert')}<span>Algumas partes dos dados da nuvem tinham sumido. O que foi possível veio do histórico de versões; o resto pode estar faltando.</span></div>` : ''}
       <div class="choice">
         <button type="button" class="choice__opt" data-pick="cloud">
           ${icon('cloud-download')}<span><strong>Usar os dados da nuvem</strong>
