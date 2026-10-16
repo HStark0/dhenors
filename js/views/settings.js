@@ -6,7 +6,7 @@
 import { html } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { openDialog, confirmDialog } from '../ui/dialog.js';
-import { field, categoryFields, bindCategorySelects } from '../ui/forms.js';
+import { field, categoryFields, bindCategorySelects, switchField } from '../ui/forms.js';
 import { tabsNav, currentTab } from '../ui/tabs.js';
 import { autoLockMinutes, setAutoLockMinutes, wipeAfter, setWipeAfter } from '../ui/lock.js';
 import { pinPad, bindPinPad } from '../ui/pinpad.js';
@@ -89,6 +89,7 @@ export default {
       toast(ok ? 'Armazenamento protegido.' : 'O navegador não permitiu agora. Instalar o app (Adicionar à tela inicial) costuma liberar.', { type: ok ? 'success' : 'info' });
       store.setUI({});
     },
+    'set:wipe-salary': () => wipeSalaryDialog(),
     'set:wipe': async () => {
       const ok = await confirmDialog({
         title: 'Apagar todos os dados',
@@ -561,6 +562,10 @@ function data() {
       <section class="card card--danger">
         <h2 class="card__title">${icon('triangle-alert')} Zona de perigo</h2>
         <div class="setting">
+          <div><strong>Apagar só o salário</strong><p class="muted small">Remove o salário, adicionais, descontos em folha e o vínculo. Contas, cartões, metas, investimentos e o resto do app continuam. Dá para desfazer logo em seguida.</p></div>
+          <button type="button" class="btn btn--ghost danger btn--sm" data-action="set:wipe-salary">Apagar salário</button>
+        </div>
+        <div class="setting">
           <div><strong>Apagar todos os dados</strong><p class="muted small">Remove tudo deste aparelho. Faça um backup antes.</p></div>
           <button type="button" class="btn btn--danger btn--sm" data-action="set:wipe">Apagar tudo</button>
         </div>
@@ -663,3 +668,23 @@ function news() {
 }
 
 
+
+/** Apagar só o salário: escolhe o que mais sai junto e confirma. */
+function wipeSalaryDialog() {
+  openDialog({
+    title: 'Apagar só o salário',
+    size: 'sm',
+    danger: true,
+    submitLabel: 'Apagar salário',
+    body: html`
+      <p class="dialog__text">Sempre sai: <strong>salário bruto, adicionais, descontos em folha, consignados, variáveis, sobreaviso, líquidos conferidos, admissão/13º e dia do pagamento</strong>.</p>
+      <p class="dialog__text muted small">Contas, cartões, parcelamentos, metas, investimentos, categorias, rendas extras fora da folha e ajustes do app <strong>não</strong> são tocados.</p>
+      ${switchField({ label: 'Também apagar férias, faltas e afastamentos', name: 'vacations', checked: true })}
+      ${switchField({ label: 'Também apagar a escala de plantões e as rendas pagas na folha', name: 'shifts', checked: false })}
+      ${switchField({ label: 'Também apagar benefícios, outros vínculos, FGTS e dados do IR anual', name: 'benefits', checked: false })}`,
+    onSubmit: (form) => {
+      A.clearSalaryData({ vacations: form.vacations.checked, shifts: form.shifts.checked, benefits: form.benefits.checked });
+      toast('Dados do salário apagados.', { action: { label: 'Desfazer', run: () => { store.undo(); toast('Salário restaurado.'); } } });
+    },
+  });
+}

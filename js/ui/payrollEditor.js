@@ -74,6 +74,7 @@ export function payslipHTML(p, outside = [], { thirteenth = null, actual = null 
           : `${formatPercent(p.inssBand, 2)} sobre ${formatBRL(p.taxable)}`, -p.inss)}
         ${row('Imposto de Renda', `base ${formatBRL(p.ir.base)} · ${p.ir.method}${p.ir.reduction ? ` · redução de ${formatBRL(p.ir.reduction)}` : ''}`, -p.ir.value, p.ir.value ? '' : 'isento')}
         ${p.deductions.map((d) => row(d.description, [d.detail, d.variable ? 'variável' : '', d.irDeductible ? 'dedutível do IR' : ''].filter(Boolean).join(' · '), -d.cents))}
+        <div class="payslip__row payslip__row--sub is-ded"><span>Total de descontos</span><span class="money neg">−${formatBRL(p.inss + p.ir.value + p.deductionsTotal)}</span></div>
       </div>
       <div class="payslip__net">
         <span>Líquido da folha${actual != null ? html`<small>estimado: ${formatBRL(p.net)}</small>` : ''}</span>
@@ -255,7 +256,7 @@ export function editPayrollLine(ym, kind, line = null) {
         </div>
 
         ${segmentedField({ label: 'Tipo de valor', name: 'mode', value: l.mode, options: [{ value: 'fixed', label: 'Valor em R$' }, { value: 'percent', label: 'Percentual' }, ...(isAdd ? [{ value: 'hours', label: 'Horas' }] : [])] })}
-        <div class="field">
+        <div class="field" data-value-field>
           <label class="field__label" for="pl-value" data-value-label>${l.mode === 'hours' ? 'Horas no mês' : 'Valor'}</label>
           <div class="field__control has-prefix">
             <span class="field__prefix" aria-hidden="true" data-prefix>${l.mode === 'percent' ? '%' : l.mode === 'hours' ? 'h' : 'R$'}</span>
@@ -276,6 +277,7 @@ export function editPayrollLine(ym, kind, line = null) {
               </div>
               <p class="field__hint">Ex.: 150 = hora + 50%</p>
             </div>
+            <p class="field__hint field--full" data-when-oncall ${l.hourKind === 'sobreaviso' ? '' : 'hidden'}>Sobreaviso: 1/3 da hora, ativo todo mês com valor fixo de <strong>R$ 0,00</strong>. O valor só aparece quando você informar as horas do mês (cartão "Sobreaviso" no Contracheque).</p>
             ${switchField({ label: 'Calcular o DSR (descanso semanal) sobre estas horas', name: 'dsr', checked: l.dsr ?? true, hint: 'Horas extras habituais refletem no domingo e nos feriados do mês.' })}
             <p class="field__hint field--full">Valor da hora = salário ÷ ${employmentOf(store.data.settings).hoursDivisor || 220} (horas extras e noturno incluem os adicionais fixos, como periculosidade). O divisor muda em "Salário e vínculo".</p>
           </div>` : ''}
@@ -332,6 +334,10 @@ export function editPayrollLine(ym, kind, line = null) {
         $('[data-when-percent]').hidden = v.mode !== 'percent';
         dlg.querySelectorAll('[data-when-hours]').forEach((el) => { el.hidden = v.mode !== 'hours'; });
         if (isAdd) $('[data-when-custom]').hidden = !(v.mode === 'hours' && v.hourKind === 'custom');
+        const onCallFixed = isAdd && v.mode === 'hours' && v.hourKind === 'sobreaviso' && !v.variable;
+        if (isAdd) $('[data-when-oncall]').hidden = !(v.mode === 'hours' && v.hourKind === 'sobreaviso');
+        $('[data-value-field]').hidden = onCallFixed; // fixo = R$ 0,00: as horas vêm a cada mês
+        form.value.required = !onCallFixed;
         if (!isAdd) {
           $('[data-when-loan]').hidden = !form.isLoan.checked;
           $('[data-recurrence]').hidden = form.isLoan.checked; // parcelado já tem início e fim

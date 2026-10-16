@@ -20,6 +20,9 @@ Primeira versão.
 ### Salário
 - Salário bruto com INSS e IR por ano (com aviso quando faltam tabelas), importação e conferência do holerite verba a verba.
 - Escala de plantões, previsão do IR anual, rescisão e FGTS, PLR/abono/VA-VR, outros vínculos, carreira.
+- 13º com média das variáveis habituais (horas extras, noturno, sobreaviso, plantões na folha): 1ª parcela de 50% até 30/11 e 2ª = total − 1ª − INSS − IR.
+- Sobreaviso: taxa fixa de 1/3 da hora, ativo todo mês, com as horas cumpridas informadas a cada mês. Descontos do salário sempre em vermelho.
+- Salário pago no mês seguinte: cartão com a competência trabalhada, o valor e a data de pagamento.
 
 ### Investimentos
 - Taxas do Banco Central, cotações (brapi), proventos, comparação com CDI/IPCA/Ibovespa, IR na venda de ações (DARF), reserva de emergência, independência financeira, PGBL × VGBL, metas ligadas a investimentos.

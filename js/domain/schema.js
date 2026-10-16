@@ -16,6 +16,7 @@
 //     payrollVariable: [adicional/desconto VARIÁVEL de um mês — ver domain/payroll.js],
 //     employment: { admission, regime: 'inss'|'fixed', fixedRateBp, thirteenth, hoursDivisor, familyChildren },
 //     actualNet: { "AAAA-MM": centavos },                     // líquido conferido no holerite real
+//     onCallHours: { "AAAA-MM": { idDaLinha: minutos } },      // horas de sobreaviso do mês
 //     vacations: [{ id, start, days, sellDays, advance13 }],  // férias
 //     absences: [{ id, ym, kind: 'atestado'|'inss'|'falta', days, note }],
 //     budgets: { idCategoria: centavos },                     // orçamento mensal por categoria
@@ -125,6 +126,7 @@ export function createEmptyState() {
       payrollVariable: [],
       employment: { admission: null, regime: 'inss', fixedRateBp: 1400, thirteenth: true, hoursDivisor: 220, familyChildren: 0 },
       actualNet: {},
+      onCallHours: {},
       vacations: [],
       absences: [],
       budgets: {},
@@ -237,6 +239,7 @@ export function sanitizeState(raw) {
       payrollVariable: arr(s.payrollVariable).map(sanitizeVariable).filter(Boolean),
       employment: sanitizeEmployment(s.employment),
       actualNet: sanitizeActual(s.actualNet),
+      onCallHours: sanitizeOnCall(s.onCallHours),
       vacations: arr(s.vacations).map(sanitizeVacation).filter(Boolean),
       absences: arr(s.absences)
         .filter((a) => isObj(a) && isValidYM(a.ym) && isInt(a.days) && a.days >= 1 && a.days <= 30)
@@ -556,6 +559,19 @@ function sanitizeEmployment(e) {
 }
 
 /** { "AAAA-MM": centavos } — ou, com anyKey, { id: centavos } (orçamentos). */
+/** { "AAAA-MM": { id: minutos } } — até 744 h (31 dias) por linha */
+function sanitizeOnCall(a) {
+  const out = {};
+  if (!isObj(a)) return out;
+  for (const [ym, lines] of Object.entries(a)) {
+    if (!isValidYM(ym) || !isObj(lines)) continue;
+    const clean = {};
+    for (const [id, min] of Object.entries(lines)) if (/^[\w-]{1,40}$/.test(id) && isInt(min) && min >= 0 && min <= 744 * 60) clean[id] = min;
+    if (Object.keys(clean).length) out[ym] = clean;
+  }
+  return out;
+}
+
 function sanitizeActual(a, anyKey = false) {
   const out = {};
   if (isObj(a)) {

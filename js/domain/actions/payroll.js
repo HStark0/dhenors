@@ -9,7 +9,7 @@
 
 import { store } from '../../core/store.js';
 import { isValidISO, isValidYM, ymOf, addMonthsYM } from '../../core/dates.js';
-import { newId } from '../schema.js';
+import { newId, createEmptyState } from '../schema.js';
 import { payrollProfileFor } from '../payroll.js';
 import { friendlyName, normalizeName } from '../payslip.js';
 import { ValidationError, text, cents, date, intRange, assertOpen, findOrThrow } from './core.js';
@@ -23,7 +23,10 @@ function payrollLine(x, kind) {
   if (x.mode === 'percent') {
     if (!Number.isInteger(x.value) || x.value <= 0 || x.value > 100000) throw new ValidationError('Percentual inválido.', 'value');
   } else if (x.mode === 'hours') {
-    if (!Number.isInteger(x.value) || x.value <= 0 || x.value > 744 * 60) throw new ValidationError('Informe as horas (ex.: 10 ou 10:30).', 'value');
+    // Sobreaviso fixo: R$ 0,00 no perfil (as horas vêm a cada mês)
+    const onCallFixed = x.hourKind === 'sobreaviso' && !x.ym && !x.variable;
+    if (onCallFixed) x = { ...x, value: 0 };
+    else if (!Number.isInteger(x.value) || x.value <= 0 || x.value > 744 * 60) throw new ValidationError('Informe as horas (ex.: 10 ou 10:30).', 'value');
   } else {
     cents(x.value, 'value');
   }
@@ -203,6 +206,52 @@ export function setSalaryDay(day) {
 }
 
 /** Dia fixo (salaryDay) ou N-ésimo dia útil. */
+/**
+ * Apaga SÓ a parte do salário. Contas, cartões, metas, investimentos,
+ * categorias e o resto do app ficam intactos. Pode ser desfeito.
+ *   sempre      perfis salariais (bruto, adicionais, descontos), consignados,
+ *               variáveis do mês, vínculo (admissão, regime, 13º), líquidos
+ *               conferidos, horas de sobreaviso, dia do pagamento
+ *   vacations   férias, faltas e afastamentos
+ *   shifts      escala de plantões, tipos de plantão e rendas pagas na folha
+ *   benefits    PLR/abono/VA-VR, outros vínculos, saldo do FGTS e dados do IR anual
+ * As tabelas de INSS/IR que você adicionou continuam (servem para qualquer salário).
+ */
+export function clearSalaryData({ vacations = true, shifts = false, benefits = false } = {}) {
+  const blank = createEmptyState().settings;
+  return store.commit((d) => {
+    const s = d.settings;
+    s.salaryHistory = [];
+    s.payrollLoans = [];
+    s.payrollVariable = [];
+    s.employment = blank.employment;
+    s.actualNet = {};
+    s.onCallHours = {};
+    s.payday = blank.payday;
+    s.salaryDay = blank.salaryDay;
+    s.salaryAccountId = null;
+    if (s.onboardingSteps) delete s.onboardingSteps.salary;
+    if (vacations) { s.vacations = []; s.absences = []; }
+    if (shifts) {
+      d.shifts = [];
+      s.shiftTypes = blank.shiftTypes;
+      d.extraIncomes = d.extraIncomes.filter((x) => !x.payroll);
+    }
+    if (benefits) { s.benefits = []; s.jobs = []; s.fgts = blank.fgts; s.irpf = blank.irpf; }
+  }, 'change', { undo: 'Dados do salário apagados' });
+}
+
+/** Horas de sobreaviso cumpridas no mês (minutos; null volta para as horas típicas). */
+export function setOnCallHours(ym, lineId, minutes) {
+  return store.commit((d) => {
+    d.settings.onCallHours ||= {};
+    const month = (d.settings.onCallHours[ym] ||= {});
+    if (minutes == null) delete month[lineId];
+    else month[lineId] = Math.max(0, Math.min(744 * 60, Math.round(minutes)));
+    if (!Object.keys(month).length) delete d.settings.onCallHours[ym];
+  }, 'Horas de sobreaviso');
+}
+
 export function savePayday({ mode, salaryDay, nth = 5, saturday = true, nextMonth = false }) {
   return store.commit((d) => {
     d.settings.payday = {

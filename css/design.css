@@ -336,3 +336,96 @@ body.is-scrolled .topbar {
    (sem esticar e abrir vão dentro do cartão de saldo) */
 .grid--hero { align-items: start; }
 .hero > .hero__payday { margin-top: var(--sp-2); }
+
+/* =============================================================
+   Acabamentos: abas, busca, janelas e seta de rolagem
+   ============================================================= */
+
+/* Troca de aba: o conteúdo abaixo das abas aparece suave, sem pular */
+.tab-enter #view > :not(.tabs, .page-head, .topbar) {
+  animation: tab-in 260ms cubic-bezier(.4, 0, .2, 1) both;
+}
+@keyframes tab-in { from { opacity: 0; transform: translateY(4px); } }
+.tabs__tab { transition: background-color 200ms var(--ease), color 200ms var(--ease), box-shadow 200ms var(--ease); }
+
+/* Campos de busca: borda sutil, respiro interno e ícone alinhado */
+.search .input, .listbox__search, .nav-search {
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+}
+[data-theme="dark"] :is(.search .input, .listbox__search, .nav-search) { background: var(--fill); }
+.search .input { min-height: 42px; padding: 10px 16px 10px 40px; }
+.search > .icon { left: 14px; width: 17px; height: 17px; }
+.search .input:hover { border-color: var(--border-strong); background: var(--surface); }
+[data-theme="dark"] .search .input:hover { background: var(--fill-strong); }
+.search .input:focus, .search .input:focus-visible {
+  outline: none; border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); box-shadow: var(--focus); background: var(--surface);
+}
+input[type="search"]::-webkit-search-decoration, input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+
+/* Busca dentro da lista de opções: um campo de verdade, sem moldura dupla */
+.listbox__search { margin: 6px 6px 2px; padding: 0 12px; gap: 8px; min-height: 40px; }
+.listbox__search:focus-within { border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); box-shadow: var(--focus); }
+.listbox__input, .listbox__input:focus, .listbox__input:focus-visible { outline: none; box-shadow: none; border: 0; background: transparent; padding: 8px 0; }
+
+/* Janelas: mais densas e sem rolagem "fantasma" */
+.dialog { overflow: hidden; max-height: calc(var(--vvh, 1vh) * 100 - 24px); }
+.dialog__form { max-height: calc(var(--vvh, 1vh) * 100 - 26px); }
+.dialog__body { position: relative; padding: var(--sp-1) var(--sp-5) var(--sp-5); }
+.dialog__header { padding: var(--sp-4) var(--sp-3) var(--sp-2) var(--sp-5); }
+.dialog__footer { padding: var(--sp-3) var(--sp-5); background: var(--surface); border-top: 1px solid var(--separator); }
+.dialog__body > * + * { margin-top: var(--sp-4); }
+.dialog__body .form-grid { gap: var(--sp-4) var(--sp-3); }
+.dialog__body .field { gap: 6px; }
+.dialog__body > .dialog__subtitle { margin-top: var(--sp-5); padding-top: var(--sp-4); }
+@media (max-width: 559px) {
+  .dialog__body { padding: var(--sp-1) var(--sp-4) var(--sp-4); }
+  .dialog__header { padding: var(--sp-4) var(--sp-2) var(--sp-2) var(--sp-4); }
+  .dialog__footer { padding: var(--sp-3) var(--sp-4) max(var(--sp-3), env(safe-area-inset-bottom)); }
+  .dialog, .dialog__form { max-height: calc(var(--vvh, 1vh) * 92); }
+}
+
+/* Seta de "tem mais": só um esmaecido curto e a seta, sem sombra */
+[data-scroll-more]::after {
+  height: 28px; margin-top: -28px;
+  background:
+    var(--cue-arrow) center bottom 2px / 16px no-repeat,
+    linear-gradient(to bottom, transparent, var(--cue-bg, var(--surface)) 85%);
+  opacity: .9;
+}
+.page-cue { box-shadow: 0 2px 4px rgb(0 0 0 / .05); border-color: var(--border); background: var(--surface); }
+.dialog__body[data-scroll-more]::after { margin-inline: calc(var(--sp-5) * -1); }
+@media (max-width: 559px) { .dialog__body[data-scroll-more]::after { margin-inline: calc(var(--sp-4) * -1); } }
+
+/* =============================================================
+   Salário: competência × caixa e descontos em destaque
+   ============================================================= */
+.competence__grid { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.competence__item { padding: var(--sp-4); border-radius: var(--radius); background: var(--surface-2); display: flex; flex-direction: column; gap: 2px; }
+.competence__item--muted { background: transparent; border: 1px dashed var(--separator); }
+.competence__label { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.competence__main { font-size: var(--fs-md); }
+.competence__value { font-size: var(--fs-xl); font-weight: 700; letter-spacing: var(--track-tight); margin-top: var(--sp-1); }
+
+/* Descontos sempre em vermelho, com destaque */
+.payslip .money.neg, .mini-list .money.neg, .hero__formula .neg, .entity__value.neg { color: var(--neg); font-weight: 650; }
+.payslip__row--sub.is-ded span:last-child { color: var(--neg); font-weight: 700; }
+.stackbar__seg--inss, .dot--inss { background: color-mix(in srgb, var(--neg) 55%, #FF9F0A); }
+.stackbar__seg--ir, .dot--ir { background: var(--neg); }
+.stackbar__seg--ded, .dot--ded { background: color-mix(in srgb, var(--neg) 55%, var(--surface)); }
+.stackbar__seg--net, .dot--net { background: var(--pos); }
+.listbox__search:focus-within { box-shadow: none; border-color: var(--primary); }
+.listbox__search + .listbox { padding-top: 2px; }
+
+/* Cartão de saldo: 13º num mini card ao lado do valor (não soma no saldo) */
+.hero__value-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
+.hero__value-row > .hero__value { min-width: 0; }
+.hero__mini {
+  display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius); background: color-mix(in srgb, var(--pos) 10%, var(--surface-2));
+  min-width: 180px;
+}
+.hero__mini-label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
+.hero__mini-label .icon { color: var(--pos); }
+.hero__mini-value { font-size: var(--fs-xl); font-weight: 700; letter-spacing: var(--track-tight); color: var(--pos); line-height: 1.2; }
+.hero__mini-note { font-size: var(--fs-xs); color: var(--muted); }
+@media (max-width: 559px) { .hero__mini { flex: 1 1 100%; } }

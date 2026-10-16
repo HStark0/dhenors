@@ -232,7 +232,7 @@ export function insightsFor(state, month, today = todayISO()) {
   }
 
   if (income.thirteenth) {
-    out.push({ tone: 'good', title: `${income.thirteenth.label}: ${formatBRL(income.thirteenth.net)}`, text: 'Já está somado na renda do mês. Bom momento para reforçar a reserva ou quitar dívidas.' });
+    out.push({ tone: 'good', title: `${income.thirteenth.label}: ${formatBRL(income.thirteenth.net)}`, text: 'Chega à parte do salário e não entra no saldo previsto do mês. Bom momento para reforçar a reserva ou quitar dívidas.' });
   }
 
   const loansEnding = (income.payroll.deductions || []).filter((d) => d.loan && d.loan.endYM <= addMonthsYM(ym, 2));

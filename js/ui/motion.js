@@ -25,9 +25,16 @@ let lastRoute = '';
 let enterTimer = 0;
 
 /** Chame depois de cada render da tela. */
-export function afterViewRender(root, route, { entering = false } = {}) {
-  if (entering) {
-    document.body.classList.remove('route-enter');
+export function afterViewRender(root, route, { entering = false, tabOnly = false } = {}) {
+  if (tabOnly) {
+    // Troca de aba: só o conteúdo abaixo das abas aparece suave (sem cascata)
+    document.body.classList.remove('route-enter', 'tab-enter');
+    void document.body.offsetWidth;
+    document.body.classList.add('tab-enter');
+    clearTimeout(enterTimer);
+    enterTimer = setTimeout(() => document.body.classList.remove('tab-enter'), 400);
+  } else if (entering) {
+    document.body.classList.remove('route-enter', 'tab-enter');
     // força o navegador a "esquecer" a animação anterior antes de reiniciar
     void document.body.offsetWidth;
     document.body.classList.add('route-enter');

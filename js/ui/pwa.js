@@ -108,7 +108,7 @@ export function initViewport() {
   const vv = globalThis.visualViewport;
   const set = () => {
     const h = vv ? vv.height : innerHeight;
-    document.documentElement.style.setProperty('--vvh', `${h}px`);
+    document.documentElement.style.setProperty('--vvh', `${h / 100}px`); // 1% da altura visível (como 1vh)
     document.documentElement.classList.toggle('kb-open', vv ? innerHeight - vv.height > 150 : false);
   };
   vv?.addEventListener('resize', set);

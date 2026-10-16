@@ -8,7 +8,7 @@ import { meter } from '../../ui/charts.js';
 import { confirmDialog } from '../../ui/dialog.js';
 import { toast } from '../../ui/toast.js';
 import * as E from '../../ui/editors.js';
-import { payslipHTML } from '../../ui/payrollEditor.js';
+import { payslipHTML, parseHours, hoursToInput } from '../../ui/payrollEditor.js';
 import { printPayslip, openExportDialog } from '../../ui/exports.js';
 import { openPayslipImport } from '../../ui/payslipImport.js';
 import { openDialog } from '../../ui/dialog.js';
@@ -19,10 +19,10 @@ import {
   formatMonth, formatMonthShort, formatDateBR, todayISO, relativeDays, addMonthsYM, addDaysISO, weekdayLong,
 } from '../../core/dates.js';
 import {
-  payrollProfileFor, computePayroll, loanStatus, payrollFor, variableFor, employmentOf, thirteenthFor,
-  paydayForCompetence, paydayLabel, vacationFor, absencesIn, paydayOf, HOUR_KINDS, formatHours,
+  payrollProfileFor, computePayroll, loanStatus, payrollFor, variableFor, employmentOf,
+  paydayForCompetence, paydayLabel, vacationFor, absencesIn, paydayOf, HOUR_KINDS, formatHours, onCallLinesFor, paydayIn,
 } from '../../domain/payroll.js';
-import { payslipIncome as incomeFor } from '../../domain/ledger.js';
+import { payslipIncome as incomeFor, thirteenthOf } from '../../domain/ledger.js';
 import { tablesFor } from '../../domain/taxTables.js';
 import * as A from '../../domain/actions.js';
 
@@ -54,7 +54,7 @@ export function renderPayslip() {
       ${profile.legacyNet ? html`
         <div class="banner" role="note">
           ${icon('info')}
-          <p>Seu salário foi cadastrado na versão anterior como valor <strong>líquido</strong>. Informe o bruto para o app calcular INSS, IR, adicionais e descontos.</p>
+          <p>Seu salário foi cadastrado no formato antigo como valor <strong>líquido</strong>. Informe o bruto para o app calcular INSS, IR, adicionais e descontos.</p>
           <button type="button" class="btn btn--secondary btn--sm" data-action="sal:base">Informar bruto</button>
         </div>` : ''}
 
@@ -67,6 +67,8 @@ export function renderPayslip() {
         </div>
       </div>
 
+      ${competenceCard(d.settings, ym)}
+      ${onCallCard(d.settings, ym, p)}
       ${baseCard(profile, ym)}
       <section class="grid grid--hero">
         ${hero(p, inc, ym)}
@@ -122,6 +124,7 @@ export const payslipActions = {
     'sal:actual': () => actualDialog(store.ui.ym),
     'sal:actual-clear': () => { A.setActualNet(store.ui.ym, null); toast('Voltando a usar a estimativa.'); },
     'sal:import': () => openPayslipImport(store.ui.ym),
+    'oncall:hours': () => onCallDialog(store.ui.ym),
     'abs:new': () => absenceDialog(store.ui.ym, null),
     'abs:edit': (el) => absenceDialog(store.ui.ym, (store.data.settings.absences || []).find((a) => a.id === el.dataset.id)),
     'abs:delete': (el) => { A.deleteAbsence(el.dataset.id); toast('Removido.'); },
@@ -182,8 +185,8 @@ function hero(p, inc, ym) {
       ${p.legacyNet ? '' : html`
         <p class="hero__formula">
           <span>${formatBRL(p.gross)} bruto</span>
-          <span aria-hidden="true">−</span><span>${formatBRL(p.inss + p.ir.value)} impostos</span>
-          ${p.deductionsTotal ? html`<span aria-hidden="true">−</span><span>${formatBRL(p.deductionsTotal)} descontos</span>` : ''}
+          <span aria-hidden="true">−</span><span class="neg">${formatBRL(p.inss + p.ir.value)} impostos</span>
+          ${p.deductionsTotal ? html`<span aria-hidden="true">−</span><span class="neg">${formatBRL(p.deductionsTotal)} descontos</span>` : ''}
         </p>
         <div class="stackbar" role="img" aria-label="${parts.map((x) => `${x.label}: ${formatBRL(x.cents)}`).join(', ')}">
           ${parts.map((x) => html`<span class="stackbar__seg stackbar__seg--${x.key}" style="width:${((x.cents / gross) * 100).toFixed(2)}%" title="${x.label}: ${formatBRL(x.cents)}"></span>`)}
@@ -196,7 +199,8 @@ function hero(p, inc, ym) {
       <div class="hero__payday">
         ${icon('calendar')}
         <span>Pagamento <strong>${paydayLabel(s)}</strong> · cai em <strong>${formatDateBR(payday)}</strong> (${relativeDays(payday)})</span>
-        ${inc.extrasCents || inc.thirteenth ? html`<span class="hero__perday">Renda do mês${inc.thirteenth ? ' (com 13º)' : ''}: <strong>${formatBRL(inc.total)}</strong></span>` : ''}
+        ${inc.extrasCents ? html`<span class="hero__perday">Renda do mês: <strong>${formatBRL(inc.total)}</strong></span>` : ''}
+        ${inc.thirteenth ? html`<span class="hero__perday">${inc.thirteenth.label}: <strong>${formatBRL(inc.thirteenth.net)}</strong> (à parte)</span>` : ''}
       </div>
     </article>`;
 }
@@ -424,18 +428,26 @@ function thirteenthCard(settings, ym) {
   const emp = employmentOf(settings);
   if (!emp.thirteenth) return '';
   const year = ym.slice(0, 4);
-  const nov = thirteenthFor(settings, `${year}-11`);
-  const dec = thirteenthFor(settings, `${year}-12`);
+  const nov = thirteenthOf(store.data, `${year}-11`);
+  const dec = thirteenthOf(store.data, `${year}-12`);
   if (!nov && !dec) return '';
   const ref = dec || nov;
+  const pension = emp.regime === 'fixed' ? 'Previdência' : 'INSS';
   return html`
     <article class="card">
       <header class="card__header"><h2 class="card__title">${icon('sparkles')} 13º salário de ${year}</h2></header>
       <p class="big-number money">${formatBRL((nov?.net || 0) + (dec?.net || 0))}</p>
-      <p class="muted small">líquido estimado · ${ref.avos}/12 avos · bruto ${formatBRL(ref.gross)}</p>
+      <p class="muted small">líquido estimado · ${ref.avos}/12 avos (mês com 15 dias ou mais conta inteiro)</p>
       <ul class="mini-list">
-        ${nov ? html`<li><span>1ª parcela <small class="muted">até 30/11 · sem descontos</small></span><span class="money pos">${formatBRL(nov.net)}</span></li>` : ''}
-        ${dec ? html`<li><span>2ª parcela <small class="muted">até 20/12 · com ${employmentOf(settings).regime === 'fixed' ? 'previdência' : 'INSS'} e IR</small></span><span class="money pos">${formatBRL(dec.net)}</span></li>` : ''}
+        <li><span>Salário + adicionais fixos</span><span class="money">${formatBRL(ref.base)}</span></li>
+        <li><span>Média das variáveis <small class="muted">${ref.averageMonths ? `horas, sobreaviso, plantões · ${plural(ref.averageMonths, 'mês', 'meses')}` : 'nenhuma no ano'}</small></span><span class="money">${formatBRL(ref.average)}</span></li>
+        <li><span><strong>13º bruto</strong> <small class="muted">× ${ref.avos}/12</small></span><strong class="money">${formatBRL(ref.gross)}</strong></li>
+        ${nov ? html`<li><span>1ª parcela <small class="muted">50% · até 30/11 · sem descontos</small></span><span class="money pos">${formatBRL(nov.net)}</span></li>` : ''}
+        ${dec ? html`
+          <li><span>1ª parcela já paga</span><span class="money neg">−${formatBRL(dec.first)}</span></li>
+          <li><span>${pension} sobre o 13º</span><span class="money neg">−${formatBRL(dec.inss)}</span></li>
+          <li><span>IR sobre o 13º <small class="muted">tributação exclusiva</small></span><span class="money neg">${dec.ir ? `−${formatBRL(dec.ir)}` : 'isento'}</span></li>
+          <li><span><strong>2ª parcela</strong> <small class="muted">até 20/12</small></span><strong class="money pos">${formatBRL(dec.net)}</strong></li>` : ''}
       </ul>
       ${emp.admission ? '' : html`<p class="field__hint">Informe a data de admissão (em "Editar" do salário base) para o 13º proporcional do primeiro ano.</p>`}
     </article>`;
@@ -575,6 +587,91 @@ function absenceDialog(ym, a) {
     onSubmit: (form) => {
       A.saveAbsence({ id: a?.id, ym, kind: form.querySelector('[name="kind"]:checked').value, days: Number(form.days.value), note: form.note.value });
       toast('Salvo. O contracheque foi recalculado.');
+    },
+  });
+}
+
+// ---------- Salário pago no mês seguinte ----------
+
+/**
+ * Regime "o salário do mês cai no mês seguinte": deixa claro qual
+ * competência (mês trabalhado) é paga em qual mês (caixa).
+ */
+function competenceCard(settings, ym) {
+  if (!paydayOf(settings).nextMonth) return '';
+  const prev = addMonthsYM(ym, -1);
+  const paidNow = incomeFor(store.data, prev);
+  const current = incomeFor(store.data, ym);
+  const value = (inc) => inc.actual ?? inc.payroll.net;
+  return html`
+    <article class="card competence" aria-label="Salário pago no mês seguinte">
+      <header class="card__header">
+        <h2 class="card__title">${icon('calendar-range')} O salário de cada mês cai no mês seguinte</h2>
+      </header>
+      <div class="competence__grid">
+        <div class="competence__item">
+          <p class="competence__label">Competência vigente</p>
+          <p class="competence__main">Trabalhado em <strong>${formatMonth(ym)}</strong></p>
+          <p class="competence__value money">${formatBRL(value(current))}</p>
+          <p class="small muted">salário desta competência · ${current.actual != null ? 'conferido no holerite' : 'estimado'}</p>
+        </div>
+        <div class="competence__item">
+          <p class="competence__label">Pagamento</p>
+          <p class="competence__main">Cai em <strong>${formatDateBR(paydayForCompetence(settings, ym))}</strong></p>
+          <p class="competence__value money pos">${formatBRL(value(current))}</p>
+          <p class="small muted">próximo salário estimado · ${formatMonth(addMonthsYM(ym, 1))} (mês de caixa)</p>
+        </div>
+        <div class="competence__item competence__item--muted">
+          <p class="competence__label">Recebido neste mês</p>
+          <p class="competence__main">Competência de <strong>${formatMonth(prev)}</strong></p>
+          <p class="competence__value money">${formatBRL(value(paidNow))}</p>
+          <p class="small muted">caiu em ${formatDateBR(paydayIn(settings, ym))}</p>
+        </div>
+      </div>
+    </article>`;
+}
+
+// ---------- Sobreaviso ----------
+
+/** Sobreaviso ativo: pede as horas cumpridas no mês. */
+function onCallCard(settings, ym, p) {
+  const lines = onCallLinesFor(settings, ym);
+  if (!lines.length) return '';
+  const pending = lines.filter((l) => l.minutes == null);
+  const total = p.additions.filter((a) => lines.some((l) => l.id === a.id)).reduce((s, a) => s + a.cents, 0);
+  return html`
+    <article class="card oncall ${pending.length ? 'tone-warn' : 'tone-good'}">
+      <header class="card__header">
+        <h2 class="card__title">${icon('alarm-clock')} Sobreaviso de ${formatMonth(ym)}</h2>
+        <button type="button" class="btn btn--${pending.length ? 'primary' : 'ghost'} btn--sm" data-action="oncall:hours">${icon('pencil', 'icon--xs')} ${pending.length ? 'Informar horas' : 'Alterar horas'}</button>
+      </header>
+      <ul class="mini-list">
+        ${lines.map((l) => html`
+          <li>
+            <span>${l.description} <small class="muted">1/3 da hora · ${l.minutes == null ? html`<span class="state--warn">sem horas no mês · R$ 0,00 até você informar</span>` : `${formatHours(l.minutes)} no mês`}</small></span>
+            <span class="money">${formatBRL(p.additions.find((a) => a.id === l.id)?.cents || 0)}</span>
+          </li>`)}
+      </ul>
+      <p class="small muted">1/3 do valor da hora normal (CLT art. 244 e Súmula 428 do TST). Fica ativo todo mês com valor fixo de R$ 0,00 e só soma quando as horas do mês são informadas. Total no mês: <strong>${formatBRL(total)}</strong>.</p>
+    </article>`;
+}
+
+function onCallDialog(ym) {
+  const lines = onCallLinesFor(store.data.settings, ym);
+  if (!lines.length) return;
+  openDialog({
+    title: `Horas de sobreaviso · ${formatMonth(ym)}`,
+    size: 'sm',
+    submitLabel: 'Salvar',
+    body: html`
+      <p class="dialog__text muted">Quantas horas você ficou de sobreaviso neste mês? Ex.: 36, 36:30 ou 36,5.</p>
+      ${lines.map((l) => field({ label: l.description, name: `h-${l.id}`, value: l.minutes == null ? '' : hoursToInput(l.minutes), required: true, placeholder: '0', extra: { inputmode: 'decimal', autocomplete: 'off' }, hint: '0 = sem sobreaviso neste mês (R$ 0,00)' }))}`,
+    onSubmit: (form) => {
+      const values = lines.map((l) => [l, parseHours(form[`h-${l.id}`].value)]);
+      const bad = values.find(([, v]) => !Number.isFinite(v) || v > 744 * 60);
+      if (bad) { toast(`Horas inválidas em "${bad[0].description}".`, { type: 'error' }); return true; }
+      for (const [l, v] of values) A.setOnCallHours(ym, l.id, v);
+      toast('Horas de sobreaviso salvas.');
     },
   });
 }

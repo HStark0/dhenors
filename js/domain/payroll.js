@@ -23,6 +23,13 @@
 //   employment      { admission, regime: 'inss'|'fixed', fixedRateBp, thirteenth,
 //                     hoursDivisor (220), familyChildren (salário-família) }
 //   absences        [{ id, ym, kind: 'atestado'|'inss'|'falta', days }]
+//   onCallHours     { "AAAA-MM": { [idDaLinha]: minutos } } — horas de
+//                   sobreaviso REALMENTE cumpridas no mês (ver abaixo)
+//
+// Sobreaviso (CLT art. 244 §2º e Súmula 428 do TST): taxa FIXA de 1/3 do
+//   valor da hora normal. A linha fica no perfil e se repete em TODOS os
+//   meses em que estiver ativa, com valor FIXO de R$ 0,00: só ganha valor
+//   quando as horas do mês são informadas (pendingHours = ainda sem horas).
 //
 // Linha POR HORAS (só adicionais): { mode: 'hours', value: minutos,
 //   hourKind: 'he50'|'he100'|'sobreaviso'|'noturno'|'custom', hourPct, dsr }
@@ -233,8 +240,9 @@ export function absencesIn(settings, ym) {
  * @param {object} o.employment  regime, divisor de horas, salário-família
  * @param {number} o.workedDays  dias pagos pelo empregador (férias e INSS fora)
  * @param {object} o.absence     { sick, falta } — atestado pago e faltas
+ * @param {object} o.hourOverrides  { [idDaLinha]: minutos } — horas de sobreaviso do mês
  */
-export function computePayroll(profile, ym, { extras = 0, loans = [], variable = [], employment = DEFAULT_EMPLOYMENT, workedDays = 30, absence = null } = {}) {
+export function computePayroll(profile, ym, { extras = 0, loans = [], variable = [], employment = DEFAULT_EMPLOYMENT, workedDays = 30, absence = null, hourOverrides = {} } = {}) {
   const table = tablesFor(Number(ym.slice(0, 4)));
   const emp = { ...DEFAULT_EMPLOYMENT, ...employment };
   const empty = {
@@ -298,12 +306,18 @@ export function computePayroll(profile, ym, { extras = 0, loans = [], variable =
     const hourBase = (a.hourBase || kind.base) === 'salaryAdds' ? fullBase + addsForHour : fullBase;
     const hourly = hourBase / divisor;
     const factor = hourFactor(a);
-    const effMinutes = kind.reduced ? (a.value * 60) / 52.5 : a.value; // hora noturna reduzida (52min30s)
+    // Sobreaviso do perfil: vale R$ 0,00 até as horas do mês serem informadas
+    const onCall = a.hourKind === 'sobreaviso' && !a.ym;
+    const minutes = onCall ? (Number.isInteger(hourOverrides[a.id]) ? hourOverrides[a.id] : 0) : a.value;
+    const pendingHours = onCall && !Number.isInteger(hourOverrides[a.id]);
+    const effMinutes = kind.reduced ? (minutes * 60) / 52.5 : minutes; // hora noturna reduzida (52min30s)
     const cents = Math.round((hourly * effMinutes / 60) * factor);
     const factorLabel = a.hourKind === 'sobreaviso' ? '1/3 da hora' : a.hourKind === 'noturno' ? '20% (hora reduzida)' : `${(factor * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% da hora`;
     hours.push({
-      id: a.id, description: a.description, cents, taxable: a.taxable !== false, variable: Boolean(a.ym), hours: a.value,
-      detail: `${formatHours(a.value)} × ${factorLabel} · hora R$ ${(hourly / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      // Horas que mudam todo mês (inclui o sobreaviso) são verbas VARIÁVEIS:
+      // entram na média do 13º e das férias, não no salário fixo
+      id: a.id, description: a.description, cents, taxable: a.taxable !== false, variable: Boolean(a.ym) || onCall, hours: minutes, pendingHours,
+      detail: `${formatHours(minutes)} × ${factorLabel} · hora R$ ${(hourly / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${pendingHours ? ' · sem horas no mês' : ''}`,
     });
     if (a.dsr && business > 0 && cents > 0) {
       hours.push({
@@ -379,8 +393,19 @@ export function payrollFor(settings, ym, extras = 0) {
     loans: settings.payrollLoans || [],
     variable: variableFor(settings, ym),
     employment: employmentOf(settings),
+    hourOverrides: settings.onCallHours?.[ym] || {},
     ...daysFor(settings, ym),
   });
+}
+
+/** Linhas de sobreaviso do perfil do mês, com as horas informadas (ou null = R$ 0,00). */
+export function onCallLinesFor(settings, ym) {
+  const profile = payrollProfileFor(settings, ym);
+  if (!profile || profile.legacyNet) return [];
+  const informed = settings.onCallHours?.[ym] || {};
+  return (profile.additions || [])
+    .filter((a) => a.mode === 'hours' && a.hourKind === 'sobreaviso')
+    .map((a) => ({ id: a.id, description: a.description, minutes: Number.isInteger(informed[a.id]) ? informed[a.id] : null }));
 }
 
 /** Dias pagos pela empresa no mês e afastamentos (férias, INSS, atestado, faltas). */
@@ -409,12 +434,41 @@ export function thirteenthMonths(admission, year) {
 }
 
 /**
- * 13º salário: 1ª parcela em novembro (metade, sem descontos) e 2ª em
- * dezembro (o restante, com previdência e IR exclusivo na fonte).
- * Base: salário base + adicionais FIXOS tributáveis, proporcional aos avos.
- * → null nos outros meses ou se desligado.
+ * Média mensal das verbas VARIÁVEIS habituais do ano (horas extras e DSR,
+ * adicional noturno, sobreaviso, adicionais variáveis lançados e plantões
+ * pagos na folha), de janeiro — ou do mês de admissão — até `lastMonth`.
+ * Divide pelos meses com salário no período (meses trabalhados).
+ * @param {(ym: string) => number} extrasFor  plantões/extras NA FOLHA do mês (bruto)
  */
-export function thirteenthFor(settings, ym) {
+export function variableAverageFor(settings, year, lastMonth, extrasFor = () => 0) {
+  const adm = parseISO(employmentOf(settings).admission);
+  const first = !adm || adm.y < year ? 1 : adm.y === year ? adm.m : 13;
+  let total = 0;
+  let months = 0;
+  for (let m = first; m <= lastMonth; m++) {
+    const mym = `${year}-${String(m).padStart(2, '0')}`;
+    const profile = payrollProfileFor(settings, mym);
+    if (!profile || profile.legacyNet) continue;
+    const p = payrollFor(settings, mym, extrasFor(mym) || 0);
+    total += p.extras + p.additions.filter((a) => a.taxable && a.variable).reduce((s, a) => s + a.cents, 0);
+    months++;
+  }
+  return { average: months ? Math.round(total / months) : 0, months, total };
+}
+
+/**
+ * 13º salário (Lei 4.090/62 e 4.749/65):
+ *   avos     1/12 por mês com 15 dias ou mais trabalhados (thirteenthMonths)
+ *   base     salário + adicionais FIXOS tributáveis + MÉDIA das variáveis
+ *   total    base × avos ÷ 12
+ *   1ª parc. 50% do total (média até outubro), até 30/11, sem INSS/IR
+ *   2ª parc. total (média até novembro) − 1ª parcela − INSS sobre o
+ *            total − IRRF exclusivo sobre o total, até 20/12
+ * Tudo em centavos inteiros (arredondamento a cada etapa).
+ * → null nos outros meses ou se desligado.
+ * @param {(ym: string) => number} [extrasFor]  plantões na folha por mês (para a média)
+ */
+export function thirteenthFor(settings, ym, extrasFor = () => 0) {
   const emp = employmentOf(settings);
   const month = Number(ym.slice(5, 7));
   if (!emp.thirteenth || (month !== 11 && month !== 12)) return null;
@@ -426,14 +480,18 @@ export function thirteenthFor(settings, ym) {
   if (!avos) return null;
   const table = tablesFor(year);
   const fixed = computePayroll(profile, ym, { employment: emp }); // só o fixo: sem variáveis/plantões
-  const fullBase = fixed.base + fixed.additions.filter((a) => a.taxable).reduce((s, a) => s + a.cents, 0);
-  const gross = Math.round((fullBase * avos) / 12);
-  const first = Math.round(gross / 2);
+  const fullBase = fixed.base + fixed.additions.filter((a) => a.taxable && !a.variable).reduce((s, a) => s + a.cents, 0);
+  // 1ª parcela: média até outubro · total (2ª parcela): média até novembro
+  const avgFirst = variableAverageFor(settings, year, 10, extrasFor);
+  const avg = month === 11 ? avgFirst : variableAverageFor(settings, year, 11, extrasFor);
+  const gross = Math.round(((fullBase + avg.average) * avos) / 12);
+  const first = Math.round(Math.round(((fullBase + avgFirst.average) * avos) / 12) / 2);
+  const parts = { avos, base: fullBase, average: avg.average, averageMonths: avg.months };
 
   const advanced = advanced13In(settings, year);
   if (month === 11) {
     if (advanced) return null; // a 1ª parcela já veio com as férias
-    return { part: 1, label: '13º salário — 1ª parcela', avos, gross, first, inss: 0, ir: 0, net: first };
+    return { part: 1, label: '13º salário — 1ª parcela', ...parts, gross, first, inss: 0, ir: 0, net: first };
   }
   const pension = pensionFor(gross, table, emp);
   // IR exclusivo na fonte do 13º (a redução de 2026 também se aplica, segundo a Receita)
@@ -441,7 +499,7 @@ export function thirteenthFor(settings, ym) {
   const tax = tableTax(irBase, table);
   const irValue = tax - irReductionFor(gross, tax, table);
   return {
-    part: 2, label: '13º salário — 2ª parcela', avos, gross, first, advanced,
+    part: 2, label: '13º salário — 2ª parcela', ...parts, gross, first, advanced,
     inss: pension.value, ir: irValue, net: gross - first - pension.value - irValue,
   };
 }

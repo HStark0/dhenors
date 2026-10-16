@@ -25,6 +25,8 @@ export const CHANGELOG = [
         'Salário bruto com INSS e IR calculados, importação e conferência do holerite em PDF, verba a verba.',
         'Escala de plantões que gera as rendas extras sozinha.',
         'Previsão do IR anual, rescisão, FGTS estimado, PLR/abono/VA-VR, outros vínculos de trabalho e linha do tempo da carreira.',
+        '13º com a média das variáveis (horas extras, noturno, sobreaviso e plantões), 1ª parcela de 50% e 2ª com INSS e IR sobre o total.',
+        'Sobreaviso de 1/3 da hora ativo todo mês, com as horas de cada mês informadas à parte; aviso de competência quando o salário cai no mês seguinte.',
       ] },
       { title: 'Investimentos', items: [
         'CDI/Selic/IPCA do Banco Central, cotações de ações e FIIs, proventos, comparação com CDI/IPCA/Ibovespa.',

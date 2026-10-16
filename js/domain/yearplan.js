@@ -26,10 +26,11 @@ export function yearPlan(state, startYM, months = 12, today = todayISO()) {
     const m = computeMonth(state, p.ym, today);
     const annual = m.items.filter((i) => i.kind === 'recurring' && (FREQ_MONTHS[i.freq] || 1) >= 6).map((i) => ({ label: i.description, cents: i.cents }));
     const big = m.items.filter((i) => i.kind === 'expense' && i.cents >= 50000).map((i) => ({ label: i.description, cents: i.cents }));
-    const balance = m.income.total - (p.recurring + p.installment + p.variable);
+    const income = m.income.total + (m.income.thirteenthNet || 0); // 13º à parte do saldo do mês, mas conta no ano
+    const balance = income - (p.recurring + p.installment + p.variable);
     return {
       ym: p.ym,
-      income: m.income.total,
+      income,
       thirteenth: m.income.thirteenthNet || 0,
       vacation: m.income.vacationNet || 0,
       benefits: m.income.benefitsNet || 0,

@@ -149,13 +149,24 @@ export function extrasOf(state, ym) {
   return [...state.extraIncomes.filter((x) => x.ym === ym), ...shiftIncomes(state, ym)];
 }
 
+/** Plantões/extras pagos NA FOLHA no mês (bruto) — entram na média do 13º. */
+const payrollExtrasFor = (state) => (ym) => sumCents(extrasOf(state, ym).filter((x) => x.payroll).map((x) => x.cents));
+
+/** 13º do mês com a média das variáveis (inclui plantões na folha). */
+export function thirteenthOf(state, ym) {
+  registerCustomTables(state.settings.taxTables);
+  return thirteenthFor(state.settings, ym, payrollExtrasFor(state));
+}
+
 /**
  * Renda LÍQUIDA do mês (competência).
  *   salary      = líquido do salário (sem os extras)
  *   extrasCents = quanto os extras somam ao líquido. Extras "na folha" são
  *                 brutos: entram no contracheque e pagam INSS/IR junto com o
  *                 salário, então somam (líquido com extras − líquido sem extras).
- *   thirteenth  = 13º salário do mês (nov/dez), se houver
+ *   thirteenth  = 13º salário do mês (nov/dez), se houver. NÃO entra em
+ *                 `total` (nem no saldo previsto): é pago à parte do salário;
+ *                 fica em thirteenthNet para quem quiser somar (ex.: plano do ano).
  *   actual      = líquido da folha que você CONFERIU no holerite (substitui a estimativa)
  *   benefits    = PLR, abono e outros benefícios em dinheiro (VA/VR à parte)
  *   jobs        = líquido dos outros vínculos (segundo emprego, PJ…)
@@ -169,7 +180,7 @@ function payslipIncomeRaw(state, ym) {
 
   const withoutExtras = payrollFor(state.settings, ym, 0);
   const payroll = inPayroll ? payrollFor(state.settings, ym, inPayroll) : withoutExtras;
-  const thirteenth = thirteenthFor(state.settings, ym);
+  const thirteenth = thirteenthOf(state, ym);
   const thirteenthNet = thirteenth ? thirteenth.net : 0;
   const vacation = vacationFor(state.settings, ym);
   const vacationNet = vacation ? vacation.net : 0;
@@ -206,7 +217,7 @@ function payslipIncomeRaw(state, ym) {
     jobsNet: jobs.net,
     actual,
     estimatedNet: payroll.net,
-    total: salary + extrasCents + thirteenthNet + vacationNet + benefits.cashNet + jobs.net,
+    total: salary + extrasCents + vacationNet + benefits.cashNet + jobs.net,
     payroll,
   };
 }
@@ -236,7 +247,7 @@ export function incomeFor(state, ym) {
     gross: comp.payroll.gross + own.outside,
     actual: comp.actual,
     estimatedNet: comp.estimatedNet,
-    total: comp.salary + extrasCents + own.thirteenthNet + own.vacationNet + own.benefitsNet + own.jobsNet,
+    total: comp.salary + extrasCents + own.vacationNet + own.benefitsNet + own.jobsNet,
     payroll: comp.payroll,
   };
 }

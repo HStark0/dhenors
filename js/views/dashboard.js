@@ -207,7 +207,15 @@ function hero({ m, isCurrent, today }) {
           ? html`<span class="badge badge--muted">${icon('lock', 'icon--xs')} Mês fechado</span>`
           : canClose ? html`<button type="button" class="btn btn--ghost btn--sm" data-action="month:close">${icon('lock', 'icon--xs')} Fechar mês</button>` : ''}
       </div>
-      <p class="hero__value money ${negative ? 'neg' : ''}">${negative ? '−' : ''}${formatBRL(Math.abs(m.balance))}</p>
+      <div class="hero__value-row">
+        <p class="hero__value money ${negative ? 'neg' : ''}">${negative ? '−' : ''}${formatBRL(Math.abs(m.balance))}</p>
+        ${m.income.thirteenth ? html`
+          <div class="hero__mini" aria-label="13º salário, pago à parte">
+            <p class="hero__mini-label">${icon('sparkles', 'icon--xs')} 13º salário · ${m.income.thirteenth.part === 1 ? '1ª' : '2ª'} parcela</p>
+            <p class="hero__mini-value money">${formatBRL(m.income.thirteenth.net)}</p>
+            <p class="hero__mini-note">até ${m.income.thirteenth.part === 1 ? '30/11' : '20/12'} · fora do saldo</p>
+          </div>` : ''}
+      </div>
       <p class="hero__formula">
         <span>${formatBRL(m.income.total)} de renda</span>
         <span aria-hidden="true">−</span>

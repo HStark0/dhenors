@@ -7,9 +7,9 @@
 
 import { sumCents, percent, plural } from '../core/money.js';
 import { addMonthsYM, dateInMonth, ymOf, todayISO, parseYM, daysInMonth, toISO, addDaysISO, diffDays } from '../core/dates.js';
-import { computeMonth, overdueBefore, goalPlan, installmentSummary, incomeFor } from './ledger.js';
+import { computeMonth, overdueBefore, goalPlan, installmentSummary, incomeFor, thirteenthOf } from './ledger.js';
 import { monthSeries, projection, median } from './analysis.js';
-import { payrollProfileFor, thirteenthFor, vacationIn, paydayIn } from './payroll.js';
+import { payrollProfileFor, vacationIn, paydayIn } from './payroll.js';
 import { newId } from './schema.js';
 import { positionAt, investingOf } from './investments.js';
 import { accountsSummary } from './accounts.js';
@@ -361,7 +361,7 @@ export function calendarEvents(state, ym, today = todayISO()) {
   const salaryCash = m.income.salary + (m.income.payrollExtrasNet || 0); // plantões na folha caem junto
   if (salaryCash) add(paydayIn(state.settings, ym), { type: 'income', label: m.income.competence && m.income.competence !== ym ? 'Salário (competência anterior)' : 'Salário', cents: salaryCash });
   for (const x of m.income.extras) if (x.date && !x.payroll) add(x.date, { type: 'income', label: x.description, cents: x.cents });
-  const t = thirteenthFor(state.settings, ym);
+  const t = thirteenthOf(state, ym);
   if (t) add(dateInMonth(ym, t.part === 1 ? 30 : 20), { type: 'income', label: t.label, cents: t.net });
   const v = vacationIn(state.settings, ym);
   if (v) add(v.start, { type: 'vacation', label: `Início das férias (${v.days} dias)`, cents: m.income.vacation?.net || 0 });

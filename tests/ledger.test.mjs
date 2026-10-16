@@ -283,7 +283,10 @@ test('13º proporcional à admissão, com 1ª e 2ª parcelas', () => {
   assert.equal(dec.net, 360000 - 180000 - dec.inss - dec.ir);
   assert.equal(thirteenthFor(s.settings, '2026-10'), null);
   const m = computeMonth(s, '2026-11', '2026-11-01');
-  assert.equal(m.income.total, m.income.salary + 180000);
+  // O 13º é pago à parte: não entra na renda nem no saldo previsto do mês
+  assert.equal(m.income.total, m.income.salary);
+  assert.equal(m.income.thirteenthNet, 180000);
+  assert.equal(m.balance, m.income.total - m.totals.all);
   s.settings.employment.thirteenth = false;
   assert.equal(thirteenthFor(s.settings, '2026-11'), null);
 });

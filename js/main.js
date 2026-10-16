@@ -418,8 +418,11 @@ function renderAll({ routeChanged = false } = {}) {
   // Entrada animada só ao trocar de tela/aba, abrir o app ou mudar de mês
   const sig = `${routeId}|${tabKey}|${store.ui.ym}`;
   const entering = routeChanged || !lastRendered || lastRendered !== sig;
+  // Só a aba mudou (mesma tela e mês): transição curta só no conteúdo
+  const [lastRoute, lastTab, lastYM] = lastRendered.split('|');
+  const tabOnly = entering && !routeChanged && lastRoute === routeId && lastYM === store.ui.ym && lastTab !== tabKey;
   lastRendered = sig;
-  afterViewRender($('#view'), routeId, { entering });
+  afterViewRender($('#view'), routeId, { entering, tabOnly });
   if (routeChanged) {
     window.scrollTo(0, 0);
     $('#main').focus({ preventScroll: true });
