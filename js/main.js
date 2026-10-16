@@ -474,7 +474,8 @@ function whatsNew(force = false) {
     if (!last) A.markVersionSeen(APP_VERSION);
     return;
   }
-  const items = CHANGELOG.filter((c) => force ? c.version === APP_VERSION : newerThan(c.version, last));
+  // no máximo as 3 últimas versões; o resto fica em Ajustes → Novidades
+  const items = CHANGELOG.filter((c) => force ? c.version === APP_VERSION : newerThan(c.version, last)).slice(0, 3);
   A.markVersionSeen(APP_VERSION);
   if (!items.length) return;
   openDialog({

@@ -43,44 +43,151 @@ export const CHANGELOG = [
     ],
   },
   {
-    version: '1.0.0',
-    date: '2026-10-15',
-    title: 'Dhenors 1.0',
+    version: '3.2.0',
+    date: '2026-10-13',
+    title: 'Análise e relatórios',
+    groups: [
+      { title: 'Análise', items: [
+        'Relatório do mês em PDF, comparação de períodos e alerta de gastos fora do comum.',
+        'Retrospectiva do ano e histórico da saúde financeira.',
+      ] },
+      { title: 'Por dentro', items: [
+        'Testes no navegador a cada publicação, política de privacidade e de segurança.',
+      ] },
+    ],
+  },
+  {
+    version: '3.1.0',
+    date: '2026-09-21',
+    title: 'Visual novo',
+    groups: [
+      { title: 'Visual', items: [
+        'Visual limpo e nativo: superfícies neutras, tipografia clara, vidro nas barras e animações suaves. A cor aparece só onde comunica: verde é positivo, vermelho é negativo, laranja pede atenção e azul é neutro.',
+        'Tema claro, escuro e OLED, cor de destaque e densidade compacta.',
+      ] },
+      { title: 'Uso', items: [
+        'Painel e barra do celular configuráveis, desfazer (Ctrl+Z), deslizar para pagar, ações em lote e modo discreto.',
+        'Comando de voz, atalhos do ícone, "Compartilhar" de outros apps para o Dhenors e puxar para atualizar.',
+        'Acessibilidade: foco visível, alvos de toque maiores e anúncios para leitores de tela.',
+      ] },
+    ],
+  },
+  {
+    version: '3.0.0',
+    date: '2026-08-31',
+    title: 'Nuvem',
+    groups: [
+      { title: 'Nuvem', items: [
+        'Nuvem com criptografia de ponta a ponta, sincronização em tempo real, conflitos resolvidos por você e histórico de versões dos dados.',
+        'Aparelhos conectados, "lembrar neste aparelho" e troca da frase secreta.',
+        'Lembretes com o app fechado (push), sem valores nem nomes.',
+      ] },
+    ],
+  },
+  {
+    version: '2.2.0',
+    date: '2026-08-03',
+    title: 'Assinaturas e dívidas',
     groups: [
       { title: 'Dinheiro', items: [
-        'Contas avulsas, recorrentes (semanais a anuais) e parceladas, com status de pago, vence logo e atrasada.',
-        'Cartão de crédito com fechamento e vencimento: compras e parcelas na fatura certa, limite usado e importação da fatura em PDF.',
-        'Contas e carteiras com saldo real, transferências e conferência com o saldo do banco.',
-        'Receitas com tipo (reembolso, venda, presente, rendimento), divisão de um gasto entre categorias e etiquetas (#viagem-natal).',
-        'Fotos de comprovantes, leitura de boleto e Pix Copia e Cola.',
         'Assinaturas, reajuste automático pelo IGP-M/IPCA e contas variáveis pela média.',
         'Quem me deve, dívidas com simulação de quitação (bola de neve × avalanche), envelopes e lista de desejos.',
-        'Importação de extratos com conciliação, regras aprendidas, busca com filtros e buscas salvas.',
+        'Receitas com tipo (reembolso, venda, presente, rendimento), divisão de um gasto entre categorias e etiquetas (#viagem-natal).',
       ] },
+    ],
+  },
+  {
+    version: '2.1.0',
+    date: '2026-07-13',
+    title: 'Salário completo',
+    groups: [
       { title: 'Salário', items: [
-        'Salário bruto com INSS e IR calculados, importação e conferência do holerite em PDF, verba a verba.',
-        'Escala de plantões que gera as rendas extras sozinha.',
-        'Previsão do IR anual, rescisão, FGTS estimado, PLR/abono/VA-VR, outros vínculos de trabalho e linha do tempo da carreira.',
         '13º com a média das variáveis (horas extras, noturno, sobreaviso e plantões), 1ª parcela de 50% e 2ª com INSS e IR sobre o total.',
         'Sobreaviso de 1/3 da hora ativo todo mês, com as horas de cada mês informadas à parte; aviso de competência quando o salário cai no mês seguinte.',
+        'Previsão do IR anual, rescisão, FGTS estimado, PLR/abono/VA-VR, outros vínculos de trabalho e linha do tempo da carreira.',
       ] },
+    ],
+  },
+  {
+    version: '2.0.0',
+    date: '2026-06-22',
+    title: 'Investimentos',
+    groups: [
       { title: 'Investimentos', items: [
         'CDI/Selic/IPCA do Banco Central, cotações de ações e FIIs, proventos, comparação com CDI/IPCA/Ibovespa.',
         'IR na venda de ações, reserva de emergência, independência financeira e PGBL × VGBL.',
       ] },
-      { title: 'Planejamento e análise', items: [
-        'Saúde financeira com histórico, fluxo de caixa dia a dia até o salário, visão de 12 meses e "Posso comprar?".',
-        'Metas, cenários salvos, regra 50/30/20, agenda, relatório do mês em PDF e retrospectiva do ano.',
+    ],
+  },
+  {
+    version: '1.1.0',
+    date: '2026-05-25',
+    title: 'Planejamento',
+    groups: [
+      { title: 'Planejamento', items: [
+        'Saúde financeira, fluxo de caixa dia a dia até o salário, visão de 12 meses e "Posso comprar?".',
+        'Metas, cenários salvos, regra 50/30/20 e agenda.',
       ] },
-      { title: 'Visual e uso', items: [
-        'Visual limpo e nativo: superfícies neutras, tipografia clara, vidro nas barras e animações suaves. A cor aparece só onde comunica: verde é positivo, vermelho é negativo, laranja pede atenção e azul é neutro.',
-        'Painel e barra do celular configuráveis, desfazer (Ctrl+Z), deslizar para pagar, modo discreto, tema claro, escuro e OLED.',
+    ],
+  },
+  {
+    version: '1.0.0',
+    date: '2026-05-04',
+    title: 'Dhenors 1.0',
+    groups: [
+      { title: 'Importação', items: [
+        'Importação de extratos com conciliação, regras aprendidas, busca com filtros e buscas salvas.',
+        'Importação da fatura do cartão em PDF.',
+      ] },
+      { title: 'Comprovantes', items: [
+        'Fotos de comprovantes, leitura de boleto e Pix Copia e Cola.',
+      ] },
+    ],
+  },
+  {
+    version: '0.4.0',
+    date: '2026-04-06',
+    title: 'Segurança',
+    groups: [
+      { title: 'Segurança', items: [
+        'PIN ou senha, desbloqueio por biometria e espera crescente após erros.',
+        'Backup criptografado com senha.',
+      ] },
+      { title: 'Uso', items: [
         'Funciona offline e pode ser instalado como app.',
       ] },
-      { title: 'Segurança e nuvem', items: [
-        'PIN ou senha, desbloqueio por biometria e espera crescente após erros.',
-        'Backup criptografado com senha, "lembrar neste aparelho" e aparelhos conectados.',
-        'Nuvem com criptografia de ponta a ponta, sincronização em tempo real, conflitos resolvidos por você e histórico de versões dos dados.',
+    ],
+  },
+  {
+    version: '0.3.0',
+    date: '2026-03-09',
+    title: 'Salário',
+    groups: [
+      { title: 'Salário', items: [
+        'Salário bruto com INSS e IR calculados, importação e conferência do holerite em PDF, verba a verba.',
+        'Escala de plantões que gera as rendas extras sozinha.',
+      ] },
+    ],
+  },
+  {
+    version: '0.2.0',
+    date: '2026-02-09',
+    title: 'Cartões e carteiras',
+    groups: [
+      { title: 'Dinheiro', items: [
+        'Cartão de crédito com fechamento e vencimento: compras e parcelas na fatura certa e limite usado.',
+        'Contas e carteiras com saldo real, transferências e conferência com o saldo do banco.',
+      ] },
+    ],
+  },
+  {
+    version: '0.1.0',
+    date: '2026-01-12',
+    title: 'Primeira versão',
+    groups: [
+      { title: 'Dinheiro', items: [
+        'Contas avulsas, recorrentes (semanais a anuais) e parceladas, com status de pago, vence logo e atrasada.',
+        'Painel do mês e categorias. Tudo fica no aparelho, sem cadastro.',
       ] },
     ],
   },

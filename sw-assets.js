@@ -1,7 +1,7 @@
 // Gerado por tools/sync-version.mjs — não edite à mão.
 // Versão e arquivos que o service worker (sw.js) guarda para uso offline.
 self.DHENORS_VERSION = '3.3.1';
-self.DHENORS_BUILD = '834093ff9aa8';
+self.DHENORS_BUILD = '5ba590f6786d';
 self.DHENORS_ASSETS = [
   './',
   './assets/fonts/InterVariable-ext.woff2',

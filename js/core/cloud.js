@@ -246,7 +246,7 @@ async function readRemote(row, baseState, { fill = null, partial = false } = {})
 
 /**
  * Procura uma cópia de uma parte que sumiu no histórico de versões,
- * da mais nova para a mais antiga. (Versões até a 1.0.0 apagavam, na
+ * da mais nova para a mais antiga. (Versões anteriores à 3.3.0 apagavam, na
  * limpeza, partes que o índice de outro aparelho ainda usava.)
  */
 function historyFill() {
