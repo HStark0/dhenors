@@ -4,10 +4,10 @@
 // =============================================================
 
 import { store } from '../../core/store.js';
-import { ymOf, todayISO } from '../../core/dates.js';
+import { todayISO } from '../../core/dates.js';
 import { newId } from '../schema.js';
 import { invoiceMonthFor, invoiceKey } from '../cards.js';
-import { ValidationError, text, cents, date, intRange, refs, splits, assertOpen, findOrThrow } from './core.js';
+import { ValidationError, text, cents, date, intRange, refs, splits, findOrThrow } from './core.js';
 
 // ---------- Cartões ----------
 
@@ -164,9 +164,4 @@ export function checkBalance(accountId, value, when = todayISO(), { adjust = fal
     d.balanceChecks = d.balanceChecks.slice(-500);
     if (adjust) acc.anchor = { cents: v, date: day };
   });
-}
-
-/** Ajuste avulso: assertOpen para impedir mexer em mês fechado por engano. */
-export function assertMonthOpen(when) {
-  assertOpen(store.data, ymOf(when), 'date');
 }

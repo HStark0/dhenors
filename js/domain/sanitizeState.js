@@ -9,7 +9,7 @@
 
 import { CATEGORY_COLORS, LEGACY_STATE_COLORS, groupOfCategory } from './defaults.js';
 import { isValidISO, isValidYM } from '../core/dates.js';
-import { SCHEMA_VERSION, newId, DEFAULT_SHIFT_TYPES, createEmptyState, FREQS, INCOME_KINDS, ACCOUNT_KINDS } from './stateShape.js';
+import { SCHEMA_VERSION, newId, DEFAULT_SHIFT_TYPES, DEFAULT_ALERTS, createEmptyState, FREQS, INCOME_KINDS, ACCOUNT_KINDS } from './stateShape.js';
 import { isObj, isInt, str, optId, arr, cents, day, color, tags, pick } from './sanitizeUtil.js';
 import {
   sanitizeProfile, sanitizeVariable, sanitizeEmployment, sanitizeOnCall, sanitizeActual,
@@ -72,6 +72,7 @@ export function sanitizeState(raw) {
       rules: arr(s.rules).filter((r) => isObj(r) && str(r.pattern, 60).trim()).slice(0, 500)
         .map((r) => ({ id: optId(r.id) || newId(), pattern: str(r.pattern, 60).trim(), categoryId: optId(r.categoryId), subcategoryId: optId(r.subcategoryId) })),
       spendingLimitCents: isInt(s.spendingLimitCents) && s.spendingLimitCents >= 0 ? s.spendingLimitCents : 0,
+      alerts: sanitizeAlerts(s.alerts),
       investing: sanitizeInvesting(s.investing),
       indices: sanitizeIndices(s.indices),
       quotes: sanitizeQuotes(s.quotes),
@@ -138,6 +139,17 @@ export function sanitizeState(raw) {
       kind: pick(x.kind, INCOME_KINDS, x.payroll ? 'plantao' : 'extra'), accountId: optId(x.accountId),
     }));
 
+  // Ganhos extras recorrentes (schema 9): sempre fora da folha (valor líquido)
+  state.recurringIncomes = arr(raw.recurringIncomes)
+    .filter((x) => isObj(x) && isInt(x.cents) && x.cents > 0 && isValidYM(x.startYM))
+    .slice(0, 200)
+    .map((x) => ({
+      id: optId(x.id) || newId(), description: str(x.description, 120) || 'Renda extra', cents: x.cents,
+      day: day(x.day, 5), startYM: x.startYM, endYM: isValidYM(x.endYM) && x.endYM >= x.startYM ? x.endYM : null,
+      kind: pick(x.kind, INCOME_KINDS.filter((k) => k !== 'plantao'), 'extra'), accountId: optId(x.accountId),
+      skipped: [...new Set(arr(x.skipped).filter(isValidYM))].sort().slice(-120),
+    }));
+
   state.expenses = raw.expenses
     .filter((x) => isObj(x) && isInt(x.cents) && x.cents > 0 && isValidISO(x.dueDate))
     .map((x) => ({
@@ -145,7 +157,7 @@ export function sanitizeState(raw) {
       paidAt: isValidISO(x.paidAt) ? x.paidAt : null, ...common(x), accountId: optId(x.accountId),
       splits: sanitizeSplits(x.splits, x.cents),
       attachments: arr(x.attachments).filter((a) => isObj(a) && optId(a.id)).slice(0, 10)
-        .map((a) => ({ id: optId(a.id), name: str(a.name, 120) || 'anexo', type: str(a.type, 80), size: isInt(a.size) ? a.size : 0 })),
+        .map((a) => ({ id: optId(a.id), name: str(a.name, 120) || 'anexo', type: str(a.type, 80), size: isInt(a.size) ? a.size : 0, ...(typeof a.k === 'string' && /^[A-Za-z0-9+/=]{20,64}$/.test(a.k) ? { k: a.k } : {}) })),
       ...(isObj(x.boleto) ? { boleto: { line: str(x.boleto.line, 60).replace(/\D/g, ''), bank: str(x.boleto.bank, 40) } } : {}),
       ...(isObj(x.pix) ? { pix: { key: str(x.pix.key, 120), name: str(x.pix.name, 60), city: str(x.pix.city, 40) } } : {}),
       ...(x.cardInvoice ? { cardInvoice: str(x.cardInvoice, 60) } : {}),
@@ -155,7 +167,7 @@ export function sanitizeState(raw) {
     .filter((x) => isObj(x) && isInt(x.cents) && x.cents > 0 && isInt(x.dueDay) && isValidYM(x.startYM))
     .map((x) => ({
       id: optId(x.id) || newId(), description: str(x.description, 120) || 'Recorrente', cents: x.cents,
-      dueDay: Math.min(31, Math.max(1, x.dueDay)), startYM: x.startYM, endYM: isValidYM(x.endYM) ? x.endYM : null, ...common(x),
+      dueDay: Math.min(31, Math.max(1, x.dueDay)), startYM: x.startYM, endYM: isValidYM(x.endYM) && x.endYM >= x.startYM ? x.endYM : null, ...common(x),
       freq: pick(x.freq, FREQS, 'monthly'),
       anchorDate: isValidISO(x.anchorDate) ? x.anchorDate : null,
       variable: x.variable === true,
@@ -202,6 +214,8 @@ export function sanitizeState(raw) {
     accountId: optId(c.accountId), archived: c.archived === true,
   }));
   const cardIds = new Set(state.cards.map((c) => c.id));
+  // Recorrente "cobrada no cartão" de um cartão que não existe mais vira conta separada (senão sumiria)
+  for (const r of state.recurring) if (r.cardId && !cardIds.has(r.cardId)) r.cardId = null;
   state.cardPurchases = arr(raw.cardPurchases)
     .filter((p) => isObj(p) && cardIds.has(p.cardId) && isValidISO(p.date) && cents(p.cents, { neg: true }) && p.cents !== 0)
     .map((p) => ({
@@ -311,6 +325,18 @@ export function sanitizeState(raw) {
   }
 
   return state;
+}
+
+/** Limites dos alertas: inteiros dentro de faixas razoáveis; fora disso, o padrão. */
+export function sanitizeAlerts(a) {
+  const o = isObj(a) ? a : {};
+  const n = (x, min, max, d) => (isInt(x) && x >= min && x <= max ? x : d);
+  return {
+    tightPct: n(o.tightPct, 0, 50, DEFAULT_ALERTS.tightPct),
+    overspendPct: n(o.overspendPct, 10, 300, DEFAULT_ALERTS.overspendPct),
+    bigPct: n(o.bigPct, 1, 100, DEFAULT_ALERTS.bigPct),
+    push: o.push !== false,
+  };
 }
 
 function sanitizeRule(r) {

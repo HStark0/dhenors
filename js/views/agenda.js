@@ -16,6 +16,9 @@ import { calendarEvents, monthGrid, buildICS } from '../domain/planning.js';
 import { paydayLabel } from '../domain/payroll.js';
 import { enableNotifications } from '../ui/notify.js';
 import { catIcon } from '../ui/catIcon.js';
+import { statusBadge } from '../ui/outlookUI.js';
+import { outlookRow, monthMoney } from '../domain/outlook.js';
+import { STATUS_TONES } from '../domain/monthStatus.js';
 
 const COLOR = { income: '#10B981', vacation: '#EC4899', goal: '#8B5CF6', invest: '#06B6D4', shift: '#0D9488', card: '#6D28D9', receivable: '#65A30D', renewal: '#EA580C' };
 
@@ -56,6 +59,7 @@ export default {
           <button type="button" class="btn btn--secondary" data-action="agenda:ics">${icon('calendar-days')} Levar para o calendário do celular</button>
         </div>
       </div>
+      ${monthBanner(d, ym, today)}
 
       <section class="grid grid--agenda">
         <article class="card cal">
@@ -97,7 +101,7 @@ export default {
   },
 
   actions: {
-    'agenda:day': (el) => store.setUI({ filters: { ...store.ui.filters, agendaDay: el.dataset.date } }),
+    'agenda:day': (el) => store.setUI({ ym: ymOf(el.dataset.date), filters: { ...store.ui.filters, agendaDay: el.dataset.date } }),
     'agenda:ics': () => {
       const d = store.data;
       const days = d.settings.reminders?.daysBefore ?? 1;
@@ -110,6 +114,23 @@ export default {
     'agenda:notify': () => enableNotifications(),
   },
 };
+
+/** Faixa com a situação do mês (a mesma do Painel e dos 12 meses). Toque: o que pesa nele. */
+function monthBanner(d, ym, today) {
+  if (!d.settings.salaryHistory.length && !d.recurring.length && !d.installments.length) return '';
+  const row = outlookRow(d, ym, today);
+  const mm = row ? null : monthMoney(d, ym, today);
+  const status = row ? row.status : mm.status;
+  const balance = row ? row.balance : mm.balance;
+  if (status === 'none') return '';
+  const what = row ? 'Previsão' : 'Saldo';
+  return html`
+    <button type="button" class="month-banner tone-${STATUS_TONES[status]}" data-action="outlook:month" data-ym="${ym}">
+      ${statusBadge(status)}
+      <span>${what} de ${formatMonth(ym)}: ${balance < 0 ? html`<strong>faltam ${formatBRL(-balance)}</strong>` : html`sobra <strong>${formatBRL(balance)}</strong>`}</span>
+      <span class="month-banner__more">O que pesa ${icon('chevron-right', 'icon--xs')}</span>
+    </button>`;
+}
 
 function dayCell(date, inMonth, events, isToday, isSelected) {
   const day = Number(date.slice(8));

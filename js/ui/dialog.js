@@ -11,8 +11,25 @@
 import { html, fragment } from './dom.js';
 import { icon } from './icons.js';
 import { toastError } from './toast.js';
+import { syncIndicators } from './indicator.js';
+import { motionReduced } from '../core/theme.js';
 
 let counter = 0;
+
+/**
+ * Fecha a janela com uma saída curta (.is-closing em design.css) e só
+ * depois a fecha de verdade. Sem animação (reduzir movimento, Efeitos
+ * desligados) ou se a animação não rodar, fecha na hora.
+ */
+export function closeAnimated(dialog) {
+  if (!dialog.open || dialog.classList.contains('is-closing')) return;
+  if (motionReduced() || document.documentElement.dataset.motion === 'off') { dialog.close(); return; }
+  dialog.classList.add('is-closing');
+  let done = false;
+  const finish = () => { if (done) return; done = true; dialog.classList.remove('is-closing'); if (dialog.open) dialog.close(); };
+  dialog.addEventListener('animationend', (ev) => { if (ev.target === dialog) finish(); }, { once: true });
+  setTimeout(finish, 260);
+}
 
 /**
  * Abre uma janela.
@@ -50,10 +67,18 @@ export function openDialog({ title, body, submitLabel = null, onSubmit = null, o
   document.body.append(dialog);
   const form = dialog.querySelector('form');
 
-  const close = () => dialog.close();
-  dialog.addEventListener('close', () => dialog.remove());
+  // Fecha com a animação de saída (encolhe e some); sem animação, na hora
+  const close = () => closeAnimated(dialog);
+  dialog.addEventListener('close', () => {
+    // Avisos que estavam dentro desta janela continuam visíveis depois dela
+    const toasts = dialog.querySelector('#toasts');
+    if (toasts) document.body.append(toasts);
+    dialog.remove();
+  });
   dialog.addEventListener('click', (ev) => {
-    if (ev.target.closest('[data-close]')) { ev.preventDefault(); close(); }
+    if (ev.target.closest('[data-close]')) { ev.preventDefault(); close(); return; }
+    // Link para outra tela do app (#/...): navega e fecha a janela, senão ela ficaria por cima da tela nova
+    if (ev.target.closest('a[href^="#/"]')) close();
   });
   // Fecha pelos botões (X, Cancelar, Confirmar), com 2 cliques no fundo
   // escurecido ou com Esc. Em formulário já alterado, o Esc pergunta
@@ -84,6 +109,8 @@ export function openDialog({ title, body, submitLabel = null, onSubmit = null, o
 
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
+    // Já salvou e está fechando (animação): Enter repetido não envia de novo
+    if (!dialog.open || dialog.classList.contains('is-closing')) return;
     if (!onSubmit) return close();
     const button = form.querySelector('[type="submit"]');
     clearErrors(form);
@@ -94,13 +121,14 @@ export function openDialog({ title, body, submitLabel = null, onSubmit = null, o
     } catch (err) {
       showError(form, err);
     } finally {
-      button.disabled = false;
+      if (!dialog.classList.contains('is-closing')) button.disabled = false;
     }
   });
 
   dialog.showModal();
   onMount?.(dialog);
   fillGridGaps(dialog);
+  syncIndicators(dialog, { animate: false });
   // foca o primeiro campo, não o botão de fechar
   const first = dialog.querySelector('.dialog__body input:not([type=hidden]), .dialog__body select, .dialog__body textarea, .dialog__body button');
   first?.focus();
@@ -245,10 +273,16 @@ export function actionSheet({ title, subtitle = '', actions }) {
           </li>`)}
       </ul>`,
   });
+  let ran = false;
   dialog.addEventListener('click', (ev) => {
     const btn = ev.target.closest('.sheet-item');
-    if (!btn) return;
+    if (!btn || ran) return; // Enter repetido não roda a ação duas vezes
+    ran = true;
     close();
-    actions[+btn.dataset.index].run();
+    // Erros da ação (ex.: mês fechado) viram aviso, inclusive os assíncronos
+    Promise.resolve().then(() => actions[+btn.dataset.index].run()).catch((err) => {
+      console.error(err);
+      toastError(err?.message || 'Algo deu errado.');
+    });
   });
 }

@@ -10,7 +10,7 @@
 import { html } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { openDialog } from '../../ui/dialog.js';
-import { toast } from '../../ui/toast.js';
+import { toast, toastError } from '../../ui/toast.js';
 import { field, moneyField, numberField, switchField, readForm } from '../../ui/forms.js';
 import * as E from '../../ui/editors.js';
 import { store } from '../../core/store.js';
@@ -169,8 +169,12 @@ function dayDialog(date) {
       ${type ? html`<button type="button" class="btn btn--secondary btn--sm" data-add>${icon('plus', 'icon--xs')} Mais um ${type.name}</button>` : ''}`,
     onMount: (dlg) => dlg.addEventListener('click', (ev) => {
       const del = ev.target.closest('[data-del]');
-      if (del) { A.deleteShift(del.dataset.del); dlg.close(); toast('Plantão removido.', { action: { label: 'Desfazer', run: () => store.undo() } }); }
-      if (ev.target.closest('[data-add]')) { A.addShifts([date], type.id); dlg.close(); toast('Plantão marcado.'); }
+      try {
+        if (del) { A.deleteShift(del.dataset.del); dlg.close(); toast('Plantão removido.', { action: { label: 'Desfazer', run: () => store.undo() } }); }
+        if (ev.target.closest('[data-add]')) { A.addShifts([date], type.id); dlg.close(); toast('Plantão marcado.'); }
+      } catch (err) {
+        if (err?.name !== 'GuestError') toastError(err.message); // ex.: mês fechado
+      }
     }),
   });
 }

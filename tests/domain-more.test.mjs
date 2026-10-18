@@ -26,7 +26,7 @@ const today = '2026-10-15';
 const reset = () => { store.data = createEmptyState(); store.data.onboarded = true; };
 
 before(() => {
-  store.flush = async () => {};
+  store.guest = false; // conta aberta (sem login, alterações pedem para entrar)
   console.warn = () => {};
 });
 
@@ -268,16 +268,11 @@ test('migração: backups em todos os formatos antigos (1 a 7) abrem no formato 
 
 // ---------- Versão sincronizada ----------
 
-test('versão: package.json, js/version.js, sw-assets.js e cores do tema batem', async () => {
+test('versão: package.json, js/version.js e cores do tema batem', async () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const { APP_VERSION } = await import('../js/version.js');
   assert.equal(APP_VERSION, pkg.version);
-  const sw = readFileSync(new URL('../sw-assets.js', import.meta.url), 'utf8');
-  assert.match(sw, new RegExp(`DHENORS_VERSION = '${pkg.version.replace(/\./g, '\\.')}`));
   const index = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  for (const f of [...index.matchAll(/(?:href|src)="((?:css|js)\/[^"]+)"/g)].map((m) => m[1])) {
-    assert.ok(sw.includes(`./${f}`), `${f} precisa estar no cache do service worker`);
-  }
   const { THEME_COLORS } = await import('../js/core/theme.js');
   const manifest = JSON.parse(readFileSync(new URL('../manifest.webmanifest', import.meta.url), 'utf8'));
   assert.equal(manifest.theme_color.toUpperCase(), THEME_COLORS.light.toUpperCase());

@@ -7,7 +7,7 @@ import { store } from '../../core/store.js';
 import { MAX_CENTS } from '../../core/money.js';
 import { isValidYM, ymOf, todayISO, currentYM, monthsBetween, addMonthsYM } from '../../core/dates.js';
 import { newId } from '../schema.js';
-import { planInstallment, installmentInMonth, FREQ_DAYS, recurringDates } from '../ledger.js';
+import { planInstallment, FREQ_DAYS, recurringDates } from '../ledger.js';
 import { invoiceKey } from '../cards.js';
 import {
   ValidationError, text, cents, date, intRange, refs, splits, assertOpen, findOrThrow, entry, cleanupEntry, tags,
@@ -31,7 +31,7 @@ export function saveExpense(input) {
     };
     if (input.boleto) item.boleto = { line: String(input.boleto.line || '').replace(/\D/g, '').slice(0, 60), bank: String(input.boleto.bank || '').slice(0, 40) };
     if (input.pix) item.pix = { key: String(input.pix.key || '').slice(0, 120), name: String(input.pix.name || '').slice(0, 60), city: String(input.pix.city || '').slice(0, 40) };
-    if (Array.isArray(input.attachments)) item.attachments = input.attachments.slice(0, 10).map((a) => ({ id: a.id, name: String(a.name || 'anexo').slice(0, 120), type: String(a.type || '').slice(0, 80), size: Number(a.size) || 0 }));
+    if (Array.isArray(input.attachments)) item.attachments = cleanAttachments(input.attachments);
     assertOpen(d, ymOf(item.dueDate));
     if (input.id) {
       const current = findOrThrow(d.expenses, input.id, 'Despesa');
@@ -65,11 +65,17 @@ export function postponeExpense(id, newDate) {
   }, 'change', { undo: 'Conta adiada' });
 }
 
-/** Anexos de uma despesa (as fotos ficam no aparelho: ver ui/attachments.js). */
+/** Resumo dos anexos guardado no lançamento; `k` é a chave do arquivo cifrado na nuvem. */
+const cleanAttachments = (list) => list.slice(0, 10).map((a) => ({
+  id: a.id, name: String(a.name || 'anexo').slice(0, 120), type: String(a.type || '').slice(0, 80), size: Number(a.size) || 0,
+  ...(typeof a.k === 'string' ? { k: a.k } : {}),
+}));
+
+/** Anexos de uma despesa (os arquivos ficam cifrados na nuvem: ver ui/attachments.js). */
 export function setExpenseAttachments(id, attachments) {
   return store.commit((d) => {
     const e = findOrThrow(d.expenses, id, 'Despesa');
-    e.attachments = attachments.slice(0, 10).map((a) => ({ id: a.id, name: String(a.name || 'anexo').slice(0, 120), type: String(a.type || '').slice(0, 80), size: Number(a.size) || 0 }));
+    e.attachments = cleanAttachments(attachments);
   });
 }
 
@@ -122,15 +128,7 @@ export function saveRecurringScoped(input, scope, ym) {
     const prefix = `${saved.id}|`;
     if (scope === 'future') {
       // fixa o valor antigo nos meses anteriores ainda sem valor próprio
-      let guard = 0;
-      for (let m = saved.startYM; m < ym && guard < 600; m = addMonthsYM(m, 1), guard++) {
-        if (d.closedMonths[m]) continue;
-        for (const due of recurringDates(saved, m)) {
-          const [key, e] = entry(d, saved.id, FREQ_DAYS[saved.freq] ? due : m);
-          if (!e.paidAt && !e.skipped && e.cents == null) e.cents = oldCents;
-          cleanupEntry(d, key);
-        }
-      }
+      pinOldValueBefore(d, saved, oldCents, ym);
     } else if (scope === 'open') {
       for (const [key, e] of Object.entries(d.recurringEntries)) {
         if (!key.startsWith(prefix) || e.paidAt || e.cents == null) continue;
@@ -141,6 +139,23 @@ export function saveRecurringScoped(input, scope, ym) {
     }
     return saved;
   });
+}
+
+/**
+ * Fixa o valor antigo nos meses anteriores a `ym` ainda em aberto e sem
+ * valor próprio, para que trocar o valor do cadastro só valha de `ym` em
+ * diante (meses fechados e pagos não mudam de qualquer forma).
+ */
+function pinOldValueBefore(d, rec, oldCents, ym) {
+  let guard = 0;
+  for (let m = rec.startYM; m < ym && guard < 600; m = addMonthsYM(m, 1), guard++) {
+    if (d.closedMonths[m]) continue;
+    for (const due of recurringDates(rec, m)) {
+      const [key, e] = entry(d, rec.id, FREQ_DAYS[rec.freq] ? due : m);
+      if (!e.paidAt && !e.skipped && e.cents == null) e.cents = oldCents;
+      cleanupEntry(d, key);
+    }
+  }
 }
 
 function applyRecurring(d, input) {
@@ -246,6 +261,10 @@ export function applyReadjustments(today = todayISO()) {
       const from = r.cents;
       // índice negativo (deflação do IGP-M) não reduz o valor sem você decidir
       const to = Math.max(from, Math.round(from * (1 + pctBp / 10000)));
+      // o reajuste vale do mês do aniversário em diante: meses anteriores ainda
+      // não pagos continuam com o valor antigo (como o alcance 'future' ao editar).
+      // Nas variáveis o valor vem da média dos meses, não do cadastro.
+      if (to !== from && !r.variable) pinOldValueBefore(d, r, from, ym);
       r.cents = Math.min(MAX_CENTS, to);
       r.adjust = { ...r.adjust, lastYM: ym };
       r.priceHistory = [...(r.priceHistory || []), { date: today, cents: r.cents }].slice(-50);
@@ -358,7 +377,8 @@ function markItem(d, item, paid, paidAt, { cents: value = null, accountId } = {}
   if (item.kind === 'invoice') {
     const key = invoiceKey(item.refId, ymOf(item.dueDate));
     d.cardInvoices ||= {};
-    if (paid) d.cardInvoices[key] = { paidAt, cents: Number.isInteger(value) && value > 0 ? value : null };
+    // Guarda o valor pago: mexer depois numa compra ou assinatura não muda uma fatura já paga
+    if (paid) d.cardInvoices[key] = { paidAt, cents: Number.isInteger(value) && value > 0 ? value : item.cents > 0 ? item.cents : null };
     else delete d.cardInvoices[key];
     return;
   }
@@ -421,6 +441,7 @@ export function deleteItems(items) {
         d.expenses = d.expenses.filter((x) => x.id !== item.refId);
         n++;
       } else if (item.kind === 'recurring') {
+        assertOpen(d, ymOf(item.dueDate));
         const [, e] = entry(d, item.refId, item.entryKey ? item.entryKey.split('|')[1] : ymOf(item.dueDate));
         e.skipped = true;
         e.paidAt = null;
@@ -495,6 +516,3 @@ export function saveDebt(input) {
 export function deleteDebt(id) {
   return store.commit((d) => { d.debts = d.debts.filter((x) => x.id !== id); }, 'change', { undo: 'Dívida excluída' });
 }
-
-/** Valor da parcela de um parcelamento no mês (para ligar dívida ↔ parcelamento). */
-export const installmentParcelIn = (inst, ym) => installmentInMonth(inst, ym)?.cents || 0;

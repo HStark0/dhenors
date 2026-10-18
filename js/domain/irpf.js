@@ -90,10 +90,12 @@ export function irpfForecast(state, year, today = todayISO()) {
     if (prof) dependents = Math.max(dependents, prof.dependents || 0);
   }
 
-  // Despesas médicas pagas no ano (categoria Saúde + subcategorias médicas)
+  // Despesas médicas pagas no ano (categoria Saúde + subcategorias médicas).
+  // Sem subcategoria não conta: Saúde também tem farmácia e academia, que
+  // não são dedutíveis no IRPF.
   const health = state.categories.find((c) => /sa[uú]de/i.test(c.name));
   const medicalSubs = new Set((health?.subcategories || []).filter((s) => MEDICAL.test(s.name)).map((s) => s.id));
-  const medicalExpenses = sumCents(state.expenses.filter((e) => e.paidAt?.startsWith(String(year)) && e.categoryId === health?.id && (!e.subcategoryId || medicalSubs.has(e.subcategoryId))).map((e) => e.cents))
+  const medicalExpenses = sumCents(state.expenses.filter((e) => e.paidAt?.startsWith(String(year)) && e.categoryId === health?.id && medicalSubs.has(e.subcategoryId)).map((e) => e.cents))
     + sumCents(state.recurring.filter((r) => r.categoryId === health?.id && medicalSubs.has(r.subcategoryId)).flatMap((r) => Object.entries(state.recurringEntries).filter(([k, e]) => k.startsWith(`${r.id}|${year}`) && e.paidAt).map(([, e]) => e.cents ?? r.cents)));
   const irpf = state.settings.irpf || {};
   const pgbl = sumCents((state.investments || []).filter((i) => i.pension === 'pgbl').flatMap((i) => i.movements).filter((m) => m.kind === 'aporte' && m.date.startsWith(String(year))).map((m) => m.cents));

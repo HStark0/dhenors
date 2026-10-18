@@ -8,7 +8,7 @@
 
 import { sumCents } from '../core/money.js';
 import { todayISO, ymOf, addMonthsYM, monthRange, dateInMonth, parseYM, daysInMonth, toISO } from '../core/dates.js';
-import { nthBusinessDay } from '../core/calendar.js';
+import { isBusinessDay } from '../core/calendar.js';
 import { positionAt, investingOf, typeOf, evolution, project, annualRate } from './investments.js';
 
 // ---------- Proventos (renda passiva) ----------
@@ -80,9 +80,13 @@ const EXEMPT_LIMIT = 2000000; // R$ 20 mil/mês em vendas de AÇÕES (operaçõe
 
 /** Último dia útil do mês (vencimento do DARF: mês seguinte à venda). */
 function lastBusinessDay(ym) {
-  for (let n = 23; n >= 1; n--) {
-    const d = nthBusinessDay(ym, n, { saturdayCounts: false });
-    if (ymOf(d) === ym) return d;
+  // volta do último dia do mês até um dia útil (sem sábado, domingo ou feriado).
+  // Antes, nthBusinessDay(ym, 23) num mês com menos de 23 dias úteis devolvia
+  // o último dia do mês mesmo sendo domingo.
+  const { y, m } = parseYM(ym);
+  for (let d = daysInMonth(y, m); d >= 1; d--) {
+    const iso = toISO(y, m, d);
+    if (isBusinessDay(iso, { saturdayCounts: false })) return iso;
   }
   return dateInMonth(ym, 28);
 }

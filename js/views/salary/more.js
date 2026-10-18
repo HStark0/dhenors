@@ -13,10 +13,10 @@ import { field, moneyField, dateField, numberField, selectField, switchField, re
 import * as E from '../../ui/editors.js';
 import { store } from '../../core/store.js';
 import { formatBRL, toCents } from '../../core/money.js';
-import { todayISO, formatDateBR, formatMonth, formatMonthShort, currentYM, ymOf } from '../../core/dates.js';
+import { todayISO, formatDateBR, formatMonth, formatMonthShort, currentYM } from '../../core/dates.js';
 import { payrollProfileFor, computePayroll, employmentOf } from '../../domain/payroll.js';
 import { irpfForecast, IRPF_LIMITS } from '../../domain/irpf.js';
-import { simulateTermination, fgtsSeries, REASONS } from '../../domain/termination.js';
+import { simulateTermination, terminationAverageFor, fgtsSeries, REASONS } from '../../domain/termination.js';
 import { BENEFIT_LABELS, JOB_KIND_LABELS, jobsIn, benefitsIn, PLR_TABLE } from '../../domain/benefits.js';
 import { careerTimeline, careerSummary } from '../../domain/career.js';
 import { tablesFor, TAX_TABLES, missingTaxYears, latestTaxYear } from '../../domain/taxTables.js';
@@ -103,19 +103,20 @@ export function renderExit() {
   const series = fgtsSeries(d, currentYM());
   const fgts = series.length ? series[series.length - 1].balance : 0;
   const f = { reason: 'sem_justa', lastDay: todayISO(), vacationsDueDays: 0, noticeServed: false, ...(store.ui.filters.exit || {}) };
-  const r = salary ? simulateTermination({ ...f, admission: emp.admission, salaryCents: salary, fgtsCents: fgts }) : null;
+  // aviso, 13º e férias da rescisão usam salário + média das variáveis habituais (plantões, horas extras)
+  const r = salary ? simulateTermination({ ...f, admission: emp.admission, salaryCents: salary, variableCents: terminationAverageFor(d, f.lastDay), fgtsCents: fgts }) : null;
   return html`
-    <section class="grid grid--two">
+    <section class="grid grid--two grid--top">
       <article class="card">
         <h2 class="card__title">${icon('briefcase')} Simular rescisão ${helpTip('rescisao')}</h2>
         ${!salary ? html`<p class="muted">Cadastre o salário (CLT) para simular.</p>` : html`
           <div class="form-grid">
-            <div class="field"><label class="field__label" for="exit-reason">Tipo de saída</label>
+            <div class="field field--full"><label class="field__label" for="exit-reason">Tipo de saída</label>
               <select class="input select" id="exit-reason" data-filter="exit:reason">${Object.entries(REASONS).map(([value, x]) => html`<option value="${value}" ${value === f.reason ? 'selected' : ''}>${x.label}</option>`)}</select></div>
             <div class="field"><label class="field__label" for="exit-last">Último dia de trabalho</label><input class="input" type="date" id="exit-last" data-filter="exit:lastDay" value="${f.lastDay}"></div>
             <div class="field"><label class="field__label" for="exit-vac">Férias vencidas (não tiradas)</label>
               <select class="input select" id="exit-vac" data-filter="exit:vacationsDueDays">${[['0', 'Nenhuma'], ['30', '1 período (30 dias)'], ['60', '2 períodos']].map(([v, l]) => html`<option value="${v}" ${v === String(f.vacationsDueDays) ? 'selected' : ''}>${l}</option>`)}</select></div>
-            <div class="field"><label class="check"><input type="checkbox" data-filter="exit:noticeServed" ${f.noticeServed ? 'checked' : ''}> Vou cumprir o aviso prévio trabalhando</label></div>
+            <div class="field field--full"><label class="check"><input type="checkbox" data-filter="exit:noticeServed" ${f.noticeServed ? 'checked' : ''}> Vou cumprir o aviso prévio trabalhando</label></div>
           </div>
           ${emp.admission ? '' : html`<p class="field__hint state--warn">Informe a data de admissão (Salário → Editar) para o cálculo de férias, 13º e aviso.</p>`}
           <ul class="mini-list">
@@ -394,6 +395,3 @@ export function onExitFilter(name, value, el) {
   if (key === 'lastDay' && !value) return;
   store.setUI({ filters: { ...store.ui.filters, exit: { ...cur, [key]: v } } });
 }
-
-/** Ano de referência do FGTS (exportado para testes de tela). */
-export const fgtsYear = () => ymOf(todayISO()).slice(0, 4);

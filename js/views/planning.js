@@ -23,6 +23,7 @@ import { yearPlan, canIBuy } from '../domain/yearplan.js';
 import { envelopeStatus, ruleStatus } from '../domain/analysis.js';
 import { GROUP_LABELS } from '../domain/defaults.js';
 import * as A from '../domain/actions.js';
+import { monthStrip, statusBadge } from '../ui/outlookUI.js';
 
 const TABS = [
   { id: 'simulador', label: 'Simulador', icon: 'wand-sparkles' },
@@ -56,7 +57,6 @@ export default {
       if (set.has(el.dataset.id)) set.delete(el.dataset.id); else set.add(el.dataset.id);
       store.setUI({ filters: { ...store.ui.filters, simCompare: [...set].slice(0, 3) } });
     },
-    'buy:check': () => { /* o resultado é recalculado a cada digitação */ },
     'env:new': () => E.editEnvelope(),
     'env:edit': (el) => E.editEnvelope(store.data.settings.envelopes.find((e) => e.id === el.dataset.id)),
     'env:delete': (el) => E.deleteWithUndo(() => A.deleteEnvelope(el.dataset.id), 'Envelope excluído.'),
@@ -287,12 +287,18 @@ function year() {
   const d = store.data;
   const start = currentYM();
   const plan = yearPlan(d, start, 12, todayISO());
+  const shortN = plan.shortMonths.length;
+  const tightN = plan.tightMonths.length - shortN;
   return html`
     <section class="grid grid--kpis grid--kpis-3">
       ${stat('Renda em 12 meses', formatBRL(plan.totals.income), 'com 13º, férias e benefícios')}
       ${stat('Gastos previstos', formatBRL(plan.totals.spent), 'fixos, parcelas e dia a dia (média)')}
-      ${stat('Sobra prevista', formatBRL(plan.totals.balance), plan.tightMonths.length ? `${plan.tightMonths.length} mês(es) apertado(s)` : 'nenhum mês apertado', plan.totals.balance < 0 ? 'bad' : plan.tightMonths.length ? 'warn' : 'good')}
+      ${stat('Sobra prevista', formatBRL(plan.totals.balance), shortN ? `${shortN} mês(es) não fecha(m)${tightN ? `, ${tightN} apertado(s)` : ''}` : tightN ? `${tightN} mês(es) apertado(s)` : 'nenhum mês apertado', plan.totals.balance < 0 || shortN ? 'bad' : tightN ? 'warn' : 'good')}
     </section>
+    <article class="card tone-${shortN ? 'bad' : tightN ? 'warn' : 'good'}">
+      <header class="card__header"><h2 class="card__title">${icon('calendar-range')} Mês a mês ${helpTip('statusMes')}</h2></header>
+      ${monthStrip(plan.months)}
+    </article>
     <article class="card">
       <header class="card__header"><h2 class="card__title">${icon('calendar-range')} Próximos 12 meses</h2></header>
       ${barChart(plan.months.map((m) => formatMonthShort(m.ym)), [
@@ -301,11 +307,12 @@ function year() {
       ], { label: 'Renda e gastos previstos por mês', width: chartWidth(1), line: { name: 'Sobra', values: plan.months.map((m) => m.balance), className: 'is-balance' } })}
       <div class="table-wrap">
         <table class="table">
-          <thead><tr><th scope="col">Mês</th><th scope="col">Renda</th><th scope="col">Fixos</th><th scope="col">Parcelas</th><th scope="col">Dia a dia</th><th scope="col">Sobra</th><th scope="col">Destaques</th></tr></thead>
+          <thead><tr><th scope="col">Mês</th><th scope="col" class="is-text">Situação</th><th scope="col">Renda</th><th scope="col">Fixos</th><th scope="col">Parcelas</th><th scope="col">Dia a dia</th><th scope="col">Sobra</th><th scope="col" class="is-text">Destaques</th></tr></thead>
           <tbody>
             ${plan.months.map((m) => html`
-              <tr class="${m.tight ? 'is-tight' : ''}">
-                <th scope="row">${formatMonthShort(m.ym)}${m.tight ? html` <span class="badge badge--warn">aperta</span>` : ''}</th>
+              <tr class="${m.tight ? 'is-tight' : ''} is-${m.status}">
+                <th scope="row"><button type="button" class="link" data-action="outlook:month" data-ym="${m.ym}">${formatMonthShort(m.ym)}</button></th>
+                <td>${statusBadge(m.status)}</td>
                 <td class="money">${formatBRL(m.income)}</td>
                 <td class="money">${formatBRL(m.fixed)}</td>
                 <td class="money">${formatBRL(m.installments)}</td>
@@ -325,7 +332,8 @@ function year() {
 function canBuy() {
   const d = store.data;
   const params = routeParams();
-  const f = { value: params.get('valor') ? (Number(params.get('valor')) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '', count: '1', ...(store.ui.filters.buy || {}) };
+  const fromUrl = Number(params.get('valor')) > 0 ? (Number(params.get('valor')) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '';
+  const f = { value: '', count: '1', ...(store.ui.filters.buy || {}), ...(fromUrl ? { value: fromUrl } : {}) };
   const cents = toCents(f.value);
   const count = Math.max(1, Math.min(48, Number(f.count) || 1));
   const r = Number.isFinite(cents) && cents > 0 ? canIBuy(d, { cents, count }, 12, todayISO()) : null;
@@ -341,7 +349,8 @@ function canBuy() {
         </div>
         ${r ? html`
           <div class="verdict verdict--${V[r.verdict].tone}">${icon(V[r.verdict].ic)}<div><strong>${V[r.verdict].t}</strong>
-            <p>${count > 1 ? `${count}× de ${formatBRL(r.parcel)}` : `à vista, ${formatBRL(cents)}`}${r.reasons.length ? '' : ' · nenhum mês fica no vermelho.'}</p></div></div>
+            <p>${count > 1 ? `${count}× de ${formatBRL(r.parcel)}` : `à vista, ${formatBRL(cents)}`}${r.reasons.length ? '' : ' · nenhum mês fica no vermelho.'}</p>
+            <p class="small">${r.headline.text}</p></div></div>
           ${r.reasons.length ? html`<ul class="tips">${r.reasons.map((t) => html`<li>${t}</li>`)}</ul>` : ''}
           <p class="small muted">Reserva de emergência: ${r.reserve.months.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} meses de gastos ${helpTip('reserva')}</p>`
         : html`<p class="muted small">Digite o valor e o número de parcelas: o app mostra o saldo dos próximos 12 meses com e sem a compra.</p>`}
@@ -353,6 +362,8 @@ function canBuy() {
             { name: 'Sem a compra', values: r.months.map((m) => m.before), className: 'is-spent', dashed: true },
             { name: 'Com a compra', values: r.months.map((m) => m.after), className: 'is-balance' },
           ], { label: 'Saldo mensal com e sem a compra', width: chartWidth(0.5) })}
+          <h3 class="dialog__subtitle">Com a compra, mês a mês</h3>
+          ${monthStrip(r.months.map((m) => ({ ym: m.ym, balance: m.after, status: m.statusAfter })), { action: null, caption: '' })}
         </article>` : ''}
     </section>`;
 }

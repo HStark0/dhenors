@@ -8,7 +8,6 @@
 
 import { html } from '../ui/dom.js';
 import { tabsNav, currentTab, routeParams } from '../ui/tabs.js';
-import { store } from '../core/store.js';
 import { todayISO } from '../core/dates.js';
 import { renderPayslip, payslipActions } from './salary/payslip.js';
 import { renderShifts, shiftActions } from './salary/shifts.js';
@@ -32,9 +31,12 @@ export default {
   render() {
     const active = currentTab(TABS);
     // Atalho "Lançar plantão" (ícone do app): abre a escala já com o dia de hoje
-    if (active === 'plantoes' && routeParams().get('novo') && !store.ui.filters.shiftHint) {
-      store.ui.filters.shiftHint = true;
-      setTimeout(() => document.querySelector(`[data-action="shift:day"][data-date="${todayISO()}"]`)?.focus(), 200);
+    if (active === 'plantoes' && routeParams().get('novo')) {
+      // foca o dia de hoje e tira o ?novo do endereço (o próximo atalho funciona de novo)
+      setTimeout(() => {
+        document.querySelector(`[data-action="shift:day"][data-date="${todayISO()}"]`)?.focus();
+        history.replaceState(null, '', location.hash.replace(/([?&])novo=[^&]*&?/, '$1').replace(/[?&]$/, ''));
+      }, 200);
     }
     return html`
       ${tabsNav('salario', TABS, active)}

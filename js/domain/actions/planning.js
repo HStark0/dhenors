@@ -7,7 +7,7 @@ import { store } from '../../core/store.js';
 import { MAX_CENTS } from '../../core/money.js';
 import { isValidYM, todayISO, currentYM, formatMonth } from '../../core/dates.js';
 import { newId } from '../schema.js';
-import { recurringActiveIn, recurringDates, FREQ_DAYS } from '../ledger.js';
+import { recurringActiveIn, recurringDates, variableEstimate, FREQ_DAYS } from '../ledger.js';
 import { buildSnapshot, monthlyReport } from '../analysis.js';
 import { financialScore } from '../planning.js';
 import { ValidationError, text, cents, date, findOrThrow, entry } from './core.js';
@@ -178,18 +178,24 @@ export function closeMonth(ym) {
     if (!isValidYM(ym)) throw new ValidationError('Mês inválido.');
     if (ym > currentYM()) throw new ValidationError('Só é possível fechar o mês atual ou meses anteriores.');
     if (d.closedMonths[ym]) throw new ValidationError(`${formatMonth(ym)} já está fechado.`);
-    // Fixa o valor das recorrentes do mês: editar a recorrente depois não muda o mês fechado
+    // Fixa o valor das recorrentes do mês: editar a recorrente depois não muda o mês fechado.
+    // Contas variáveis (luz, água) ficam com a estimativa que aparecia no mês, não com o valor do cadastro.
     for (const r of d.recurring) {
       if (!recurringActiveIn(r, ym)) continue;
+      const estimate = r.variable ? variableEstimate(d, r, ym) : r.cents;
       for (const due of recurringDates(r, ym)) {
         const [, e] = entry(d, r.id, FREQ_DAYS[r.freq] ? due : ym);
-        if (!e.skipped) e.cents ??= r.cents;
+        if (!e.skipped) e.cents ??= estimate;
       }
     }
-    const snap = buildSnapshot(d, ym);
+    // A fotografia é calculada numa CÓPIA: os cálculos guardam cache por
+    // objeto de estado, e este rascunho vira o novo estado (já fechado) —
+    // calcular sobre ele deixaria em cache o mês como "aberto".
+    const view = structuredClone(d);
+    const snap = buildSnapshot(view, ym);
     const today = todayISO();
-    snap.report = monthlyReport(d, ym, today);
-    snap.score = financialScore(d, ym, ym === currentYM() ? today : `${ym}-28`).score;
+    snap.report = monthlyReport(view, ym, today);
+    snap.score = financialScore(view, ym, ym === currentYM() ? today : `${ym}-28`).score;
     d.closedMonths[ym] = snap;
     d.scoreHistory = { ...(d.scoreHistory || {}), [ym]: snap.score };
     return snap;

@@ -19,7 +19,8 @@ import {
   todayISO, currentYM, dateInMonth, formatDateBR, formatMonth, ymOf, addDaysISO, parseISO, nextPayday,
 } from '../../core/dates.js';
 import * as A from '../../domain/actions.js';
-import { installmentSummary, entryKey, planInstallment, FREQ_LABELS, FREQ_DAYS } from '../../domain/ledger.js';
+import { installmentSummary, entryKey, planInstallment, FREQ_LABELS, FREQ_DAYS, computeMonth } from '../../domain/ledger.js';
+import { bindImpact } from '../outlookUI.js';
 import { parseBoleto, formatLine } from '../../domain/boleto.js';
 import { parsePix } from '../../domain/pix.js';
 import { cleanDescription } from '../../domain/importer.js';
@@ -151,6 +152,7 @@ export function editExpense(expense = null, { paid = false, preset = {} } = {}) 
   const before = expense ? { categoryId: expense.categoryId, subcategoryId: expense.subcategoryId } : null;
   const extra = { boleto: e.boleto || null, pix: e.pix || null };
   let attachments = [...(e.attachments || [])];
+  let saved = false; // a janela foi salva? (senão os anexos novos são apagados ao fechar)
   openDialog({
     title: expense ? 'Editar despesa' : (paid ? 'Registrar gasto pago' : 'Nova conta a pagar'),
     submitLabel: expense ? 'Salvar' : 'Adicionar',
@@ -177,14 +179,23 @@ export function editExpense(expense = null, { paid = false, preset = {} } = {}) 
           <span class="field__label">Anexos</span>
           <div class="attach-list" data-attach-list></div>
           <button type="button" class="btn btn--ghost btn--sm" data-attach>${icon('paperclip', 'icon--xs')} Foto do comprovante ou boleto</button>
-          <p class="field__hint">Ficam só neste aparelho (não vão para a nuvem nem para o backup).</p>
+          <p class="field__hint">Vão cifrados para a sua conta na nuvem (não entram no backup em arquivo).</p>
         </div>
         <div class="field field--full" data-extra-info aria-live="polite"></div>
+        <div class="field field--full" data-impact aria-live="polite"></div>
       </div>`,
     onMount: (dlg) => {
       bindCategorySelects(dlg, data());
       bindSplits(dlg, data());
       const form = dlg.querySelector('form');
+      // Prévia: efeito no saldo do mês e até o próximo salário (só para valores que fazem diferença)
+      bindImpact(form, dlg.querySelector('[data-impact]'), (f) => {
+        const cents = toCents(f.cents.value);
+        if (!Number.isFinite(cents) || cents <= 0 || !parseISO(f.dueDate.value)) return null;
+        const income = computeMonth(data(), ymOf(f.dueDate.value)).income.total;
+        if (cents < (income > 0 ? income * 0.05 : 20000)) return null;
+        return { kind: 'expense', cents, dueDate: f.dueDate.value, replace: expense ? { kind: 'expense', id: expense.id } : null };
+      });
       const info = dlg.querySelector('[data-extra-info]');
       const showInfo = () => {
         info.innerHTML = [
@@ -228,18 +239,24 @@ export function editExpense(expense = null, { paid = false, preset = {} } = {}) 
         if (!expense?.attachments?.some((a) => a.id === del.dataset.attachDel)) removeAttachment(del.dataset.attachDel);
         renderAttach();
       });
+      // Fechou sem salvar: os arquivos já enviados nesta janela não ficam órfãos na nuvem
+      dlg.addEventListener('close', () => {
+        if (saved) return;
+        for (const a of attachments) if (!expense?.attachments?.some((x) => x.id === a.id)) removeAttachment(a.id);
+      });
     },
     onSubmit: (form) => {
       const v = readForm(form);
-      const saved = A.saveExpense({
+      const result = A.saveExpense({
         ...v, id: expense?.id, cents: toCents(v.cents), splits: readSplits(form), attachments,
         paidAt: v.paid ? (expense?.paidAt || (v.dueDate <= todayISO() ? v.dueDate : todayISO())) : null,
         boleto: extra.boleto, pix: extra.pix,
       });
+      saved = true;
       for (const a of expense?.attachments || []) if (!attachments.some((x) => x.id === a.id)) removeAttachment(a.id);
       toast(expense ? 'Despesa atualizada.' : 'Despesa adicionada.');
       // Aprender ao recategorizar: "Sempre colocar UBER em Transporte?"
-      if (before && v.categoryId && v.categoryId !== before.categoryId) offerRule(saved.description, v.categoryId, v.subcategoryId);
+      if (before && v.categoryId && v.categoryId !== before.categoryId) offerRule(result.description, v.categoryId, v.subcategoryId);
     },
   });
 }
@@ -286,27 +303,37 @@ export function attachmentsDialog(expense) {
   };
   const { dialog } = openDialog({ title: `Anexos · ${expense.description}`, body: render() });
   const body = dialog.querySelector('.dialog__body');
+  const current = () => data().expenses.find((x) => x.id === expense.id);
   body.addEventListener('click', async (ev) => {
-    const e = data().expenses.find((x) => x.id === expense.id);
-    if (ev.target.closest('[data-add]')) {
-      const files = await pickFiles();
-      const added = [];
-      for (const f of files) { try { added.push(await saveAttachment(f)); } catch (err) { toastError(err.message); } }
-      A.setExpenseAttachments(e.id, [...(e.attachments || []), ...added]);
-      body.innerHTML = render().toString();
-    }
-    const del = ev.target.closest('[data-del]');
-    if (del) {
-      A.setExpenseAttachments(e.id, e.attachments.filter((a) => a.id !== del.dataset.del));
-      removeAttachment(del.dataset.del);
-      body.innerHTML = render().toString();
+    const e = current();
+    if (!e) { dialog.close(); return; } // a conta foi apagada (em outro aparelho, por exemplo)
+    try {
+      if (ev.target.closest('[data-add]')) {
+        const files = await pickFiles();
+        const added = [];
+        for (const f of files) { try { added.push(await saveAttachment(f)); } catch (err) { toastError(err.message); } }
+        // relê: a lista pode ter mudado enquanto os arquivos subiam
+        const now = current();
+        if (!now) { added.forEach((a) => removeAttachment(a.id)); dialog.close(); return; }
+        A.setExpenseAttachments(now.id, [...(now.attachments || []), ...added]);
+        body.innerHTML = render().toString();
+      }
+      const del = ev.target.closest('[data-del]');
+      if (del) {
+        A.setExpenseAttachments(e.id, e.attachments.filter((a) => a.id !== del.dataset.del));
+        removeAttachment(del.dataset.del);
+        body.innerHTML = render().toString();
+      }
+    } catch (err) {
+      if (err?.name !== 'GuestError') toastError(err.message);
+      return;
     }
     const open = ev.target.closest('[data-open]');
     if (open) {
       try {
         const a = e.attachments.find((x) => x.id === open.dataset.open);
-        const url = await attachmentURL(a.id);
-        if (!url) return toastError('Este anexo não está neste aparelho.');
+        const url = await attachmentURL(a);
+        if (!url) return toastError('Este anexo ficou no aparelho onde foi feito: abra o Dhenors nele e entre na conta para enviá-lo à nuvem.');
         const box = body.querySelector('[data-preview]');
         box.innerHTML = a.type.startsWith('image/')
           ? `<img class="attach-preview" src="${url}" alt="${a.name.replace(/"/g, '')}">`
@@ -354,10 +381,22 @@ export function editRecurring(rec = null, { preset = {} } = {}) {
         </fieldset>
         ${tagsField({ value: r.tags || [], suggestions: knownTags() })}
         ${textareaField({ label: 'Observação', name: 'notes', value: r.notes || '' })}
+        <div class="field field--full" data-impact aria-live="polite"></div>
       </div>`,
     onMount: (dlg) => {
       bindCategorySelects(dlg, data());
       const form = dlg.querySelector('form');
+      // Prévia: destaca SÓ os meses em que a recorrente deixa o mês apertado ou negativo
+      bindImpact(form, dlg.querySelector('[data-impact]'), (f) => {
+        const cents = toCents(f.cents.value);
+        const dueDay = Number(f.dueDay.value);
+        if (!Number.isFinite(cents) || cents <= 0 || !Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31 || !/^\d{4}-\d{2}$/.test(f.startYM.value)) return null;
+        return {
+          kind: 'recurring', cents, dueDay, freq: f.freq.value, startYM: f.startYM.value, endYM: /^\d{4}-\d{2}$/.test(f.endYM.value) ? f.endYM.value : null,
+          anchorDate: FREQ_DAYS[f.freq.value] && parseISO(f.anchorDate?.value) ? f.anchorDate.value : null, cardId: f.cardId?.value || null,
+          replace: rec ? { kind: 'recurring', id: rec.id } : null,
+        };
+      }, { mode: 'weighs' });
       form.freq.addEventListener('change', () => { dlg.querySelector('[data-anchor]').hidden = !FREQ_DAYS[form.freq.value]; });
       form.subscription.addEventListener('change', () => { dlg.querySelector('[data-renewal]').hidden = !form.subscription.checked; });
     },
@@ -469,6 +508,7 @@ export function editInstallment(inst = null) {
         ${numberField({ label: 'Dia do vencimento', name: 'dueDay', value: init.dueDay, min: 1, max: 31 })}
         ${dateField({ label: 'Próxima parcela a pagar vence em', name: 'nextDueDate', value: init.nextDueDate, hint: 'Calculada pelo dia do vencimento. Ajuste se já pagou a deste mês.' })}
         <div class="field field--full"><div class="preview preview--plan" data-preview aria-live="polite"></div></div>
+        <div class="field field--full" data-impact aria-live="polite"></div>
         ${categoryFields(data(), init)}
         ${creditorField(data(), init.creditorId)}
         ${tagsField({ value: init.tags || [], suggestions: knownTags() })}
@@ -518,6 +558,13 @@ export function editInstallment(inst = null) {
       form.addEventListener('input', update);
       form.addEventListener('change', update);
       update();
+      // Linha do tempo: todos os meses com parcela, destacando os que apertam
+      bindImpact(form, dlg.querySelector('[data-impact]'), () => {
+        const v = read();
+        if (!Number.isFinite(v.parcelCents) || v.parcelCents <= 0 || !Number.isInteger(v.count) || v.count < 1 || v.count > 420
+          || !Number.isInteger(v.paidCount) || v.paidCount < 0 || v.paidCount >= v.count || !parseISO(v.nextDueDate)) return null;
+        return { kind: 'installment', ...v, replace: inst ? { kind: 'installment', id: inst.id } : null };
+      });
     },
     onSubmit: (form) => {
       const v = readForm(form);
@@ -565,9 +612,16 @@ export function installmentDetails(instId) {
   const redraw = () => { const scroll = body.scrollTop; body.innerHTML = render().toString(); body.scrollTop = scroll; };
   body.addEventListener('change', (ev) => {
     const box = ev.target.closest('[data-parcel]');
-    if (box) { A.setParcelPaid(instId, Number(box.dataset.parcel), box.checked, todayISO()); redraw(); return; }
     const when = ev.target.closest('[data-paid-date]');
-    if (when?.value) { A.setParcelPaid(instId, Number(when.dataset.paidDate), true, when.value); redraw(); }
+    try {
+      if (box) A.setParcelPaid(instId, Number(box.dataset.parcel), box.checked, todayISO());
+      else if (when?.value) A.setParcelPaid(instId, Number(when.dataset.paidDate), true, when.value);
+    } catch (err) {
+      // mês fechado, sem login…: avisa e desfaz a marca na tela
+      if (err?.name !== 'GuestError') toastError(err.message);
+    } finally {
+      if (box || when) redraw();
+    }
   });
 }
 

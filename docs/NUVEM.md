@@ -4,7 +4,9 @@ Ao final você terá:
 
 - o site no ar em **https://SEU-USUARIO.github.io/dhenors/** (abre no celular, no trabalho, em qualquer navegador);
 - os dados salvos na sua conta do **Supabase**, **criptografados** com uma frase secreta que só você sabe;
-- tudo funcionando **offline** também: o app salva no aparelho na hora e envia para a nuvem quando tiver internet.
+- nada salvo no navegador além do login lembrado: os dados vivem só na nuvem e, com o app aberto, na memória. Cada alteração sobe na hora. **Sem internet, o app não abre os dados**; o que você alterar com o app já aberto espera a conexão voltar (não feche o app até lá).
+
+> O site público (https://hstark0.github.io/dhenors/) já usa o projeto Supabase do desenvolvedor, com cadastro aberto: para só **usar** o Dhenors, basta abrir o site e tocar em **Criar conta**. Este passo a passo é para quem quer publicar **a própria cópia**, com o próprio Supabase (aí quem controla os dados é você).
 
 Tempo: uns 15 minutos. Tudo nos planos **gratuitos**.
 
@@ -19,8 +21,10 @@ Tempo: uns 15 minutos. Tudo nos planos **gratuitos**.
    - **Region:** *South America (São Paulo)*.
    - *Create new project* e espere ~2 minutos.
 3. Menu lateral → **SQL Editor** → *New query* → cole TODO o conteúdo do arquivo [`supabase/schema.sql`](../supabase/schema.sql) → **Run**. Deve aparecer *Success*.
-   - Cria as tabelas `dhenors_state` (índice), `dhenors_chunks` (dados em blocos), `dhenors_versions` (histórico de versões), `dhenors_devices` (aparelhos conectados) e `dhenors_push` (lembretes), todas com RLS (cada conta só vê o que é dela) e ligadas ao **Realtime**.
-   - Já usava a versão 3? Rode o arquivo de novo: ele só cria o que falta e mantém seus dados.
+   - Cria as tabelas `dhenors_state` (índice), `dhenors_chunks` (dados em blocos), `dhenors_versions` (histórico de versões), `dhenors_devices` (aparelhos conectados), `dhenors_push` (lembretes) e `dhenors_feedback_log` (limite do Fale conosco, sem acesso público), todas com RLS (cada conta só vê o que é dela); o estado fica ligado ao **Realtime**.
+   - Cria também o bucket privado `dhenors-files` (Storage) para os **anexos**, com regras para cada pessoa só acessar a própria pasta.
+   - Põe os limites contra abuso: cota de 50 MB por conta (dados + histórico) e 100 MB de anexos, tamanho máximo dos campos de aparelhos/push, no máximo 20 aparelhos e 10 inscrições de push por conta.
+   - **Atualizou o Dhenors? Rode o arquivo de novo** (a cada versão nova): ele só cria e atualiza o que falta e mantém seus dados.
 4. Menu → **Project Settings → API** (ou o botão **Connect** no topo) e copie:
    - **Project URL** — algo como `https://abcdefghijk.supabase.co`
    - **anon public** key (ou **publishable key**, `sb_publishable_…`)
@@ -29,7 +33,7 @@ Tempo: uns 15 minutos. Tudo nos planos **gratuitos**.
    - Deixe *Email* ligado.
    - Deixe **Allow new users to sign up** ligado: cada pessoa cria a própria conta pelo app (Ajustes → Nuvem → Criar conta).
    - Deixe **Confirm email** ligado: o Supabase manda um e-mail de confirmação e a conta só entra depois que a pessoa clica no link.
-   - O `schema.sql` também põe uma **cota por conta** (50 MB de partes + histórico). Passou disso, o app avisa e para de enviar até você apagar dados antigos. Para mudar o limite, edite `dhenors_quota_bytes()` no arquivo e rode de novo.
+   - A **cota por conta** (50 MB de partes + histórico; 100 MB de anexos): passou disso, o servidor recusa o envio e o app avisa. Para mudar os limites, edite `dhenors_quota_bytes()` e `dhenors_files_quota_bytes()` no arquivo e rode de novo.
 6. (Depois da Parte 2) **Authentication → URL Configuration**:
    - **Site URL**: cole o endereço do seu site (`https://SEU-USUARIO.github.io/dhenors/`). É para onde o link de confirmação de e-mail leva.
    - **Redirect URLs** → *Add URL*: cole o mesmo endereço (`https://SEU-USUARIO.github.io/dhenors/`). Sem isso, o link de **"Esqueci minha senha"** não volta para o app.
@@ -61,23 +65,24 @@ Em `js/config.js`, preencha `url` e `anonKey` com os valores da Parte 1 e envie 
 
 O plano gratuito do Supabase **pausa** o projeto depois de 7 dias sem uso. O app avisa quando a pausa se aproxima, e o fluxo [`supabase-keepalive.yml`](../.github/workflows/supabase-keepalive.yml) faz uma consulta leve duas vezes por semana. Para ligar: **Settings → Secrets and variables → Actions** → crie `SUPABASE_URL` e `SUPABASE_ANON_KEY`.
 
-## Parte 3 — Ligar a nuvem no app
+## Parte 3 — Entrar no app
 
-**No primeiro aparelho** (onde estão seus dados hoje):
+Sem login, o app mostra **dados de exemplo** (nada é salvo). Para usar com os seus dados:
 
-1. Abra o site → **Ajustes → Nuvem → Conectar**.
-2. Cole a URL e a chave (se não estiverem no `config.js`).
-3. **Criar conta** com e-mail e senha (confirme o e-mail se o Supabase pedir e depois **Entrar**).
-4. **Crie a frase secreta** (mín. 8 caracteres). **Anote em lugar seguro**: sem ela, ninguém recupera os dados da nuvem.
-5. Escolha se o aparelho deve **lembrar a frase**: só nesta sessão, por 30 dias ou sempre. Com **senha** no app (letras e números), a frase lembrada fica cifrada por ela. Com **PIN só de números**, a frase fica lembrada **só enquanto o app estiver aberto** e é pedida de novo ao reabrir: um PIN curto pode ser testado inteiro por quem copiar o navegador, e isso não pode abrir a nuvem.
-6. Pronto: o botão de nuvem mostra "Sincronizado há X min".
+**Primeira vez (criar a conta):**
 
-> Seus dados estão hoje em outro endereço (ex.: o arquivo `dhenors.html` ou `localhost`)? Cada endereço tem o próprio armazenamento. Lá, faça **Ajustes → Baixar backup**; no site novo, **Ajustes → Restaurar** e depois ligue a nuvem.
+1. Abra o site → **Criar conta** (na tela de entrada ou na barra do topo). Se a URL e a chave não estiverem no `config.js`, o app pede antes (Ajustes → Nuvem → Conectar).
+2. Informe e-mail e senha e confirme o e-mail pelo link que o Supabase envia; depois, **Entrar**.
+3. **Crie a frase secreta** (mín. 8 caracteres). **Anote em lugar seguro**: sem ela, ninguém recupera os dados da nuvem.
+4. Escolha por quanto tempo o aparelho deve **lembrar o login**: sempre, por 30 dias ou só até fechar o app. Fica guardado só o acesso — a sessão e a chave derivada da frase, como chave não exportável (nunca a frase nem os dados). Em aparelho compartilhado, use **"Só até fechar o app"**.
+5. Pronto: o botão de nuvem mostra "Sincronizado há X min".
+
+> Tem um backup (`.json`) de versões antigas ou de outro endereço? Depois de entrar, **Ajustes → Restaurar backup**. Usava uma versão até a 3.4 **neste mesmo navegador e endereço**? No primeiro login, o que estava guardado aqui sobe para a nuvem e só então é apagado do navegador.
 
 **Nos outros aparelhos:**
 
-1. Abra o site → na tela de boas-vindas, **Já uso em outro aparelho** (ou Ajustes → Nuvem).
-2. Entre com o mesmo e-mail e senha e digite a **mesma frase secreta**.
+1. Abra o site → **Entrar** (na tela de entrada).
+2. Use o mesmo e-mail e senha e digite a **mesma frase secreta**.
 3. Os dados aparecem. No celular, use **Adicionar à tela inicial** para virar app.
 
 ## Esqueci a senha ou a frase secreta
@@ -90,20 +95,20 @@ São duas coisas diferentes:
 | Quem conhece | O Supabase | **Só você** (nunca sai do aparelho) |
 | Esqueci | **Dá para trocar**: *Entrar na nuvem → Esqueci minha senha* → abra o link do e-mail → crie a senha nova → digite a mesma frase secreta de sempre | **Não tem recuperação**, nem pelo Supabase. É isso que garante que ninguém lê os seus dados |
 
-Esqueceu a frase secreta? Os dados continuam a salvo **nos aparelhos que já estão ligados** e nos **backups** (Ajustes → Baixar backup). Por isso, anote a frase em lugar seguro e faça backups de vez em quando.
+Esqueceu a frase secreta? Os dados da nuvem **não podem ser abertos** sem ela. Enquanto algum aparelho ainda estiver com o login lembrado, ele continua abrindo os dados: aproveite para fazer um **backup** (Ajustes → Baixar backup) e, se quiser, trocar a frase (Ajustes → Nuvem). Fora isso, só os backups que você já tiver. Por isso, anote a frase em lugar seguro e faça backups de vez em quando.
 
 ## Como a sincronização funciona
 
 | Situação | O que acontece |
 |---|---|
-| Você lança algo | Salva no aparelho na hora; ~1,5 s depois vai para a nuvem (criptografado). O botão mostra "1 pendente" até enviar. |
+| Você lança algo | Aparece na tela na hora (fica na memória); ~1,5 s depois vai para a nuvem (criptografado). O botão mostra "1 pendente" até enviar — não feche o app antes disso. |
 | Os dados são grandes | O estado é dividido em **blocos** (por coleção e por ano) e só os blocos que mudaram são enviados. |
 | Outro aparelho mudou algo | Chega em segundos pelo **Realtime** (WebSocket do Supabase). Sem Realtime, o app confere a cada 1 min com o app aberto. |
-| Sem internet | Continua funcionando; o botão mostra "Offline" e envia quando a conexão voltar. |
+| Sem internet | O app **não abre os dados** (eles não ficam no aparelho). Se a conexão cair com o app já aberto, as alterações ficam pendentes na memória e são enviadas quando a internet voltar — **desde que você não feche o app**. |
 | Mexeu em dois aparelhos ao mesmo tempo | O app **junta as mudanças item a item**. Se o MESMO campo do mesmo item foi alterado nos dois, vira um **conflito**: Ajustes → Nuvem → Conflitos mostra as duas versões e você escolhe. |
 | Errou feio | **Histórico de versões** (Ajustes → Nuvem): volte o estado inteiro para uma cópia de dias atrás. |
 | Perdeu o celular | **Aparelhos conectados** (Ajustes → Nuvem): veja onde a conta está aberta e desconecte. Desconectar também **encerra no servidor as sessões de todos os outros aparelhos** (os seus precisam entrar de novo com e-mail e senha); o banco não deixa o aparelho desconectado se "religar" sozinho. Troque a **senha da conta** e, se precisar, a frase secreta: os dados são recriptografados. |
-| Apagou todos os dados neste aparelho | O aparelho **sai da nuvem antes** de apagar (o estado vazio não é enviado). A nuvem e os outros aparelhos continuam como estavam; para voltar, entre de novo. |
+| Apagou todos os dados | A conta fica vazia em todos os aparelhos. As versões anteriores continuam em Nuvem → Histórico de versões (as últimas 30). Para excluir a conta inteira, peça pelo Fale conosco (veja docs/PRIVACIDADE.md). |
 | App desatualizado | Se a nuvem tiver dados salvos por uma versão mais nova do Dhenors, este aparelho **não aplica nem envia nada** e fica só leitura até você atualizar (recarregar a página). |
 
 ## (Opcional) Lembretes com o app fechado (push)
@@ -111,16 +116,44 @@ Esqueceu a frase secreta? Os dados continuam a salvo **nos aparelhos que já est
 1. Gere as chaves: `npx web-push generate-vapid-keys`.
 2. Coloque a chave **pública** em `js/config.js` (`vapidPublicKey`).
 3. Publique a função: `supabase functions deploy daily-reminders --no-verify-jwt` e `supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:voce@exemplo.com`.
-4. Ligue as extensões **pg_cron** e **pg_net** (Database → Extensions) e rode o `cron.schedule` comentado no fim do `schema.sql`.
+4. Ligue as extensões **pg_cron** e **pg_net** (Database → Extensions) e rode o `cron.schedule` comentado no fim do `schema.sql`. Guarde a chave `service_role` no **Vault** do Supabase (`vault.create_secret`, como no exemplo) em vez de colar a chave em texto no comando.
 5. No app: Ajustes → Lembretes → **Com o app fechado (push)**.
 
-Privacidade: cada aparelho envia só **quantas** contas vencem em cada dia — nunca valores ou nomes.
+Privacidade: cada aparelho envia só **quantas** contas vencem em cada dia — nunca valores ou nomes. A função só manda notificações para os serviços de push dos navegadores (Google, Mozilla, Microsoft, Apple), por https.
+
+## Fale conosco por e-mail (Ajustes → Fale conosco)
+
+O formulário de feedback, sugestão e reclamação envia a mensagem para **05henderson.dev@gmail.com** pela Edge Function `send-feedback`, usando o [Resend](https://resend.com) (gratuito até 3 mil e-mails por mês). A chave do Resend fica só no Supabase, nunca no app.
+
+1. Crie uma conta no **Resend** com o e-mail **05henderson.dev@gmail.com**. Com o remetente de teste (`onboarding@resend.dev`), o Resend só entrega para o dono da conta — por isso a conta precisa ser desse e-mail. (Com um domínio próprio verificado no Resend, dá para usar qualquer remetente: defina `FEEDBACK_FROM`.)
+2. Em **API Keys**, crie uma chave com permissão de envio e copie (`re_...`).
+3. No terminal, na pasta do projeto (com a [CLI do Supabase](https://supabase.com/docs/guides/cli) ligada ao projeto):
+   ```bash
+   supabase secrets set RESEND_API_KEY=re_SUA_CHAVE FEEDBACK_TO=05henderson.dev@gmail.com
+   supabase functions deploy send-feedback --no-verify-jwt
+   ```
+   `--no-verify-jwt` deixa quem ainda não tem conta (visitante) mandar mensagem também. Não precisa de outro secret: `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` já existem em toda Edge Function e são usados para o limite de envios.
+4. **Rode o `supabase/schema.sql` de novo**: ele cria a tabela `dhenors_feedback_log`, onde a função conta os envios. Sem ela, a função recusa as mensagens (resposta 503) em vez de enviar sem limite.
+5. Se o site não estiver em `https://hstark0.github.io`, informe o endereço: `supabase secrets set ALLOWED_ORIGINS=https://seu-site.com` (vários separados por vírgula). Pedidos sem o cabeçalho `Origin` ou de outros sites são recusados.
+6. Mudou o código da função? Publique de novo: `supabase functions deploy send-feedback --no-verify-jwt`.
+
+**Como chega:** assunto `[NOVO FEEDBACK] - Interface / Design - Maria Souza` (ou `[NOVA SUGESTÃO]`, `[NOVA RECLAMAÇÃO]`), corpo em HTML com nome, e-mail, área, tipo, nota, mensagem, a descrição do problema (nas reclamações), versão do app e aparelho, e o anexo junto. **Responder o e-mail responde direto para quem escreveu.**
+
+**Proteções:**
+
+- só aceita pedidos do site (cabeçalho `Origin` obrigatório e da lista `ALLOWED_ORIGINS`);
+- lê o corpo com limite real de 8 MB e recusa JSON inválido (400);
+- confere tudo de novo com as mesmas regras do app (inclusive nome e sobrenome);
+- anexo só imagem (PNG, JPG, WEBP, GIF) ou PDF de até 5 MB, com a **assinatura do arquivo conferida** e a extensão do nome trocada pela do tipo real;
+- ignora robôs (campo-isca);
+- **limite guardado no banco** (vale para todas as instâncias da função): até 30 mensagens por hora no total, 5 por hora por e-mail e 5 a cada 10 minutos por IP. Só *hashes* SHA-256 do IP e do e-mail são guardados, e os registros com mais de 1 dia são apagados.
 
 ## Segurança, em resumo
 
 - **Criptografia de ponta a ponta:** AES-256-GCM com chave derivada da sua frase (PBKDF2-SHA256, 600 mil iterações). O Supabase só guarda blocos ilegíveis.
 - **Integridade:** cada bloco é amarrado (AAD do AES-GCM) à conta, ao nome e à versão, e o hash é conferido depois de abrir. O servidor não consegue trocar blocos de lugar nem devolver um índice antigo como se fosse novo. Blocos de versões anteriores do app são recifrados no próximo envio.
-- **Isolamento:** as regras do banco (RLS) só deixam cada conta ler e alterar as próprias linhas; tamanhos máximos por linha e a **cota por conta** evitam abuso.
+- **Isolamento:** as regras do banco (RLS) só deixam cada conta ler e alterar as próprias linhas e a própria pasta de anexos; tamanhos máximos, limites de aparelhos/push e a **cota por conta** (dados e anexos) evitam abuso.
+- **Login lembrado:** quem tem acesso ao perfil do navegador usa a conta enquanto o login estiver lembrado. Em aparelho compartilhado, escolha "Só até fechar o app".
 - **Contas antigas** (frase criada com 310 mil iterações): na próxima vez que você digitar a frase, tudo é recifrado com 600 mil; os outros aparelhos pedem a frase (a mesma) uma vez.
 - **Sem dependências externas:** o app fala com o Supabase pela API REST e pelo WebSocket oficiais, sem bibliotecas de terceiros.
 - Detalhes em [SEGURANCA.md](SEGURANCA.md) e [PRIVACIDADE.md](PRIVACIDADE.md).

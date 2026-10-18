@@ -39,6 +39,20 @@ export const TAX_TABLES = {
     simplified: 607.20,
     family: { quota: 65.00, limit: 1906.04 }, // salário-família: cota por filho e limite de remuneração
     reduction: null, // sem redutor em 2025
+    // Jan–abr/2025 ainda valia a tabela anterior (isenção até R$ 2.259,20 e
+    // desconto simplificado de R$ 564,80); a de cima vale de maio em diante
+    // (MP 1.294/2025). tablesFor(ano, mês) troca as faixas nesses meses.
+    early: {
+      untilMonth: 4,
+      irrf: [
+        [2259.20, 0, 0],
+        [2826.65, 0.075, 169.44],
+        [3751.05, 0.15, 381.44],
+        [4664.68, 0.225, 662.77],
+        [Infinity, 0.275, 896.00],
+      ],
+      simplified: 564.80,
+    },
   },
 
   2026: {
@@ -82,16 +96,22 @@ const allTables = () => ({ ...TAX_TABLES, ...Object.fromEntries(Object.entries(c
 
 /**
  * Tabela do ano (ou do ano mais próximo disponível).
+ * `month` (1–12, opcional): anos com troca de tabela no meio do ano
+ * (`early`, ex.: 2025) usam as faixas antigas até `early.untilMonth`.
+ * Sem mês, vale a tabela do fim do ano (13º, declaração anual).
  * → { year (o da tabela usada), requested, missing, custom, ...tabela }
  */
-export function tablesFor(year) {
+export function tablesFor(year, month = null) {
   const tables = allTables();
   const years = Object.keys(tables).map(Number).sort((a, b) => a - b);
   const pick = years.filter((y) => y <= year).pop() ?? years[0];
-  return { year: pick, requested: year, missing: pick !== year, custom: Boolean(custom[pick]), ...tables[pick] };
+  const { early, ...table } = tables[pick];
+  const before = early && month && pick === year && month <= early.untilMonth ? { irrf: early.irrf, simplified: early.simplified } : {};
+  return { year: pick, requested: year, missing: pick !== year, custom: Boolean(custom[pick]), ...table, ...before };
 }
 
-export const LATEST_TAX_YEAR = Math.max(...Object.keys(TAX_TABLES).map(Number));
+/** Tabela do mês "AAAA-MM" (considera troca de tabela no meio do ano). */
+export const tablesForYM = (ym) => tablesFor(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)));
 
 /** Ano mais recente com tabela (oficial ou sua). */
 export const latestTaxYear = () => Math.max(...Object.keys(allTables()).map(Number));

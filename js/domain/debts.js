@@ -13,7 +13,7 @@
 // =============================================================
 
 import { sumCents } from '../core/money.js';
-import { todayISO, diffDays, addMonthsYM, ymOf } from '../core/dates.js';
+import { todayISO, diffDays, ymOf } from '../core/dates.js';
 import { FREQ_MONTHS, FREQ_DAYS, recurringActiveIn } from './ledger.js';
 
 /**
@@ -110,6 +110,3 @@ export function subscriptionAlerts(state, today = todayISO()) {
   }
   return out;
 }
-
-/** Próximo mês "AAAA-MM" (usado na linha do tempo das dívidas). */
-export const monthLabelFrom = (startYM, n) => addMonthsYM(startYM, n);

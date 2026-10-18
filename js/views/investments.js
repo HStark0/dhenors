@@ -97,6 +97,7 @@ export async function updateRates({ silent = false } = {}) {
 }
 
 async function updateQuotes() {
+  if (store.guest) { document.dispatchEvent(new CustomEvent('dhenors:need-login')); return undefined; } // nada a buscar para o exemplo
   const tickers = (store.data.investments || []).map((i) => i.ticker).filter(Boolean);
   if (!tickers.length) return toast('Cadastre o código (ex.: PETR4) e a quantidade de cotas nos seus ativos para usar as cotações.', { type: 'info' });
   busy = 'quotes';
@@ -185,7 +186,7 @@ function empty() {
     <div class="card empty invest-empty">
       ${icon('coins', 'icon--lg')}
       <p><strong>Comece a acompanhar seus investimentos</strong></p>
-      <p class="muted">Cadastre onde seu dinheiro está aplicado e registre aportes e resgates. Tudo fica no seu aparelho.</p>
+      <p class="muted">Cadastre onde seu dinheiro está aplicado e registre aportes e resgates.</p>
       <ul class="invest-ideas">
         ${ideas.map(([ic, t, s]) => html`<li>${icon(ic)}<span><strong>${t}</strong><small>${s}</small></span></li>`)}
       </ul>

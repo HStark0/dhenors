@@ -6,8 +6,11 @@
 // =============================================================
 
 import { sumCents, percent, formatBRL, formatPercent, plural } from '../core/money.js';
-import { addMonthsYM, monthRange, todayISO, ymOf, formatMonth, formatMonthShort, monthsBetween } from '../core/dates.js';
+import { addMonthsYM, monthRange, todayISO, ymOf, formatMonth, formatMonthShort } from '../core/dates.js';
 import { computeMonth, installmentSummary, itemParts } from './ledger.js';
+import { memoByState } from '../core/memo.js';
+import { bigThreshold } from './monthStatus.js';
+import { invoiceLines } from './cards.js';
 
 // ---------- Fechamento do mês ----------
 
@@ -127,12 +130,24 @@ export function periodAnalysis(state, endYM, months, today = todayISO()) {
 // ---------- Projeção ----------
 
 /**
- * Projeção dos próximos `months` meses a partir de `fromYM`.
- * Considera: salário vigente, recorrentes, parcelas agendadas e
- * despesas avulsas já lançadas. Para o gasto avulso "do dia a dia"
- * usa a mediana dos últimos 3 meses, quando maior que o já lançado.
+ * Projeção dos próximos `months` meses a partir de `fromYM` — a BASE
+ * de toda previsão (12 meses, "Posso comprar?", simulador, situação
+ * dos meses, prévia do editor de contas).
+ *
+ * Renda: tudo que entra no mês (`income.total`: folha, fora da folha,
+ * férias, benefícios, outros vínculos) + o 13º, que fica fora do saldo
+ * do mês no painel mas é dinheiro que chega e conta na previsão.
+ * Gastos: recorrentes, parcelas e o "dia a dia" (avulsas + faturas):
+ * o já lançado ou a mediana dos últimos 3 meses, o que for maior.
+ * Gastos GRANDES e pontuais (avulsa ou parcela de cartão acima do
+ * limite "grande" de Ajustes → Alertas) somam POR CIMA da estimativa:
+ * uma TV à vista não "cabe" no gasto normal de mercado e farmácia.
+ *   launchedVariable = avulsas + faturas já lançadas no mês
+ *   oneOff           = parte disso que é gasto grande e pontual
+ *   variableEstimate = mediana usada como piso do dia a dia
+ *   variable         = max(lançado − pontual, mediana) + pontual
  */
-export function projection(state, fromYM, months = 6, today = todayISO()) {
+function projectionRaw(state, fromYM, months = 6, today = todayISO()) {
   const history = monthSeries(state, addMonthsYM(fromYM, -1), 3, today);
   const variableEstimate = median(history.map((h) => h.variable).filter((v) => v > 0));
   const avgExtras = Math.round(sumCents(history.map((h) => h.extras)) / 3);
@@ -140,21 +155,50 @@ export function projection(state, fromYM, months = 6, today = todayISO()) {
   return Array.from({ length: months }, (_, i) => {
     const ym = addMonthsYM(fromYM, i);
     const m = computeMonth(state, ym, today);
-    const variable = Math.max(m.totals.expense + m.totals.invoice, variableEstimate);
+    const launchedVariable = m.totals.expense + m.totals.invoice;
+    const oneOff = oneOffCents(state, m);
+    const variable = Math.max(launchedVariable - oneOff, variableEstimate) + oneOff;
     const salary = m.income.salary; // líquido do salário (sem extras)
     const extras = m.income.extrasCents;
+    const thirteenth = m.income.thirteenthNet || 0;
+    const income = m.income.total + thirteenth;
     const spent = m.totals.recurring + m.totals.installment + variable;
     return {
-      ym, salary, extras, avgExtras,
+      ym, salary, extras, avgExtras, income, thirteenth, baseIncome: m.income.total,
+      other: income - salary - extras, // férias, 13º, benefícios e outros vínculos
       recurring: m.totals.recurring,
       installment: m.totals.installment,
+      launchedVariable,
+      oneOff,
+      variableEstimate,
       variable,
       spent,
-      balance: salary + extras - spent,
-      balanceWithoutExtras: salary - spent,
+      balance: income - spent,
+      balanceWithoutExtras: income - extras - spent,
     };
   });
 }
+
+/**
+ * Gastos grandes e pontuais do mês: avulsas e parcelas de compras no
+ * cartão a partir do limite "grande" (monthStatus.bigThreshold).
+ */
+export function oneOffCents(state, month) {
+  const from = bigThreshold(month.income.total, state.settings);
+  let cents = 0;
+  for (const i of month.items) {
+    if (i.kind === 'expense' && i.cents >= from) cents += i.cents;
+    if (i.kind === 'invoice') {
+      const card = (state.cards || []).find((c) => c.id === i.refId);
+      if (card) for (const l of invoiceLines(state, card, month.ym)) if (!l.purchase.recurringId && l.cents >= from) cents += l.cents;
+    }
+  }
+  return cents;
+}
+
+const projectionMemo = memoByState(projectionRaw);
+/** O resultado é compartilhado (cache): não altere os objetos devolvidos. */
+export const projection = (state, fromYM, months = 6, today = todayISO()) => projectionMemo(state, fromYM, months, today);
 
 /** Parcelamentos que terminam a partir de `fromYM`, com o valor liberado. */
 export function endingInstallments(state, fromYM) {
@@ -174,10 +218,15 @@ export function endingInstallments(state, fromYM) {
 // ---------- Insights ----------
 
 /**
- * Frases curtas e acionáveis sobre o mês.
- * → [{ tone: 'good' | 'warn' | 'bad' | 'info', title, text }]
+ * Frases curtas e acionáveis sobre o mês — as dicas de nível SIMPLES
+ * (advice.js junta a elas as médias e as complexas).
+ * → [{ level: 'simples', tone: 'good' | 'warn' | 'bad' | 'info', title, text }]
  */
 export function insightsFor(state, month, today = todayISO()) {
+  return insightsRaw(state, month, today).map((i) => ({ level: 'simples', ...i }));
+}
+
+function insightsRaw(state, month, today) {
   const out = [];
   const { totals, income, categories, ym } = month;
   const limit = state.settings.spendingLimitCents;
@@ -257,7 +306,7 @@ export function monthsWithData(state, today = todayISO()) {
   for (const s of state.shifts || []) set.add(ymOf(s.date));
   for (const x of state.extraIncomes) set.add(x.ym);
   for (const inst of state.installments) for (const p of installmentSummary(inst).schedule) set.add(p.ym);
-  for (const r of state.recurring) {
+  for (const r of [...state.recurring, ...(state.recurringIncomes || [])]) {
     let ym = r.startYM;
     const end = r.endYM || ymOf(today);
     for (let guard = 0; ym <= end && guard < 240; guard++) { set.add(ym); ym = addMonthsYM(ym, 1); }
@@ -443,12 +492,18 @@ export function envelopeStatus(state, ym, today = todayISO()) {
 /**
  * Até 4 ações práticas para agora, SEM repetir os alertas do sino
  * (as contas atrasadas/vencendo viram UM item que abre o sino).
- * → [{ tone, title, text, action: { label, route | act } }]
+ * `advice` (opcional) = adviceFor() de advice.js: a dica mais urgente
+ * para um mês que não fecha entra logo depois dos alertas.
+ * → [{ tone, title, text, level?, action: { label, route | act } }]
  */
-export function nextActions(state, month, today = todayISO(), { alertsCount = 0 } = {}) {
+export function nextActions(state, month, today = todayISO(), { alertsCount = 0, advice = null } = {}) {
   const out = [];
   if (alertsCount) out.push({ tone: 'bad', title: `${plural(alertsCount, 'conta precisa', 'contas precisam')} de atenção`, text: 'Atrasadas ou vencendo até amanhã.', action: { label: 'Ver alertas', act: 'alerts:open' } });
-  for (const a of spendingAnomalies(state, month.ym, today).slice(0, 1)) {
+  const urgent = advice ? [...advice.media, ...advice.complexa].find((t) => t.tone === 'bad') : null;
+  if (urgent) out.push(urgent);
+  const over = advice?.simples.find((t) => t.id.startsWith('over:'));
+  if (over) out.push(over);
+  for (const a of spendingAnomalies(state, month.ym, today).slice(0, over ? 0 : 1)) {
     out.push({ tone: 'warn', title: `${a.name} ${formatPercent(a.pct)} acima da média`, text: `${formatBRL(a.cents)} neste mês; a média é ${formatBRL(a.median)}.`, action: { label: 'Ver contas', route: '#/contas' } });
   }
   for (const i of insightsFor(state, month, today)) {
@@ -500,6 +555,3 @@ export function yearWrapped(state, year, today = todayISO()) {
     bestMonth: best, goalsReached, shifts, invested,
   };
 }
-
-/** Meses entre duas datas "AAAA-MM" (inclusive). */
-export const monthsInRange = (from, to) => Math.max(0, monthsBetween(from, to) + 1);

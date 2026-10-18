@@ -16,17 +16,15 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:5173',
     locale: 'pt-BR',
     timezoneId: 'America/Sao_Paulo',
-    // Bloqueado nos testes de telas (sem cache entre execuções); o projeto
-    // 'offline' libera o service worker para testar o uso sem internet.
+    // O service worker só cuida de push e instalação: fora dos testes
     serviceWorkers: 'block',
     trace: 'on-first-retry',
     // Para usar o Chrome já instalado em vez de baixar o Chromium: PW_CHANNEL=chrome
     ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
   },
   projects: [
-    { name: 'desktop', testIgnore: /offline\.spec\.js$/, use: { ...devices['Desktop Chrome'], viewport: { width: 1366, height: 900 } } },
-    { name: 'celular', testIgnore: /offline\.spec\.js$/, use: { ...devices['Pixel 7'] } },
-    { name: 'offline', testMatch: /offline\.spec\.js$/, use: { ...devices['Desktop Chrome'], serviceWorkers: 'allow' } },
+    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1366, height: 900 } } },
+    { name: 'celular', use: { ...devices['Pixel 7'] } },
   ],
   webServer: {
     command: 'node tools/serve.mjs 5173',

@@ -2,6 +2,10 @@
 # para testar no celular antes de juntar na main. A prévia é o arquivo
 # único (dist/dhenors.html) com as capturas de tela das telas principais,
 # anexados ao PR como artefato "previa-<número>" (baixe e abra o HTML).
+#
+# Permissões separadas: o job que instala dependências e roda código do
+# PR (npm ci, testes) só LÊ o repositório; o comentário no PR fica num
+# job à parte, que não baixa nem executa nada do PR.
 name: Pull request
 
 on:
@@ -9,13 +13,16 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   check-and-preview:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -37,8 +44,15 @@ jobs:
             dist/dhenors.html
             playwright-report
           retention-days: 14
+
+  comment:
+    needs: check-and-preview
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
       - name: Comenta no PR
-        if: always()
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |

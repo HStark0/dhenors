@@ -59,7 +59,8 @@ export function editGoal(goal = null) {
               ${invs.map((inv) => html`
                 <label class="check check--sm ${taken.has(inv.id) ? 'is-disabled' : ''}">
                   <input type="checkbox" name="inv" value="${inv.id}" ${(g.investmentIds || []).includes(inv.id) ? 'checked' : ''} ${taken.has(inv.id) ? 'disabled' : ''}>
-                  ${inv.name} <span class="muted">${formatBRL(positionAt(inv, investing, todayISO(), data().settings.quotes).value)}${taken.has(inv.id) ? ` · já na meta "${taken.get(inv.id)}"` : ''}</span>
+                  <span class="stack-text"><span>${inv.name}</span>
+                    <small class="muted">${formatBRL(positionAt(inv, investing, todayISO(), data().settings.quotes).value)}${taken.has(inv.id) ? ` · já na meta "${taken.get(inv.id)}"` : ''}</small></span>
                 </label>`)}
             </div>
           </fieldset>` : ''}

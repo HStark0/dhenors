@@ -79,7 +79,7 @@ test('13º proporcional: mês de admissão conta com 15 dias ou mais', () => {
 test('apagar só o salário: mantém contas e o resto; pode desfazer', async () => {
   const { store } = await import('../js/core/store.js');
   const A = await import('../js/domain/actions.js');
-  store.flush = async () => {};
+  store.guest = false; // conta aberta (sem login, alterações pedem para entrar)
   console.warn = () => {}; console.error = () => {};
   store.data = createEmptyState();
   const d = store.data;
@@ -117,7 +117,7 @@ test('apagar só o salário: mantém contas e o resto; pode desfazer', async () 
 test('sobreaviso fixo é salvo com 0 horas (R$ 0,00) mesmo sem informar horas', async () => {
   const { store } = await import('../js/core/store.js');
   const A = await import('../js/domain/actions.js');
-  store.flush = async () => {};
+  store.guest = false; // conta aberta (sem login, alterações pedem para entrar)
   store.data = createEmptyState();
   store.data.onboarded = true;
   store.data.settings.salaryHistory = [profile(440000)];

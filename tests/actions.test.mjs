@@ -13,8 +13,7 @@ import * as A from '../js/domain/actions.js';
 
 before(() => {
   store.data = createEmptyState();
-  store.flush = async () => {};
-  // Sem IndexedDB no Node: silencia só os avisos de armazenamento
+  store.guest = false; // conta aberta (sem login, alterações pedem para entrar)
   const error = console.error;
   console.warn = () => {};
   console.error = (...args) => { if (!String(args[0]).startsWith('[store]')) error(...args); };

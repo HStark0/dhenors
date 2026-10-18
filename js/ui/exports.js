@@ -103,7 +103,7 @@ export function exportSummaryCSV(months, filename) {
   const d = store.data;
   const head = ['Mês', 'Salário base', 'Adicionais', 'Plantões na folha', 'Bruto', 'INSS/Previdência', 'Imposto de Renda',
     'Descontos em folha', 'Líquido da folha', 'Extras fora da folha', '13º', 'Renda do mês',
-    'Contas avulsas', 'Recorrentes', 'Parcelas', 'Total de gastos', 'Já pago', 'Saldo do mês', 'FGTS (informativo)'];
+    'Contas avulsas', 'Recorrentes', 'Parcelas', 'Faturas de cartão', 'Total de gastos', 'Já pago', 'Saldo do mês', 'FGTS (informativo)'];
   const rows = [head];
   const totals = new Array(head.length - 1).fill(0);
   for (const ym of months) {
@@ -113,7 +113,7 @@ export function exportSummaryCSV(months, filename) {
     const values = [
       p.base, p.additions.reduce((s, a) => s + a.cents, 0), p.extras, p.gross, p.inss, p.ir.value,
       p.deductionsTotal, m.income.actual ?? p.net, outside, m.income.thirteenth?.net || 0, m.income.total,
-      m.totals.expense, m.totals.recurring, m.totals.installment, m.totals.all, m.totals.paid, m.balance, p.fgts,
+      m.totals.expense, m.totals.recurring, m.totals.installment, m.totals.invoice, m.totals.all, m.totals.paid, m.balance, p.fgts,
     ];
     if (values.every((v) => !v)) continue;
     values.forEach((v, i) => { totals[i] += v; });

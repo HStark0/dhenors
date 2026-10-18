@@ -32,6 +32,9 @@ import * as A from '../domain/actions.js';
  * { kind: 'statement'|'invoice', filename, format, learn, accountId, cardId, dueDate, rows }
  */
 let session = null;
+// Entrou ou saiu da conta: a revisão comparava com outros dados (exemplo × conta) e
+// mostraria o extrato de quem saiu para o visitante — recomeça do zero
+store.subscribe((reason) => { if (reason === 'open' || reason === 'close') session = null; });
 
 export default {
   id: 'importar',
@@ -119,7 +122,7 @@ function pickStep() {
           <li><strong>Nubank:</strong> app → fatura → "Exportar fatura" (CSV ou PDF) · conta: "Extrato" → exportar.</li>
           <li><strong>Itaú, Bradesco, Santander, Caixa, BB:</strong> internet banking → extrato → salvar como <em>OFX</em>. Fatura do cartão: baixar o PDF.</li>
           <li><strong>Inter, C6, PicPay:</strong> extrato → exportar em CSV ou OFX; fatura em PDF.</li>
-          <li>No celular: abra o PDF no app do banco, toque em <em>Compartilhar</em> e escolha o Dhenors.</li>
+          <li>No celular: no app do banco, baixe o PDF da fatura e escolha o arquivo aqui.</li>
         </ul>
       </article>
       <article class="card">
@@ -343,7 +346,7 @@ export function pickFile() {
   input.click();
 }
 
-/** Linhas já no formato do importador (compartilhar) → tela de revisão do extrato. */
+/** Linhas já no formato do importador → tela de revisão do extrato. */
 export function loadRows(rows, filename, format = 'Extrato') {
   if (!rows.length) return toastError('Nenhum lançamento encontrado.');
   session = { kind: 'statement', filename, format, learn: true, accountId: null, rows: rows.map(prepare).sort((a, b) => a.date.localeCompare(b.date)) };

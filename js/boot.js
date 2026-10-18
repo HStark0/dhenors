@@ -7,6 +7,12 @@
 // poder proibir scripts inline. Cores: as mesmas de js/core/theme.js.
 // =============================================================
 (function () {
+  // Aberto dentro de outro site (iframe): sai para a janela inteira — ninguém
+  // pode cobrir o app com botões falsos. (A CSP em <meta> não aceita frame-ancestors.)
+  if (window.top !== window.self) {
+    try { window.top.location = window.self.location.href; } catch (e) { document.documentElement.style.display = 'none'; }
+    return;
+  }
   var theme = 'auto';
   var color = null;
   var discreet = false;

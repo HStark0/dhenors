@@ -157,8 +157,6 @@
 .item--paid .item__title { color: var(--muted); }
 .item--paid .item__value { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
 
-.cat-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cat); display: inline-block; margin-right: 5px; vertical-align: 1px; }
-
 .status { font-size: var(--fs-xs); font-weight: 650; }
 .status--overdue { color: var(--neg); }
 .status--today { color: var(--warn); }

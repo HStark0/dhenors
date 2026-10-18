@@ -13,6 +13,10 @@
 import { itemByKey, openItemMenu } from './items.js';
 import { quickToggle, payDialog, buzz } from './pay.js';
 import { motionReduced } from '../core/theme.js';
+import { toastError } from './toast.js';
+
+/** Ação pelo teclado: erro (ex.: mês fechado) vira aviso, como nos cliques (main.js). */
+const safely = (fn) => { try { fn(); } catch (err) { if (err?.name !== 'GuestError') toastError(err?.message || 'Não foi possível.'); } };
 
 const THRESHOLD = 84;
 
@@ -60,7 +64,7 @@ export function initSwipe() {
     const item = itemByKey(li.dataset.key);
     if (!item) return;
     buzz(10);
-    if (dx > 0) quickToggle(item); else openItemMenu(item);
+    if (dx > 0) safely(() => quickToggle(item)); else safely(() => openItemMenu(item));
   };
   document.addEventListener('pointerup', end);
   document.addEventListener('pointercancel', end);
@@ -88,9 +92,9 @@ export function initListKeys() {
       case 'ArrowUp': ev.preventDefault(); move(i - 1); break;
       case 'Home': ev.preventDefault(); move(0); break;
       case 'End': ev.preventDefault(); move(all.length - 1); break;
-      case 'Enter': ev.preventDefault(); if (item) (item.status === 'paid' ? openItemMenu(item) : payDialog(item)); break;
-      case ' ': ev.preventDefault(); if (item) quickToggle(item); break;
-      case 'm': case 'M': ev.preventDefault(); openItemMenu(item); break;
+      case 'Enter': ev.preventDefault(); if (item) safely(() => (item.status === 'paid' ? openItemMenu(item) : payDialog(item))); break;
+      case ' ': ev.preventDefault(); if (item) safely(() => quickToggle(item)); break;
+      case 'm': case 'M': ev.preventDefault(); if (item) safely(() => openItemMenu(item)); break;
       default: break;
     }
   });

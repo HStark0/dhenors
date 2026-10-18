@@ -41,7 +41,7 @@
 //   mode 'fixed'   → value em centavos
 // =============================================================
 
-import { tablesFor } from './taxTables.js';
+import { tablesFor, tablesForYM } from './taxTables.js';
 import { addMonthsYM, monthsBetween, daysInMonth, parseISO, dateInMonth, ymOf, todayISO, addDaysISO, diffDays } from '../core/dates.js';
 import { nthBusinessDay, dsrDaysIn } from '../core/calendar.js';
 
@@ -192,6 +192,20 @@ export function irrfFor({ taxableCents, inssCents, dependents = 0, deductibleCen
   return { base, method: useSimple ? 'simplificado' : 'deduções legais', tax, reduction, value: tax - reduction };
 }
 
+/**
+ * IRRF do 13º: tributação EXCLUSIVA na fonte, separada do salário do mês.
+ * Base = 13º − INSS do 13º − dependentes (deduções legais). O desconto
+ * simplificado mensal NÃO vale para o 13º (regra da Receita: ele substitui
+ * deduções só nos rendimentos do mês). A redução da Lei 15.270/2025 se
+ * aplica, segundo a Receita. Usado no 13º da folha e na rescisão.
+ */
+export function thirteenthIrFor({ grossCents, inssCents, dependents = 0 }, table) {
+  const base = Math.max(0, grossCents - inssCents - toCents(dependents * table.dependent));
+  const tax = tableTax(base, table);
+  const reduction = irReductionFor(grossCents, tax, table);
+  return { base, method: 'deduções legais', tax, reduction, value: tax - reduction };
+}
+
 // ---------- Contracheque ----------
 
 const pctLabel = (bp) => `${(bp / 100).toLocaleString('pt-BR')}%`;
@@ -249,7 +263,7 @@ export function absencesIn(settings, ym) {
  * @param {object} o.hourOverrides  { [idDaLinha]: minutos } — horas de sobreaviso do mês
  */
 export function computePayroll(profile, ym, { extras = 0, loans = [], variable = [], employment = DEFAULT_EMPLOYMENT, workedDays = 30, absence = null, hourOverrides = {} } = {}) {
-  const table = tablesFor(Number(ym.slice(0, 4)));
+  const table = tablesForYM(ym);
   const emp = { ...DEFAULT_EMPLOYMENT, ...employment };
   const empty = {
     year: table.year, base: 0, baseLines: [], additions: [], extras, gross: extras, taxable: extras,
@@ -447,12 +461,21 @@ export function thirteenthMonths(admission, year) {
  * @param {(ym: string) => number} extrasFor  plantões/extras NA FOLHA do mês (bruto)
  */
 export function variableAverageFor(settings, year, lastMonth, extrasFor = () => 0) {
-  const adm = parseISO(employmentOf(settings).admission);
-  const first = !adm || adm.y < year ? 1 : adm.y === year ? adm.m : 13;
+  if (lastMonth < 1) return { average: 0, months: 0, total: 0 };
+  return variableAverageBetween(settings, `${year}-01`, `${year}-${String(lastMonth).padStart(2, '0')}`, extrasFor);
+}
+
+/**
+ * Mesma média de variableAverageFor, entre dois meses quaisquer (inclusive),
+ * começando no mês de admissão se for depois de `fromYM`. Férias e rescisão
+ * usam os 12 meses anteriores (o período aquisitivo).
+ */
+export function variableAverageBetween(settings, fromYM, toYM, extrasFor = () => 0) {
+  const admission = employmentOf(settings).admission;
+  const start = parseISO(admission) && ymOf(admission) > fromYM ? ymOf(admission) : fromYM;
   let total = 0;
   let months = 0;
-  for (let m = first; m <= lastMonth; m++) {
-    const mym = `${year}-${String(m).padStart(2, '0')}`;
+  for (let mym = start; mym <= toYM; mym = addMonthsYM(mym, 1)) {
     const profile = payrollProfileFor(settings, mym);
     if (!profile || profile.legacyNet) continue;
     const p = payrollFor(settings, mym, extrasFor(mym) || 0);
@@ -499,14 +522,20 @@ export function thirteenthFor(settings, ym, extrasFor = () => 0) {
     if (advanced) return null; // a 1ª parcela já veio com as férias
     return { part: 1, label: '13º salário — 1ª parcela', ...parts, gross, first, inss: 0, ir: 0, net: first };
   }
+  // Adiantado nas férias: desconta o valor que de fato foi pago no recibo de
+  // férias (média das variáveis só até o mês anterior às férias), não a 1ª
+  // parcela recalculada
+  let paidFirst = first;
+  if (advanced) {
+    const v = (settings.vacations || []).find((x) => x.advance13 && x.start.startsWith(String(year)));
+    const paid = v ? vacationFor(settings, v.start.slice(0, 7), extrasFor)?.advance13Cents : null;
+    if (paid) paidFirst = paid;
+  }
   const pension = pensionFor(gross, table, emp);
-  // IR exclusivo na fonte do 13º (a redução de 2026 também se aplica, segundo a Receita)
-  const irBase = Math.max(0, gross - pension.value - toCents((profile.dependents || 0) * table.dependent));
-  const tax = tableTax(irBase, table);
-  const irValue = tax - irReductionFor(gross, tax, table);
+  const irValue = thirteenthIrFor({ grossCents: gross, inssCents: pension.value, dependents: profile.dependents || 0 }, table).value;
   return {
-    part: 2, label: '13º salário — 2ª parcela', ...parts, gross, first, advanced,
-    inss: pension.value, ir: irValue, net: gross - first - pension.value - irValue,
+    part: 2, label: '13º salário — 2ª parcela', ...parts, gross, first: paidFirst, advanced,
+    inss: pension.value, ir: irValue, net: gross - paidFirst - pension.value - irValue,
   };
 }
 
@@ -518,7 +547,8 @@ export function thirteenthFor(settings, ym, extrasFor = () => 0) {
 //   advance13  adiantar a 1ª parcela do 13º junto com as férias
 //
 // Estimativa no mês de início:
-//   férias   = (salário + adicionais fixos) ÷ 30 × dias + 1/3
+//   férias   = (salário + adicionais fixos + média das variáveis dos 12
+//              meses anteriores) ÷ 30 × dias + 1/3
 //   abono    = mesma base ÷ 30 × dias vendidos + 1/3  (sem INSS e sem IR)
 //   INSS     sobre salário + férias + 1/3 de cada mês (o recibo desconta a diferença)
 //   IR       sobre férias + 1/3, em separado do salário
@@ -550,15 +580,23 @@ export function vacationDaysIn(settings, ym) {
   return Math.min(30, total);
 }
 
-export function vacationFor(settings, ym) {
+/**
+ * Recibo de férias que começam no mês `ym`.
+ * @param {(ym: string) => number} [extrasFor]  plantões na folha por mês (para a média e o INSS)
+ */
+export function vacationFor(settings, ym, extrasFor = () => 0) {
   const v = vacationIn(settings, ym);
   if (!v) return null;
   const profile = payrollProfileFor(settings, ym);
   if (!profile || profile.legacyNet) return null;
   const emp = employmentOf(settings);
-  const table = tablesFor(Number(ym.slice(0, 4)));
+  const table = tablesForYM(ym);
   const full = computePayroll(profile, ym, { employment: emp });
-  const monthly = full.base + full.additions.filter((a) => a.taxable && !a.variable).reduce((s, a) => s + a.cents, 0);
+  const fixedMonthly = full.base + full.additions.filter((a) => a.taxable && !a.variable).reduce((s, a) => s + a.cents, 0);
+  // Base das férias = fixo + média das variáveis habituais (horas extras,
+  // sobreaviso, plantões na folha) dos 12 meses anteriores, como no 13º
+  const average = variableAverageBetween(settings, addMonthsYM(ym, -12), addMonthsYM(ym, -1), extrasFor).average;
+  const monthly = fixedMonthly + average;
   const perDay = monthly / 30;
 
   const pay = Math.round(perDay * v.days);
@@ -575,8 +613,8 @@ export function vacationFor(settings, ym) {
   parts.forEach(({ ym: m, days }, i) => {
     const share = i === parts.length - 1 ? taxable - given : Math.round((taxable * days) / v.days);
     given += share;
-    const salary = payrollFor(settings, m);
-    const joint = pensionFor(salary.bases.inss + share, tablesFor(Number(m.slice(0, 4))), emp).value;
+    const salary = payrollFor(settings, m, extrasFor(m) || 0);
+    const joint = pensionFor(salary.bases.inss + share, tablesForYM(m), emp).value;
     inss += Math.max(0, joint - salary.inss);
   });
   const pension = { value: inss };
@@ -585,13 +623,16 @@ export function vacationFor(settings, ym) {
 
   let advance = 0;
   if (v.advance13 && emp.thirteenth) {
-    const avos = thirteenthMonths(emp.admission, Number(ym.slice(0, 4)));
-    advance = Math.round((monthly * avos) / 12 / 2);
+    const year = Number(ym.slice(0, 4));
+    const avos = thirteenthMonths(emp.admission, year);
+    // 1ª parcela do 13º: fixo + média das variáveis do ano até o mês anterior
+    const avg13 = variableAverageFor(settings, year, Number(ym.slice(5, 7)) - 1, extrasFor).average;
+    advance = Math.round(((fixedMonthly + avg13) * avos) / 12 / 2);
   }
 
   return {
     ...v,
-    pay, third, abono, advance13Cents: advance,
+    pay, third, abono, advance13Cents: advance, average,
     gross: pay + third + abono + advance,
     inss: pension.value, ir: ir.value,
     net: pay + third + abono + advance - pension.value - ir.value,

@@ -18,7 +18,7 @@ const mov = (kind, date, cents, id = `${kind}-${date}`) => ({ id, kind, date, ce
 
 before(() => {
   store.data = createEmptyState();
-  store.flush = async () => {};
+  store.guest = false; // conta aberta (sem login, alterações pedem para entrar)
   const error = console.error;
   console.warn = () => {};
   console.error = (...args) => { if (!String(args[0]).startsWith('[store]')) error(...args); };

@@ -135,7 +135,14 @@ function history(goal) {
   dialog.addEventListener('click', (ev) => {
     const btn = ev.target.closest('[data-del]');
     if (!btn) return;
-    try { A.deleteContribution(goal.id, btn.dataset.del); btn.closest('li').remove(); toast('Removido.', { action: { label: 'Desfazer', run: () => store.undo() } }); } catch (err) { toast(err.message, { type: 'error' }); }
+    try {
+      A.deleteContribution(goal.id, btn.dataset.del);
+      const li = btn.closest('li');
+      const [parent, next] = [li.parentNode, li.nextSibling];
+      li.remove();
+      // Desfazer devolve o lançamento também nesta janela
+      toast('Removido.', { action: { label: 'Desfazer', run: () => { store.undo(); if (dialog.open) parent.insertBefore(li, next); toast('Desfeito.', { type: 'info' }); } } });
+    } catch (err) { toast(err.message, { type: 'error' }); }
   });
 }
 
@@ -173,11 +180,11 @@ function wishes() {
                   ${atTarget ? html`<span class="badge badge--good">${icon('check', 'icon--xs')} chegou no preço-alvo!</span>` : w.targetPriceCents && w.currentPriceCents ? html`<span class="badge">faltam ${formatBRL(w.currentPriceCents - w.targetPriceCents)} de desconto</span>` : ''}
                 </p>
                 ${goal ? html`
-                  ${meter(gp.saved, { max: price || goal.targetCents, label: `Guardado para ${w.name}`, tone: gp.saved >= price ? 'good' : '' })}
-                  <p class="small muted">Meta "${goal.description}": ${formatBRL(gp.saved)} de ${formatBRL(price || goal.targetCents)}${gp.saved >= price ? ' · dá para comprar à vista!' : ''}</p>` : ''}`}
+                  ${meter(gp.saved, { max: price || goal.targetCents, label: `Guardado para ${w.name}`, tone: price > 0 && gp.saved >= price ? 'good' : '' })}
+                  <p class="small muted">Meta "${goal.description}": ${formatBRL(gp.saved)} de ${formatBRL(price || goal.targetCents)}${price > 0 && gp.saved >= price ? ' · dá para comprar à vista!' : ''}</p>` : ''}`}
               <footer class="entity__actions">
                 ${w.boughtAt ? '' : html`<button type="button" class="btn btn--secondary btn--sm" data-action="wish:bought" data-id="${w.id}">${icon('check', 'icon--xs')} Comprei</button>
-                  <a class="btn btn--ghost btn--sm" href="#/planejamento?aba=comprar&valor=${price || 0}">${icon('calculator', 'icon--xs')} Posso comprar?</a>`}
+                  <a class="btn btn--ghost btn--sm" href="#/planejamento?aba=comprar${price > 0 ? `&valor=${price}` : ''}">${icon('calculator', 'icon--xs')} Posso comprar?</a>`}
                 <button type="button" class="icon-btn" data-action="wish:edit" data-id="${w.id}" aria-label="Editar ${w.name}">${icon('pencil')}</button>
                 <button type="button" class="icon-btn danger" data-action="wish:delete" data-id="${w.id}" aria-label="Excluir ${w.name}">${icon('trash-2')}</button>
               </footer>

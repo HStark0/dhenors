@@ -106,7 +106,7 @@ test('M7: sobreaviso com value 0 não some na restauração', () => {
 
 // ---------- M8: recorrente anual no cartão ----------
 
-test('M8: assinatura anual no cartão só entra na fatura do mês em que vence', () => {
+test('M8: assinatura no cartão entra na fatura que fecha depois da cobrança, no ritmo dela', () => {
   const s = createEmptyState();
   const card = { id: 'c1', name: 'Cartão', closingDay: 3, dueDay: 10 };
   s.cards = [card];
@@ -116,13 +116,15 @@ test('M8: assinatura anual no cartão só entra na fatura do mês em que vence',
     { id: 'r3', description: 'Café semanal', cents: 1000, dueDay: 2, startYM: '2026-03', endYM: null, freq: 'weekly', anchorDate: '2026-03-02', cardId: 'c1' },
   ];
   const rec = (ym, id) => invoiceLines(s, card, ym).filter((l) => l.purchase.recurringId === id);
-  assert.equal(rec('2026-02', 'r1').length, 1);
-  for (const ym of ['2026-03', '2026-06', '2027-01']) assert.equal(rec(ym, 'r1').length, 0, ym);
-  assert.equal(rec('2027-02', 'r1').length, 1);
+  // cobrança em 05/02 é depois do fechamento (03/02): vai para a fatura de março
+  assert.equal(rec('2026-03', 'r1').length, 1);
+  for (const ym of ['2026-02', '2026-04', '2026-06', '2027-02']) assert.equal(rec(ym, 'r1').length, 0, ym);
+  assert.equal(rec('2027-03', 'r1').length, 1);
   assert.equal(rec('2026-05', 'r2').length, 1); // mensal continua todo mês
-  assert.equal(rec('2026-03', 'r3').length, 5); // 2, 9, 16, 23 e 30/03
+  assert.equal(rec('2026-03', 'r3').length, 1); // 02/03 (antes do fechamento)
+  assert.equal(rec('2026-04', 'r3').length, 4); // 9, 16, 23 e 30/03 (06/04 já é da fatura de maio)
   s.recurringEntries = { 'r3|2026-03-09': { skipped: true } };
-  assert.equal(rec('2026-03', 'r3').length, 4);
+  assert.equal(rec('2026-04', 'r3').length, 3);
 });
 
 // ---------- M9: parcela importada da fatura não duplica ----------

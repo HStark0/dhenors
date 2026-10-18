@@ -23,8 +23,9 @@ export function readConfig() {
 /**
  * Faz a requisição e devolve o JSON da resposta.
  * `token`: access_token da sessão (sem ele, vai só com a chave pública).
+ * `raw`: corpo e resposta em bytes (anexos no Storage), sem JSON.
  */
-export async function request(path, { method = 'GET', body, headers = {}, token = null } = {}) {
+export async function request(path, { method = 'GET', body, headers = {}, token = null, raw = false } = {}) {
   const { url, anonKey } = readConfig();
   if (!url || !anonKey) throw new CloudError('A nuvem ainda não foi configurada.');
   let res;
@@ -33,17 +34,18 @@ export async function request(path, { method = 'GET', body, headers = {}, token 
       method,
       headers: {
         apikey: anonKey,
-        'Content-Type': 'application/json',
+        ...(raw ? {} : { 'Content-Type': 'application/json' }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...headers,
       },
-      body: body == null ? undefined : JSON.stringify(body),
+      body: body == null ? undefined : raw ? body : JSON.stringify(body),
     });
   } catch {
     const err = new CloudError(globalThis.navigator?.onLine === false ? 'Sem conexão com a nuvem.' : 'Não foi possível falar com o Supabase. Se o projeto estiver pausado, abra o painel do Supabase e clique em "Restore".');
     err.offline = true;
     throw err;
   }
+  if (raw && res.ok) return res.arrayBuffer();
   const text = await res.text();
   let json = null;
   try { json = text ? JSON.parse(text) : null; } catch { json = text; }
@@ -73,6 +75,9 @@ export function translate(msg, status) {
   if (/relation .* does not exist|Could not find the table/i.test(m)) return 'Faltam tabelas na nuvem. Rode de novo o arquivo supabase/schema.sql no SQL Editor do Supabase (veja docs/NUVEM.md).';
   if (/JWT expired/i.test(m)) return 'Sessão expirada. Entre de novo.';
   if (/Invalid API key/i.test(m)) return 'Chave do Supabase inválida. Confira em Ajustes → Nuvem.';
+  if (/Bucket not found/i.test(m)) return 'Falta o espaço dos anexos na nuvem. Rode de novo o arquivo supabase/schema.sql no SQL Editor do Supabase (veja docs/NUVEM.md).';
+  if (/Object not found|not_found/i.test(m)) return 'Arquivo não encontrado na nuvem.';
+  if (/Payload too large|exceeded the maximum allowed size/i.test(m)) return 'Arquivo grande demais para a nuvem.';
   if (/dhenors_quota/i.test(m)) return 'O espaço desta conta na nuvem acabou. Apague dados antigos (ou peça ao dono do projeto para aumentar a cota em supabase/schema.sql).';
   if (/dhenors_revoked/i.test(m)) return 'Este aparelho foi desconectado da nuvem por outro aparelho.';
   if (/dhenors_chunks_size|dhenors_state_size/i.test(m)) return 'Uma parte dos dados passou do limite de 5 MB da nuvem.';

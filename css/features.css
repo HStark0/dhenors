@@ -32,9 +32,8 @@
   --tap: 44px;
   /* Estados das contas: vermelho = atrasada, âmbar = vence logo, violeta = estourou */
   --over: #6D28D9;
-  --over-soft: #F1EAFE;
 }
-[data-theme="dark"] { --over: #C4B5FD; --over-soft: #251A44; }
+[data-theme="dark"] { --over: #C4B5FD; }
 body { font-feature-settings: 'cv11', 'ss01'; }
 /* Todos os valores em colunas alinhadas */
 .money, .kpi__value, .big-number, .table td, .num, .hero__value, .entity__value, .item__value, .cal__chip { font-variant-numeric: tabular-nums; }
@@ -66,29 +65,14 @@ body { font-feature-settings: 'cv11', 'ss01'; }
 /* ---------- Efeitos: calmos / desligados ---------- */
 [data-motion="calm"] .brand img,
 [data-motion="calm"] .hero::before,
-[data-motion="calm"] .hero::after,
-[data-motion="calm"] .card--feature::before,
-[data-motion="calm"] [data-scroll-more]::after,
-[data-motion="calm"] .page-cue.is-visible { animation: none !important; }
+[data-motion="calm"] .hero::after { animation: none !important; }
 [data-motion="calm"] .route-enter #view * { animation-duration: 160ms !important; animation-delay: 0ms !important; }
-[data-motion="calm"] .kpi:hover, [data-motion="calm"] .entity:hover, [data-motion="calm"] .chip:hover { transform: none; }
+[data-motion="calm"] .kpi:hover, [data-motion="calm"] .entity:hover { transform: none; }
 [data-motion="off"] *, [data-motion="off"] *::before, [data-motion="off"] *::after {
   animation: none !important; transition: none !important; scroll-behavior: auto !important;
 }
 
 /* ---------- Modo discreto: valores borrados até tocar ---------- */
-[data-discreet] .money:not(.is-peek),
-[data-discreet] .kpi__value:not(.is-peek),
-[data-discreet] .big-number:not(.is-peek),
-[data-discreet] .hero__value:not(.is-peek),
-[data-discreet] .cal__chip,
-[data-discreet] .chart text,
-[data-discreet] .spark {
-  filter: blur(7px); cursor: pointer; user-select: none;
-  transition: filter var(--dur) var(--ease);
-}
-[data-discreet] .money.is-peek { filter: none; }
-@media print { [data-discreet] * { filter: none !important; } }
 
 /* ---------- Toque: alvos de 44px e foco sempre visível ---------- */
 .icon-btn { min-width: var(--tap); min-height: var(--tap); }
@@ -150,9 +134,9 @@ kbd {
 }
 .topbar__me-cloud--idle { background: var(--pos); }
 .topbar__me-cloud--syncing, .topbar__me-cloud--pending { background: var(--info); }
-.topbar__me-cloud--error, .topbar__me-cloud--conflict, .topbar__me-cloud--paused { background: var(--neg); }
+.topbar__me-cloud--error, .topbar__me-cloud--paused { background: var(--neg); }
 .topbar__me-cloud--offline { background: var(--warn); }
-.topbar__me-cloud--off, .topbar__me-cloud--unlinked, .topbar__me-cloud--locked { display: none; }
+.topbar__me-cloud--off, .topbar__me-cloud--signedout, .topbar__me-cloud--locked { display: none; }
 .topbar__hello { margin-top: 2px; }
 
 .demo-bar {
@@ -162,11 +146,8 @@ kbd {
   background: var(--warn-soft); color: var(--warn); font-size: var(--fs-sm); font-weight: 600;
 }
 
-/* Botão "voltar ao topo/tem mais": nunca cobre o + nem a barra */
-.page-cue { bottom: calc(var(--tabbar-h) + 30px + env(safe-area-inset-bottom)); left: auto; right: 16px; transform: translateY(8px); }
-.page-cue.is-visible { transform: none; animation: none; }
-.kb-open .page-cue, .kb-open .tabbar { display: none; }
-@media (min-width: 1024px) { .page-cue { left: auto; right: 24px; bottom: 24px; } }
+/* Teclado aberto no celular: a barra de baixo sai do caminho */
+.kb-open .tabbar { display: none; }
 
 /* Altura real da tela com teclado aberto (--vvh vem de ui/pwa.js) */
 .dialog { max-height: calc(var(--vvh, 1vh) * 100 - 24px); }
@@ -228,7 +209,6 @@ kbd {
 /* ---------- Estados das contas ---------- */
 .item { transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease); }
 
-
 .item--paid { opacity: .62; }
 .item--paid:hover, .item--paid:focus-within { opacity: 1; }
 .item__name { overflow-wrap: anywhere; }
@@ -278,8 +258,8 @@ kbd {
 
 /* Deslizar a conta (direita = pagar, esquerda = opções) */
 [data-swipe] { touch-action: pan-y; position: relative; }
-[data-swiping="pay"] { box-shadow: inset 4px 0 0 var(--pos); }
-[data-swiping="menu"] { box-shadow: inset -4px 0 0 var(--primary); }
+[data-swiping="pay"] { background: color-mix(in srgb, var(--pos) 6%, transparent); }
+[data-swiping="menu"] { background: color-mix(in srgb, var(--primary) 6%, transparent); }
 [data-swiping="pay"].is-armed { background: var(--pos-soft); }
 [data-swiping="menu"].is-armed { background: var(--primary-soft); }
 
@@ -292,8 +272,8 @@ kbd {
 }
 .cloud-btn .icon { width: 16px; height: 16px; }
 .cloud-btn--pending .icon { color: var(--info); }
-.cloud-btn--error, .cloud-btn--conflict, .cloud-btn--paused { color: var(--neg); border-color: color-mix(in srgb, var(--neg) 40%, transparent); }
-.cloud-btn--off, .cloud-btn--unlinked { color: var(--muted); }
+.cloud-btn--error, .cloud-btn--paused { color: var(--neg); border-color: color-mix(in srgb, var(--neg) 40%, transparent); }
+.cloud-btn--off { color: var(--muted); }
 .cloud-btn--compact { width: 100%; justify-content: flex-start; border-radius: var(--radius-sm); background: var(--surface-2); }
 .cloud-btn__text { overflow: hidden; text-overflow: ellipsis; }
 .cloud-btn__badge {
@@ -302,7 +282,7 @@ kbd {
 }
 [class*="cloud-status--"] { font-weight: 650; }
 .cloud-status--idle { color: var(--pos); }
-.cloud-status--error, .cloud-status--conflict, .cloud-status--paused { color: var(--neg); }
+.cloud-status--error, .cloud-status--paused { color: var(--neg); }
 .cloud-status--offline { color: var(--warn); }
 .conflicts { display: flex; flex-direction: column; gap: var(--sp-3); }
 .conflict { padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
@@ -382,10 +362,8 @@ kbd {
 .mini-list--compact > li { padding-block: 6px; }
 
 /* ---------- Cartões de crédito ---------- */
-.credit-card { --card: #6D28D9; position: relative; overflow: hidden; }
-.credit-card::before {
-  content: ''; position: absolute; inset: 0 0 auto 0; height: 4px; background: var(--card);
-}
+/* A cor do cartão aparece só no ícone (mesmo padrão dos KPIs e categorias) */
+.credit-card { --card: #6D28D9; }
 .credit-card__chip {
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; flex: none;
   background: var(--card); color: #fff;
@@ -430,7 +408,6 @@ kbd {
 .glossary dd { color: var(--text-2); font-size: var(--fs-sm); }
 .glossary > div:target { background: var(--primary-soft); border-radius: var(--radius-sm); padding: var(--sp-2); }
 .prose p + p { margin-top: var(--sp-3); }
-.pre-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .row-flex { display: flex; align-items: center; gap: var(--sp-2); }
 
 /* Chips (buscas salvas) */
@@ -451,7 +428,6 @@ kbd {
 .match { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; font-size: var(--fs-xs); color: var(--pos); }
 .match.is-off { color: var(--muted); text-decoration: line-through; }
 .match .link { text-decoration: underline; margin-left: 4px; }
-.received .card__actions { margin-top: var(--sp-2); }
 
 /* ---------- Salário: plantões, explicação ---------- */
 .shift-types { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -504,17 +480,10 @@ kbd {
 
 /* Relatório do mês (também usado na impressão/PDF) */
 .report { background: #fff; color: #0B1324; padding: var(--sp-6); border-radius: var(--radius); }
-.report--brand { border-top: 6px solid transparent; border-image: var(--brand-grad-h) 1; }
 .report__brand { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-4); }
 .report__brand img { width: 40px; height: 40px; border-radius: 10px; }
 .report__foot { margin-top: var(--sp-5); padding-top: var(--sp-3); border-top: 1px solid #E2E8F0; font-size: var(--fs-xs); color: #5A6A80; }
 .report .muted { color: #5A6A80; }
-
-/* ---------- Bloqueio ---------- */
-.lock__form { display: flex; flex-direction: column; gap: var(--sp-3); width: 100%; }
-.lock__wait { min-height: 1.5em; font-size: var(--fs-sm); color: var(--warn); text-align: center; }
-.is-waiting { opacity: .55; pointer-events: none; }
-.lock__bio { margin-top: var(--sp-2); }
 
 /* ---------- Boas-vindas ---------- */
 .wizard { display: flex; flex-direction: column; gap: var(--sp-4); }
@@ -542,7 +511,7 @@ kbd {
 
 /* ---------- Impressão ---------- */
 @media print {
-  .sidebar, .tabbar, .topbar, .tabs, .batch-bar, .demo-bar, .page-cue, .ptr, .card__actions, .dash-tools { display: none !important; }
+  .sidebar, .tabbar, .topbar, .tabs, .batch-bar, .demo-bar, .ptr, .card__actions, .dash-tools { display: none !important; }
   body { background: #fff !important; }
   .app { display: block !important; }
 }
@@ -572,7 +541,7 @@ kbd {
    A ORDEM importa: o azul (padrão) vem primeiro para os outros
    tons o sobrescreverem.
    ============================================================= */
-.tone-info, .kpi, .card--feature, .hero {
+.tone-info, .kpi, .hero {
   --tone: var(--neutral); --tone-soft: var(--neutral-soft); --tone-solid: #2563EB; --tone-hero: #93C5FD;
 }
 .tone-good, .kpi--good, .kpi--income {

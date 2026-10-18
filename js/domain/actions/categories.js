@@ -117,7 +117,7 @@ export function restoreDefaultCategories() {
 export function useCategoryIcons(map) {
   return store.commit((d) => {
     for (const c of d.categories) if (!String(c.icon).startsWith('i:') && map[c.icon]) c.icon = `i:${map[c.icon]}`;
-  });
+  }, 'change', { undo: 'Ícones das categorias trocados' }); // o aviso oferece "Desfazer"
 }
 
 // ---------- Regras de categorização ----------

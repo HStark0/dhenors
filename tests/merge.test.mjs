@@ -36,10 +36,10 @@ test('alterações em campos diferentes do mesmo item se juntam', () => {
 
 test('ajustes: cada campo pelo lado que mudou', () => {
   const base = createEmptyState();
-  const local = structuredClone(base); local.settings.profileName = 'Wade';
+  const local = structuredClone(base); local.settings.profileName = 'Ana';
   const remote = structuredClone(base); remote.settings.theme = 'dark';
   const m = merge(base, local, remote);
-  assert.equal(m.settings.profileName, 'Wade');
+  assert.equal(m.settings.profileName, 'Ana');
   assert.equal(m.settings.theme, 'dark');
 });
 

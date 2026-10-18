@@ -31,6 +31,41 @@ export function fitCharts(root = document) {
     const vb = svg.viewBox.baseVal;
     const w = svg.getBoundingClientRect().width;
     if (vb?.width && w) svg.style.setProperty('--k', (vb.width / w).toFixed(3));
+    if (w) uncrowd(svg);
+  }
+}
+
+/**
+ * Rótulos dos eixos que se encostariam (card estreito, muitos meses):
+ * mede o tamanho real na tela e esconde os que tocariam o vizinho já
+ * mostrado. O primeiro e o último ficam; a dica ao tocar e a tabela
+ * "Ver como tabela" continuam com todos os valores.
+ */
+function uncrowd(svg) {
+  const GAP = 4;
+  const pass = (list, horizontal) => {
+    for (const t of list) t.classList.remove('is-crowded');
+    const boxes = list.map((t) => t.getBoundingClientRect());
+    const order = horizontal ? list.map((_, i) => i).sort((a, b) => boxes[a].left - boxes[b].left) : list.map((_, i) => i).sort((a, b) => boxes[a].top - boxes[b].top);
+    const shown = [];
+    const hits = (i, j) => (horizontal ? boxes[i].left < boxes[j].right + GAP && boxes[j].left < boxes[i].right + GAP : boxes[i].top < boxes[j].bottom + 1 && boxes[j].top < boxes[i].bottom + 1);
+    // o último sempre aparece (fecha o eixo); os outros, se couberem
+    const last = order[order.length - 1];
+    for (const i of order) {
+      if (i !== last && (shown.some((j) => hits(i, j)) || (order.length > 1 && hits(i, last)))) { list[i].classList.add('is-crowded'); continue; }
+      shown.push(i);
+    }
+  };
+  const x = [...svg.querySelectorAll('text.chart__axis:not(.chart__axis--value)')].filter((t) => t.textContent.trim());
+  const yv = [...svg.querySelectorAll('text.chart__axis--value')];
+  if (x.length > 1) pass(x, true);
+  if (yv.length > 1) pass(yv, false);
+  // No canto, o valor de baixo do eixo Y pode encostar no 1º mês: sai o valor
+  const shownX = x.filter((t) => !t.classList.contains('is-crowded')).map((t) => t.getBoundingClientRect());
+  for (const t of yv) {
+    if (t.classList.contains('is-crowded')) continue;
+    const b = t.getBoundingClientRect();
+    if (shownX.some((r) => b.left < r.right && r.left < b.right && b.top < r.bottom && r.top < b.bottom)) t.classList.add('is-crowded');
   }
 }
 
@@ -161,7 +196,7 @@ export function barChart(labels, series, { label = 'Gráfico de barras', height 
   for (const v of scale.ticks) {
     const yy = fmt(y(v));
     grid += `<line x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}" class="chart__grid ${v === 0 ? 'is-zero' : ''}"/>`;
-    grid += `<text x="${padL - 6}" y="${yy}" class="chart__axis" text-anchor="end" dominant-baseline="middle">${escapeHTML(formatCompactBRL(v))}</text>`;
+    grid += `<text x="${padL - 6}" y="${yy}" class="chart__axis chart__axis--value" text-anchor="end" dominant-baseline="middle">${escapeHTML(formatCompactBRL(v))}</text>`;
   }
 
   let bars = '';
@@ -217,7 +252,7 @@ export function lineChart(labels, series, { label = 'Gráfico de linha', height 
   for (const v of scale.ticks) {
     const yy = fmt(y(v));
     grid += `<line x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}" class="chart__grid ${v === 0 ? 'is-zero' : ''}"/>`;
-    grid += `<text x="${padL - 6}" y="${yy}" class="chart__axis" text-anchor="end" dominant-baseline="middle">${escapeHTML(axis(v))}</text>`;
+    grid += `<text x="${padL - 6}" y="${yy}" class="chart__axis chart__axis--value" text-anchor="end" dominant-baseline="middle">${escapeHTML(axis(v))}</text>`;
   }
   const step = Math.max(every, Math.ceil(labels.length / Math.max(2, Math.floor(plotW / 54))));
   labels.forEach((lab, i) => {

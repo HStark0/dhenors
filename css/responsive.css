@@ -1,0 +1,100 @@
+/* =============================================================
+   responsive.css — Encaixe em qualquer tela (carrega por último)
+   -------------------------------------------------------------
+   Ajustes medidos por tests/e2e/responsive.spec.js em 20 tamanhos,
+   de 320 px (celular pequeno) a 2560 px, retrato e paisagem: nada
+   passa da tela, nada sai do card, nada se sobrepõe e nenhum campo
+   faz o iPhone dar zoom.
+   ============================================================= */
+
+/* Nada pode empurrar a página para o lado */
+html, body { max-width: 100%; overflow-x: clip; }
+img, svg, video, canvas { max-width: 100%; }
+/* Itens de flex/grid podem encolher (o padrão "min-width: auto" estoura cards) */
+.card, .card > *, .setting > div, .row, .item__main, .entity, .next-action > div, .insight > div { min-width: 0; }
+/* Palavra que não cabe quebra; mas uma coluna nunca encolhe a uma letra por linha
+   ("anywhere" deixaria o texto ser espremido; "break-word" não) */
+.card { overflow-wrap: break-word; }
+
+/* ---------- Barra de baixo do celular ---------- */
+.tabbar { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.tabbar__item { min-width: 0; }
+.tabbar__item span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- "O que fazer agora" e dicas: o botão desce quando falta espaço ---------- */
+.next-action, .insight { flex-wrap: wrap; }
+.next-action > div, .insight > div { flex: 1 1 12rem; }
+.next-action > .btn, .insight > .btn { margin-left: auto; max-width: 100%; }
+.next-action > .btn { white-space: normal; text-align: center; }
+
+/* ---------- Cards de investimentos, metas e cartões ---------- */
+.entity__actions { min-width: 0; }
+.entity__icons { flex-wrap: wrap; justify-content: flex-end; min-width: 0; max-width: 100%; }
+.invest__nums small { display: block; }
+
+/* ---------- Campos: 16 px no toque (o iPhone dá zoom abaixo disso) ---------- */
+@media (pointer: coarse) {
+  .toolbar :is(.input, .select),
+  :is(.input, .select, textarea, .listbox__input, .palette__input) { font-size: max(16px, 1em); }
+}
+
+/* ---------- Telas baixas (celular deitado): janelas cabem inteiras ---------- */
+@media (max-height: 520px) {
+  .palette { margin-top: 8px; }
+  .palette__list { max-height: calc(var(--vvh, 1vh) * 100 - 140px); }
+}
+
+/* ---------- Celular bem estreito (até 360 px) ---------- */
+@media (max-width: 360px) {
+  .content { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  .tabbar { left: max(8px, env(safe-area-inset-left)); right: max(8px, env(safe-area-inset-right)); }
+  .tabbar__new { width: 44px; height: 44px; }
+}
+
+/* ---------- Gráficos: rótulo que encostaria no vizinho some (ui/charts.js) ---------- */
+.chart__axis.is-crowded { visibility: hidden; }
+
+/* ---------- Selos com texto longo: reticências, nunca para fora do card ---------- */
+.badge { max-width: 100%; min-width: 0; }
+.badge, a.badge { overflow: hidden; text-overflow: ellipsis; }
+.entity__meta .badge { display: inline-block; vertical-align: middle; }
+
+/* ---------- Linhas (a receber, credores…): ações descem quando não cabem ---------- */
+.rows > .row { flex-wrap: wrap; row-gap: var(--sp-2); }
+.rows > .row > .row__main { flex: 1 1 12rem; }
+.rows > .row > .row__actions { margin-left: auto; }
+
+/* ---------- Números grandes nos cards de indicador: a fonte se ajusta à largura ---------- */
+/* A fonte diminui só no número que não cabe (ui/fit.js); se nem assim couber,
+   ele quebra depois do "R$" em vez de sair do card */
+:is(.kpi__value, .summary__big, .big-number, .hero__value, .sfig__value, .entity__value) { max-width: 100%; overflow: hidden; }
+:is(.kpi__value, .summary__big, .big-number, .hero__value, .sfig__value, .entity__value).is-tight { white-space: normal; overflow: visible; overflow-wrap: break-word; }
+@media (max-width: 380px) { .grid--kpis > .kpi { padding: var(--sp-4) var(--sp-3); } }
+
+/* ---------- Texto x valor na mesma linha: o texto nunca é espremido ----------
+   Listas, cabeçalhos de card e caixas de resumo: o texto tem uma largura
+   mínima confortável; sem espaço, o valor desce para a linha de baixo. */
+.mini-list > li { flex-wrap: wrap; column-gap: var(--sp-3); }
+.mini-list > li > span:first-child { flex: 1 1 9rem; overflow-wrap: break-word; }
+.mini-list > li > :last-child:not(:first-child) { margin-left: auto; }
+.entity__head { flex-wrap: wrap; }
+.entity__title { flex: 1 1 9rem; }
+.entity__title h3, .kv--stack strong { overflow-wrap: break-word; }
+.entity__value { margin-left: auto; }
+.kv--stack { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)) !important; }
+
+/* ---------- Celular deitado / telas baixas: barra de baixo compacta e centrada ---------- */
+@media (max-height: 520px) and (max-width: 1023px) {
+  :root { --tabbar-h: 52px; }
+  .tabbar {
+    left: 50%; right: auto; width: min(460px, calc(100% - 24px)); transform: translateX(-50%);
+    bottom: calc(6px + env(safe-area-inset-bottom)); border-radius: 22px;
+  }
+  .tabbar__new { width: 40px; height: 40px; }
+  .tabbar__item { gap: 0; }
+  .tabbar__item .icon { width: 18px; height: 18px; }
+}
+
+/* Card de indicador empilhado (ícone em cima): o texto ocupa a largura do card,
+   nunca a do próprio conteúdo (senão um número longo empurra o card) */
+.kpi > .kpi__body { max-width: 100%; align-self: stretch; }

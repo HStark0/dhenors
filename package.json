@@ -1,7 +1,7 @@
 {
   "name": "dhenors",
-  "version": "3.3.1",
-  "description": "Controle financeiro pessoal — funciona no navegador, offline, sem servidor.",
+  "version": "3.5.0",
+  "description": "Controle financeiro pessoal — dados na nuvem (Supabase), criptografados no aparelho.",
   "private": true,
   "type": "module",
   "scripts": {

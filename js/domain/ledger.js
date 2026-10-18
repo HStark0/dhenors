@@ -17,8 +17,9 @@ import { memoByState } from '../core/memo.js';
 import { payrollFor, thirteenthFor, vacationFor, paydayOf } from './payroll.js';
 import { registerCustomTables } from './taxTables.js';
 import { shiftIncomes } from './shifts.js';
+import { recurringIncomeEntries } from './recurringIncome.js';
 import { benefitsIn, jobsIn } from './benefits.js';
-import { invoicesIn } from './cards.js';
+import { invoicesIn, scaleSplits } from './cards.js';
 
 // ---------- Parcelamentos ----------
 
@@ -107,13 +108,17 @@ export function variableEstimate(state, rec, ym, n = 3) {
 
 // ---------- Renda ----------
 
-/** Rendas extras do mês: lançadas + geradas pela escala de plantões. */
+/**
+ * Rendas extras do mês: lançadas + geradas pela escala de plantões +
+ * ganhos recorrentes fora da folha (aluguel recebido, pensão, freela fixo).
+ * `payroll: true` = passa pela folha (bruto); `false` = fora da folha (líquido).
+ */
 export function extrasOf(state, ym) {
-  return [...state.extraIncomes.filter((x) => x.ym === ym), ...shiftIncomes(state, ym)];
+  return [...state.extraIncomes.filter((x) => x.ym === ym), ...shiftIncomes(state, ym), ...recurringIncomeEntries(state, ym)];
 }
 
-/** Plantões/extras pagos NA FOLHA no mês (bruto) — entram na média do 13º. */
-const payrollExtrasFor = (state) => (ym) => sumCents(extrasOf(state, ym).filter((x) => x.payroll).map((x) => x.cents));
+/** Plantões/extras pagos NA FOLHA no mês (bruto) — entram na média do 13º, das férias e no FGTS. */
+export const payrollExtrasFor = (state) => (ym) => sumCents(extrasOf(state, ym).filter((x) => x.payroll).map((x) => x.cents));
 
 /** 13º do mês com a média das variáveis (inclui plantões na folha). */
 export function thirteenthOf(state, ym) {
@@ -145,7 +150,7 @@ function payslipIncomeRaw(state, ym) {
   const payroll = inPayroll ? payrollFor(state.settings, ym, inPayroll) : withoutExtras;
   const thirteenth = thirteenthOf(state, ym);
   const thirteenthNet = thirteenth ? thirteenth.net : 0;
-  const vacation = vacationFor(state.settings, ym);
+  const vacation = vacationFor(state.settings, ym, payrollExtrasFor(state));
   const vacationNet = vacation ? vacation.net : 0;
   const benefits = benefitsIn(state.settings, ym);
   const jobs = jobsIn(state.settings, ym, payroll.gross);
@@ -328,12 +333,8 @@ export function totalsOf(items) {
  * fatura de cartão (parts) contam em várias categorias.
  */
 export function itemParts(item) {
-  if (item.splits?.length) {
-    const total = sumCents(item.splits.map((s) => s.cents));
-    if (total === item.cents) return item.splits;
-    const ratio = item.cents / (total || 1);
-    return item.splits.map((s) => ({ ...s, cents: Math.round(s.cents * ratio) }));
-  }
+  // proporcional, com a sobra de centavos na maior parte (fecha com o total)
+  if (item.splits?.length) return scaleSplits(item.splits, item.cents);
   if (item.parts?.length) return item.parts;
   return [{ categoryId: item.categoryId, subcategoryId: item.subcategoryId, cents: item.cents }];
 }

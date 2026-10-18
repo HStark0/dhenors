@@ -27,7 +27,6 @@ export const ACCENTS = {
   rosa: { label: 'Rosa', primary: '#C8102E', hover: '#A80D27', text: '#C8102E', textDark: '#FF375F', soft: '#FDEBEE', softDark: '#36121A' },
 };
 
-export const THEMES = ['auto', 'light', 'dark', 'oled'];
 export const MOTIONS = ['full', 'calm', 'off'];
 export const DENSITIES = ['comfortable', 'compact'];
 

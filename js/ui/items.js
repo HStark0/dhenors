@@ -1,5 +1,7 @@
 // =============================================================
-// items.js — Linha de conta do mês (usada no Painel, Contas, Agenda)
+// items.js — Linha de conta do mês (usada no Painel, Contas, Agenda, Busca)
+//  • Selos de análise (domain/weights.js): gasto exagerado, fora do
+//    comum e que pesa no futuro — com o porquê no title.
 // -------------------------------------------------------------
 // Uma linha = um compromisso do mês (avulsa, recorrente, parcela ou
 // fatura de cartão), com botão de pagar e menu de ações.
@@ -22,6 +24,8 @@ import { store } from '../core/store.js';
 import { formatBRL, sumCents } from '../core/money.js';
 import { formatDayMonth, relativeDays, formatMonth, ymOf, formatDateBR, todayISO, diffDays } from '../core/dates.js';
 import * as A from '../domain/actions.js';
+import { flagsOf } from '../domain/weights.js';
+import { flagBadges } from './outlookUI.js';
 import * as E from './editors.js';
 
 /** Registro das linhas desenhadas (chave → item), usado pelos cliques.
@@ -71,13 +75,14 @@ export function itemRow(item, { showMonth = false, selectable = false, selected 
           ${item.estimated ? html`<span class="badge badge--info" title="Valor estimado pela média dos últimos meses">estimado</span>` : ''}
           ${item.subscription ? html`<span class="badge badge--muted">assinatura</span>` : ''}
           ${item.invoice ? html`<span class="badge badge--muted">${item.invoice.status === 'open' ? 'aberta' : item.invoice.status === 'closed' ? 'fechada' : 'paga'} · ${item.invoice.lines} ${item.invoice.lines === 1 ? 'compra' : 'compras'}</span>` : ''}
-          ${item.attachments ? html`<span class="badge badge--muted" title="${item.attachments} anexo(s)">${icon('paperclip', 'icon--xs')}</span>` : ''}
+          ${item.attachments ? html`<span class="badge badge--muted" title="${item.attachments} anexo(s)">${icon('paperclip', 'icon--xs')}<span class="sr-only">${item.attachments} anexo(s)</span></span>` : ''}
           ${paid ? html`<span class="badge badge--paid">${icon('check', 'icon--xs')} Pago</span>` : ''}
         </span>
         <span class="item__meta">
           ${card ? `Cartão ${card.name}` : item.splits?.length ? `Dividido em ${item.splits.length} categorias` : cat ? cat.name : 'Sem categoria'}${sub ? ` › ${sub.name}` : ''}
           · ${KIND_LABEL[item.kind]}${cred ? html` · ${icon('handshake', 'icon--xs')} ${cred.name}` : ''}
           ${(item.tags || []).map((t) => html` <span class="tag-chip">#${t}</span>`)}
+          ${flagBadges(flagsOf(d, item))}
         </span>
       </div>
       <div class="item__due">
@@ -141,11 +146,6 @@ export const itemActions = {
   'item:toggle': (el) => {
     const item = registry.get(el.dataset.key);
     if (item) quickToggle(item);
-  },
-
-  'item:pay': (el) => {
-    const item = registry.get(el.dataset.key);
-    if (item) payDialog(item);
   },
 
   'item:menu': (el) => openItemMenu(registry.get(el.dataset.key)),

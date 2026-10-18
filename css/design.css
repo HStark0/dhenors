@@ -22,7 +22,7 @@ h1, h2, h3 { letter-spacing: var(--track-tight); }
 ::selection { background: color-mix(in srgb, var(--primary) 24%, transparent); }
 
 /* Tons: só o valor de cor; quem usa decide onde aparece */
-.tone-info, .kpi, .card--feature, .hero { --tone: var(--neutral); --tone-soft: var(--neutral-soft); --tone-solid: var(--primary); }
+.tone-info, .kpi, .hero { --tone: var(--neutral); --tone-soft: var(--neutral-soft); --tone-solid: var(--primary); }
 .tone-good, .kpi--good, .kpi--income { --tone: var(--pos); --tone-soft: var(--pos-soft); --tone-solid: var(--pos); }
 .tone-warn, .kpi--warn, .kpi--warm { --tone: var(--warn); --tone-soft: var(--warn-soft); --tone-solid: var(--warn); }
 .tone-bad, .kpi--bad, .card--alert, .card--danger, .hero--negative { --tone: var(--neg); --tone-soft: var(--neg-soft); --tone-solid: var(--neg); }
@@ -136,12 +136,6 @@ body.is-scrolled .topbar {
 .hero .btn--ghost { background: var(--fill); border-color: transparent; color: var(--text); }
 .hero .btn--ghost:hover { background: var(--fill-strong); }
 .hero .badge--muted { background: var(--fill); color: var(--text-2); }
-.chip { background: var(--surface-2); border-radius: var(--radius); padding: var(--sp-3); }
-.chip dt { color: var(--muted); font-weight: 500; }
-.chip dd { color: var(--text); font-weight: 650; }
-.chip--paid dt::before { background: var(--pos); }
-.chip--pending dt::before { background: var(--neutral); }
-.chip--overdue dt::before { background: var(--neg); }
 .stackbar__legend { color: var(--muted); }
 .stackbar__legend strong { color: var(--text); }
 
@@ -194,7 +188,7 @@ body.is-scrolled .topbar {
 /* ---------- Selos e medidores ---------- */
 .badge { font-weight: 600; border: 0; padding: 1px 8px; }
 .badge--muted { background: var(--fill); color: var(--text-2); border: 0; }
-.badge--neutral, .badge--info { background: var(--neutral-soft); color: var(--neutral); }
+.badge--info { background: var(--neutral-soft); color: var(--neutral); }
 .meter { height: 6px; background: var(--fill-strong); }
 .meter__fill { background: var(--tone, var(--primary)); }
 .meter--good .meter__fill { background: var(--pos); }
@@ -234,7 +228,6 @@ body.is-scrolled .topbar {
 .banner--warn > .icon { color: var(--warn); }
 
 /* Cartões de categoria e férias: sem faixa colorida */
-.category { border-top: 0; }
 .vacation__icon { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); }
 
 /* ---------- Janelas, avisos e menus ---------- */
@@ -253,7 +246,7 @@ body.is-scrolled .topbar {
 .toast--success > .icon { color: #30D158; }
 .toast--error > .icon { color: #FF6961; }
 .toast__action { color: #4DA3FF; }
-:is(.listbox, .popover, .menu, .palette) { border-radius: var(--radius); box-shadow: var(--shadow-lg); border: 1px solid var(--border); }
+:is(.listbox, .menu, .palette) { border-radius: var(--radius); box-shadow: var(--shadow-lg); border: 1px solid var(--border); }
 
 /* ---------- Gráficos ---------- */
 .chart__axis { fill: var(--muted); }
@@ -267,7 +260,7 @@ body.is-scrolled .topbar {
 .table th { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
 
 /* ---------- Calendário ---------- */
-.cal__day, .cal__cell { border: 0; }
+.cal__day { border: 0; }
 
 /* ---------- Densidade e acessibilidade ---------- */
 @media (prefers-reduced-motion: reduce) {
@@ -277,11 +270,6 @@ body.is-scrolled .topbar {
 /* Cartão de saldo em três grupos (valor · composição · próximo salário),
    distribuídos na altura do card: sem vão no meio quando ele estica */
 .hero { justify-content: space-between; gap: var(--sp-5); }
-.hero__group { display: flex; flex-direction: column; gap: var(--sp-2); }
-.hero__group > .hero__formula, .hero__group > .hero__meter-label { margin-top: 0; }
-.hero__group > .meter { margin: 0; }
-.hero__group > .hero__chips { margin-top: var(--sp-2); }
-.hero__top { margin-bottom: var(--sp-1); }
 .hero__payday { margin-top: 0; }
 
 /* Menu lateral: cabe tudo sem rolar em telas comuns */
@@ -293,14 +281,10 @@ body.is-scrolled .topbar {
   .nav-link { padding-block: 6px; }
   .nav-section { margin-top: var(--sp-3); }
 }
-.sidebar__nav { --cue-bg: var(--bg); }
-@media (min-width: 1024px) { .page-cue { left: calc(50% + var(--sidebar-w) / 2); } }
-.page-cue { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-md); color: var(--text-2); }
 
 /* Saldo no topo; composição e próximo salário agrupados embaixo
    (como um cartão de carteira: número em cima, detalhes no pé) */
 .hero { justify-content: flex-start; }
-.hero > .hero__group:first-child { margin-bottom: auto; }
 
 /* KPIs do Painel: os 5 na mesma linha no computador */
 @media (min-width: 1100px) {
@@ -315,7 +299,6 @@ body.is-scrolled .topbar {
 .card .hint, .card .note { background: var(--surface-2); }
 .view > .hint { background: var(--surface); box-shadow: var(--shadow); padding: var(--sp-3) var(--sp-4); }
 [data-theme="dark"] .view > .hint { box-shadow: none; border: 1px solid var(--border); }
-.hero > .hero__group:first-child { margin-bottom: 0; }
 .hero > .hero__payday { margin-top: auto; }
 
 /* Calendário: dias sem caixa; preenchimento só no hover e no selecionado */
@@ -329,8 +312,6 @@ body.is-scrolled .topbar {
 
 /* Cartão de saldo: número maior e blocos com mais respiro */
 .hero__value { font-size: clamp(2.5rem, 5.4vw, 3.75rem); }
-.hero .chip { padding: 14px var(--sp-4); }
-.hero__group { gap: var(--sp-3); }
 
 /* Linha do cartão de saldo: cada card com a altura do próprio conteúdo
    (sem esticar e abrir vão dentro do cartão de saldo) */
@@ -341,12 +322,62 @@ body.is-scrolled .topbar {
    Acabamentos: abas, busca, janelas e seta de rolagem
    ============================================================= */
 
-/* Troca de aba: o conteúdo abaixo das abas aparece suave, sem pular */
-.tab-enter #view > :not(.tabs, .page-head, .topbar) {
-  animation: tab-in 260ms cubic-bezier(.4, 0, .2, 1) both;
-}
+/* ---------- Movimento das abas e opções ----------
+   Curva única, a das folhas do iOS: sai rápido e assenta devagar. */
+:root { --ease-ios: cubic-bezier(.32, .72, 0, 1); }
+
+/* Troca de aba ou de mês: o conteúdo desliza do lado para onde se andou
+   (aba à direita / mês seguinte → entra pela direita). As abas e o topo
+   ficam parados. */
+.tab-enter #view > :not(.tabs, .page-head, .topbar) { animation: tab-in 320ms var(--ease-ios) both; }
+.tab-enter[data-dir="next"] #view > :not(.tabs, .page-head, .topbar) { animation-name: tab-in-next; }
+.tab-enter[data-dir="prev"] #view > :not(.tabs, .page-head, .topbar) { animation-name: tab-in-prev; }
+.tab-enter #view { overflow-x: clip; overflow-clip-margin: 24px; } /* sem barra de rolagem lateral durante o deslize */
 @keyframes tab-in { from { opacity: 0; transform: translateY(4px); } }
-.tabs__tab { transition: background-color 200ms var(--ease), color 200ms var(--ease), box-shadow 200ms var(--ease); }
+@keyframes tab-in-next { from { opacity: 0; transform: translateX(20px); } }
+@keyframes tab-in-prev { from { opacity: 0; transform: translateX(-20px); } }
+
+/* Indicador deslizante (ui/indicator.js): UMA pílula anda até a opção
+   escolhida, como o controle segmentado do iOS. */
+.tabs__tab, .segmented__btn, .segmented__opt span { transition: color 220ms var(--ease), opacity 220ms var(--ease); }
+.has-thumb { position: relative; isolation: isolate; }
+.seg-thumb {
+  position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none;
+  background: var(--surface); border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / .08), 0 2px 6px rgb(0 0 0 / .06);
+  transition: transform 360ms var(--ease-ios), width 360ms var(--ease-ios), height 360ms var(--ease-ios), opacity 180ms var(--ease);
+  will-change: transform;
+}
+[data-theme="dark"] .seg-thumb { background: var(--surface-3); box-shadow: none; }
+.seg-thumb.no-anim { transition: none; }
+/* A opção ativa deixa de desenhar o próprio fundo: quem desenha é a pílula */
+.has-thumb > :is([aria-selected="true"], [aria-pressed="true"]),
+.has-thumb > .segmented__opt > input:checked + span { background: transparent !important; box-shadow: none !important; }
+.has-thumb > .segmented__opt > input:checked:focus-visible + span { box-shadow: var(--focus) !important; }
+
+/* Valores que mudam (outro mês, outro filtro) deslizam até o novo tamanho */
+:is(.mstack__part, .causes__bar > span) { transition: width 520ms var(--ease-ios); }
+:is(.mstrip__bar > span, .weight-bars__bar) { transition: height 520ms var(--ease-ios); }
+
+/* "Detalhes" (ex.: bruto do salário) abrem e fecham com altura suave
+   nos navegadores que já animam até "auto"; nos outros, abrem na hora. */
+@supports (interpolate-size: allow-keywords) {
+  :root { interpolate-size: allow-keywords; }
+  details::details-content { block-size: 0; overflow-y: clip; transition: block-size 320ms var(--ease-ios), content-visibility 320ms allow-discrete; }
+  details[open]::details-content { block-size: auto; }
+}
+
+/* Janelas: fundo aparece junto; ao fechar, encolhem e somem (dialog.js) */
+.dialog[open]::backdrop { animation: backdrop-in 280ms var(--ease) both; }
+.dialog.is-closing { animation: sheet-out 200ms cubic-bezier(.4, 0, 1, 1) forwards; pointer-events: none; }
+.dialog.is-closing::backdrop { animation: backdrop-out 200ms var(--ease) forwards; }
+@keyframes backdrop-in { from { opacity: 0; } }
+@keyframes backdrop-out { to { opacity: 0; } }
+@keyframes sheet-out { to { opacity: 0; transform: translateY(8px) scale(.98); } }
+@media (max-width: 559px) {
+  .dialog.is-closing { animation-name: sheet-down; animation-duration: 240ms; }
+  @keyframes sheet-down { to { opacity: 0; transform: translateY(48px); } }
+}
 
 /* Campos de busca: borda sutil, respiro interno e ícone alinhado */
 .search .input, .listbox__search, .nav-search {
@@ -384,17 +415,6 @@ input[type="search"]::-webkit-search-decoration, input[type="search"]::-webkit-s
   .dialog, .dialog__form { max-height: calc(var(--vvh, 1vh) * 92); }
 }
 
-/* Seta de "tem mais": só um esmaecido curto e a seta, sem sombra */
-[data-scroll-more]::after {
-  height: 28px; margin-top: -28px;
-  background:
-    var(--cue-arrow) center bottom 2px / 16px no-repeat,
-    linear-gradient(to bottom, transparent, var(--cue-bg, var(--surface)) 85%);
-  opacity: .9;
-}
-.page-cue { box-shadow: 0 2px 4px rgb(0 0 0 / .05); border-color: var(--border); background: var(--surface); }
-.dialog__body[data-scroll-more]::after { margin-inline: calc(var(--sp-5) * -1); }
-@media (max-width: 559px) { .dialog__body[data-scroll-more]::after { margin-inline: calc(var(--sp-4) * -1); } }
 
 /* =============================================================
    Salário: competência × caixa e descontos em destaque
@@ -415,10 +435,6 @@ input[type="search"]::-webkit-search-decoration, input[type="search"]::-webkit-s
 .stackbar__seg--net, .dot--net { background: var(--pos); }
 .listbox__search:focus-within { box-shadow: none; border-color: var(--primary); }
 .listbox__search + .listbox { padding-top: 2px; }
-
-/* Cartão de saldo: 13º num mini card ao lado do valor (não soma no saldo) */
-.hero__value-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
-.hero__value-row > .hero__value { min-width: 0; }
 .hero__mini {
   display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3) var(--sp-4);
   border-radius: var(--radius); background: color-mix(in srgb, var(--pos) 10%, var(--surface-2));
@@ -429,3 +445,8 @@ input[type="search"]::-webkit-search-decoration, input[type="search"]::-webkit-s
 .hero__mini-value { font-size: var(--fs-xl); font-weight: 700; letter-spacing: var(--track-tight); color: var(--pos); line-height: 1.2; }
 .hero__mini-note { font-size: var(--fs-xs); color: var(--muted); }
 @media (max-width: 559px) { .hero__mini { flex: 1 1 100%; } }
+
+/* A área da tela recebe foco por programa ao trocar de tela (para leitores de
+   tela): sem contorno, que aparecia como uma linha azul no topo.
+   Botões, links e campos continuam com o anel de foco normal. */
+#main:focus, #main:focus-visible { outline: none; box-shadow: none; }

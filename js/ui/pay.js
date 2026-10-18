@@ -12,8 +12,8 @@
 
 import { html } from './dom.js';
 import { openDialog } from './dialog.js';
-import { toast, announce } from './toast.js';
-import { dateField, moneyField, accountField, maskCents } from './forms.js';
+import { toast } from './toast.js';
+import { dateField, moneyField, accountField } from './forms.js';
 import { store } from '../core/store.js';
 import { formatBRL, toCents } from '../core/money.js';
 import { todayISO, formatDateBR } from '../core/dates.js';
@@ -45,7 +45,6 @@ export function quickToggle(item) {
   const { restore } = withSnapshot(() => A.setItemPaid(item, paid, todayISO()));
   if (paid) { buzz(); celebrate(item.key); }
   const msg = paid ? `${item.description} marcada como paga.` : `Pagamento de ${item.description} desfeito.`;
-  announce(msg);
   toast(msg, { action: { label: 'Desfazer', run: restore } });
 }
 
@@ -80,11 +79,7 @@ export function payDialog(item) {
       buzz();
       celebrate(item.key);
       const msg = `${item.description} paga em ${formatDateBR(paidAt)}${cents && cents !== item.cents ? ` (${formatBRL(cents)})` : ''}.`;
-      announce(msg);
       toast(msg, { action: { label: 'Desfazer', run: restore } });
     },
   });
 }
-
-/** Texto do valor para o botão (exportado para quem monta botões de pagar). */
-export const payLabel = (cents) => `Pagar R$ ${maskCents(cents)}`;

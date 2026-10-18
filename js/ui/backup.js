@@ -4,7 +4,7 @@
 // O backup pode (e deve) ser CRIPTOGRAFADO com uma senha: o arquivo
 // fica ilegível para quem achar o arquivo no Drive ou no e-mail.
 // Sem senha, é um JSON aberto (dá para ler em qualquer editor).
-// Anexos (fotos) não vão no backup: ficam só no aparelho.
+// Anexos (fotos) não vão no backup: ficam cifrados na nuvem.
 // =============================================================
 
 import { html } from './dom.js';
@@ -44,7 +44,7 @@ export function exportBackup() {
         ${field({ label: 'Repita a senha', name: 'pass2', type: 'password', full: true, extra: { autocomplete: 'new-password' } })}
         <p class="field__hint field--full" data-strength aria-live="polite"></p>
       </div>
-      ${hasAttachments ? html`<p class="note">${icon('paperclip')}<span>As fotos anexadas não vão no backup (ficam só neste aparelho).</span></p>` : ''}`,
+      ${hasAttachments ? html`<p class="note">${icon('paperclip')}<span>As fotos anexadas não vão no backup (ficam na sua conta, cifradas).</span></p>` : ''}`,
     onMount: (dlg) => {
       const form = dlg.querySelector('form');
       const sync = () => { dlg.querySelector('[data-pass]').hidden = !form.protect.checked; };
@@ -61,7 +61,6 @@ export function exportBackup() {
         if (form.pass.value !== form.pass2.value) { const e = new Error('As senhas não conferem.'); e.field = 'pass2'; throw e; }
       }
       markBackupDone(); // antes de gerar o arquivo, para o backup já sair com a data dele
-      await store.flush();
       const json = JSON.stringify({ ...store.data, exportedAt: new Date().toISOString(), app: 'Dhenors' }, null, form.protect.checked ? 0 : 2);
       const content = form.protect.checked ? JSON.stringify(await encryptWithPassword(json, form.pass.value)) : json;
       download(`dhenors-backup-${todayISO()}${form.protect.checked ? '-protegido' : ''}.json`, content, 'application/json');
@@ -91,6 +90,8 @@ function askBackupPassword(file) {
 
 /** Abre o seletor de arquivo e restaura um backup (substitui os dados atuais). */
 export function importBackup() {
+  // Sem login não há conta para restaurar: entra antes de escolher o arquivo
+  if (store.guest) { document.dispatchEvent(new CustomEvent('dhenors:need-login')); return; }
   const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json' });
   input.addEventListener('change', async () => {
     const file = input.files?.[0];
@@ -109,7 +110,7 @@ export function importBackup() {
     }
     const ok = await confirmDialog({
       title: 'Restaurar backup',
-      message: `Os dados atuais deste aparelho serão SUBSTITUÍDOS pelos do arquivo "${file.name}". Deseja continuar?`,
+      message: `Os dados atuais da sua conta (em todos os aparelhos) serão SUBSTITUÍDOS pelos do arquivo "${file.name}". Deseja continuar?`,
       confirmLabel: 'Restaurar',
       danger: true,
     });
@@ -143,7 +144,7 @@ export function toCSV(rows) {
   return '\uFEFF' + rows.map((r) => r.map(cell).join(';')).join('\r\n');
 }
 
-const KIND = { expense: 'Avulsa', recurring: 'Recorrente', installment: 'Parcela' };
+const KIND = { expense: 'Avulsa', recurring: 'Recorrente', installment: 'Parcela', invoice: 'Fatura do cartão' };
 const STATUS = { paid: 'Pago', overdue: 'Atrasado', today: 'Vence hoje', soon: 'A vencer', upcoming: 'A vencer' };
 
 /** CSV das contas de um mês (abre no Excel/Planilhas com acentos corretos). */

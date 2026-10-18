@@ -20,7 +20,7 @@ const today = '2026-10-15';
 const reset = () => { store.data = createEmptyState(); store.data.onboarded = true; };
 
 before(() => {
-  store.flush = async () => {};
+  store.guest = false; // conta aberta (sem login, alterações pedem para entrar)
   console.warn = () => {};
 });
 

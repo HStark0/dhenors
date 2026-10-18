@@ -26,8 +26,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Versão sincronizada (index, manifest, service worker)
-        run: npm run sync && git diff --exit-code -- js/version.js sw-assets.js || (echo "::error::Rode 'npm run sync' e envie js/version.js e sw-assets.js" && exit 1)
+      - name: Versão sincronizada (js/version.js)
+        run: npm run sync && git diff --exit-code -- js/version.js || (echo "::error::Rode 'npm run sync' e envie js/version.js" && exit 1)
       - name: Lint
         run: npm run lint
       - name: Tipos (JSDoc)
@@ -53,12 +53,19 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # O arquivo único (dist/dhenors.html) NÃO vai para o site: ele usa uma
+      # CSP mais fraca (tudo embutido). Fica só como artefato do workflow.
       - name: Gera o arquivo único (dist/dhenors.html)
         run: npm run build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dhenors-arquivo-unico
+          path: dist/dhenors.html
+          retention-days: 30
       - name: Monta o site
         run: |
           mkdir -p _site
-          cp -r index.html manifest.webmanifest sw.js sw-assets.js css js assets dist site docs CHANGELOG.md _site/
+          cp -r index.html manifest.webmanifest sw.js css js assets site docs CHANGELOG.md _site/
           [ -f landing.html ] && cp landing.html _site/ || true
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3

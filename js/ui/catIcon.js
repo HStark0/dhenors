@@ -28,6 +28,3 @@ export function catIcon(cat, { size = 'sm', label = '' } = {}) {
   const name = catIconName(cat);
   return html`<span class="cat-icon cat-icon--${size}" style="--cat:${color}" ${label ? html`role="img" aria-label="${label}"` : html`aria-hidden="true"`}>${name ? icon(name) : html`<span class="cat-icon__emoji">${cat?.icon || '🏷️'}</span>`}</span>`;
 }
-
-/** "Moradia" com o ícone na frente (para selects e listas em texto puro usa só o nome). */
-export const catLabel = (cat) => (cat ? cat.name : 'Sem categoria');

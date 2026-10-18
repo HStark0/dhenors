@@ -14,8 +14,7 @@ import { formatBRL, sumCents } from '../core/money.js';
 import { todayISO, formatDateBR, formatMonth, addMonthsYM, ymOf } from '../core/dates.js';
 import { invoice, cardUsage, nextInvoice } from '../domain/cards.js';
 import { accountsSummary, accountMovements, ACCOUNT_KIND_LABELS, ACCOUNT_KIND_ICONS } from '../domain/accounts.js';
-import { incomeFor } from '../domain/ledger.js';
-import { paydayIn } from '../domain/payroll.js';
+import { employerIncomeFn } from '../domain/planning.js';
 import * as A from '../domain/actions.js';
 
 const TABS = [
@@ -23,10 +22,8 @@ const TABS = [
   { id: 'contas', label: 'Contas bancárias e carteiras', icon: 'wallet' },
 ];
 
-const salaryFn = (state) => (ym) => {
-  const inc = incomeFor(state, ym);
-  return { date: paydayIn(state.settings, ym), cents: inc.salary + (inc.payrollExtrasNet || 0) };
-};
+/** O que cai na conta-salário (mesma regra do fluxo diário e do "dá para gastar por dia"). */
+const salaryFn = employerIncomeFn;
 
 export default {
   id: 'carteira',
@@ -79,7 +76,8 @@ function cards() {
         <p><strong>Nenhum cartão cadastrado.</strong></p>
         <p class="muted">Com o cartão cadastrado (dia de fechamento e de vencimento), cada compra entra na fatura certa, as parcelas ficam dentro das faturas e a fatura vira uma conta do mês.</p>
         <button type="button" class="btn btn--primary" data-action="card:new">${icon('plus')} Cadastrar cartão</button>
-      </div>`;
+      </div>
+      ${archivedSection((d.cards || []).filter((c) => c.archived), 'card:edit', 'Cartões arquivados')}`;
   }
   return html`
     <div class="page-head">
@@ -121,7 +119,21 @@ function cards() {
             </footer>
           </article>`;
       })}
-    </div>`;
+    </div>
+    ${archivedSection((d.cards || []).filter((c) => c.archived), 'card:edit', 'Cartões arquivados')}`;
+}
+
+/** Itens arquivados: somem das listas, mas dá para abrir e desarquivar (ou excluir). */
+function archivedSection(list, action, title) {
+  if (!list.length) return '';
+  return html`
+    <details class="card archived-list">
+      <summary class="card__title">${icon('inbox')} ${title} (${list.length})</summary>
+      <ul class="mini-list">
+        ${list.map((x) => html`<li><span>${x.name}</span><span class="mini-list__actions"><button type="button" class="btn btn--ghost btn--sm" data-action="${action}" data-id="${x.id}">${icon('pencil', 'icon--xs')} Editar</button></span></li>`)}
+      </ul>
+      <p class="field__hint">Para voltar a usar, abra e desligue "Arquivar".</p>
+    </details>`;
 }
 
 // ---------- Contas e carteiras ----------
@@ -138,7 +150,8 @@ function accounts() {
         <p><strong>Nenhuma conta cadastrada.</strong></p>
         <p class="muted">Cadastre suas contas (Nubank, conta-salário, dinheiro na carteira) com o saldo de hoje. O app acompanha o saldo de cada uma, as transferências e mostra a diferença para o saldo real do banco.</p>
         <button type="button" class="btn btn--primary" data-action="acc:new">${icon('plus')} Cadastrar conta</button>
-      </div>`;
+      </div>
+      ${archivedSection((d.accounts || []).filter((a) => a.archived), 'acc:edit', 'Contas arquivadas')}`;
   }
   return html`
     <div class="page-head">
@@ -188,6 +201,7 @@ function accounts() {
           })}
         </ul>
       </article>` : ''}
+    ${archivedSection((d.accounts || []).filter((a) => a.archived), 'acc:edit', 'Contas arquivadas')}
     <p class="muted small">Para o saldo bater, informe a conta ao lançar gastos, receitas e ao pagar contas (campo "Conta"). A fatura do cartão sai da conta escolhida no cartão.</p>`;
 }
 

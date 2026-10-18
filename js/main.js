@@ -1,14 +1,17 @@
 // =============================================================
 // main.js — Ponto de entrada do app
 // -------------------------------------------------------------
-// 1. Carrega os dados salvos (store.init) e pede PIN/biometria
+// 1. Abre como visitante (dados de exemplo). Com o login lembrado,
+//    baixa os dados da nuvem (nada fica salvo no navegador).
 // 2. Monta a "casca" (menu, barra superior, barra inferior)
 // 3. Roteia pelo #hash da URL (#/painel, #/contas?aba=recorrentes…)
 // 4. Um ÚNICO listener de clique trata todos os botões com
 //    data-action — nada de listeners duplicados a cada render.
 // =============================================================
 
-import { store } from './core/store.js';
+import { store, GuestError } from './core/store.js';
+import { readAuth } from './core/storage.js';
+import { readLegacy, purgeCaches } from './core/legacy.js';
 import { applyAppearance, isDiscreet, setDiscreet, resolveTheme } from './core/theme.js';
 import { currentYM, addMonthsYM, addDaysISO, formatMonthTitle, formatMonthShort, todayISO, ymOf } from './core/dates.js';
 import { html, render, $, onAfterRender } from './ui/dom.js';
@@ -21,19 +24,24 @@ import { exportBackup, importBackup } from './ui/backup.js';
 import { openExportDialog } from './ui/exports.js';
 import { openPalette } from './ui/palette.js';
 import { initScrollHints } from './ui/scrollHint.js';
+import { initDiscreet, DISCREET_VALUES } from './ui/discreet.js';
 import { initChartTips, fitCharts } from './ui/charts.js';
+import { fitValues } from './ui/fit.js';
+import { mountFeedback } from './ui/feedback.js';
 import { afterViewRender } from './ui/motion.js';
-import { showLock, bindAutoLock } from './ui/lock.js';
+import { syncIndicators } from './ui/indicator.js';
 import { runReminders } from './ui/notify.js';
 import { initSwipe, initListKeys, initPullToRefresh } from './ui/gestures.js';
 import { initInstall, initServiceWorker, initViewport, canInstall, installApp, onInstallChange } from './ui/pwa.js';
-import { onboardingWizard, isDemo, stopDemo, startDemo } from './ui/onboarding.js';
+import { onboardingWizard } from './ui/onboarding.js';
+import { openAuth, settle, authActions, authOpen } from './ui/auth.js';
 import { helpActions } from './ui/help.js';
+import { outlookActions } from './ui/outlookUI.js';
 import { singleKeyShortcuts } from './ui/prefs.js';
 import { cloud } from './core/cloud.js';
 import { initErrorLog, logError } from './core/errors.js';
 import { fetchRates, ratesStale } from './core/market.js';
-import { cloudButton, openCloud, newPasswordDialog, cloudActions, statusText } from './ui/cloudUI.js';
+import { cloudButton, openCloud, cloudActions, statusText } from './ui/cloudUI.js';
 import * as E from './ui/editors.js';
 import * as IE from './ui/investEditors.js';
 import { computeMonth, overdueBefore } from './domain/ledger.js';
@@ -53,11 +61,10 @@ import settings from './views/settings.js';
 import agenda from './views/agenda.js';
 import search from './views/search.js';
 import importer, { bindDrop, pickFile } from './views/importer.js';
-import received from './views/received.js';
 
 // ---------- Rotas e navegação ----------
 
-const VIEWS = [dashboard, agenda, bills, wallet, salary, goals, investments, planning, analysis, settings, search, importer, received];
+const VIEWS = [dashboard, agenda, bills, wallet, salary, goals, investments, planning, analysis, settings, search, importer];
 const ROUTES = Object.fromEntries(VIEWS.map((v) => [v.id, v]));
 
 /** Endereços antigos (e atalhos) que viraram abas de outras telas. */
@@ -92,6 +99,12 @@ const NAV_SECTIONS = [
 const SETTINGS_NAV = { id: 'ajustes', label: 'Ajustes', icon: 'settings' };
 const NAV = [...NAV_SECTIONS.flatMap((s) => s.items), SETTINGS_NAV, { id: 'busca', label: 'Busca', icon: 'search' }, { id: 'importar', label: 'Importar extrato', icon: 'file-up' }];
 
+/** Endereço antigo → novo, mantendo os parâmetros (ex.: #/plantoes?novo=1 → #/salario?aba=plantoes&novo=1). */
+function withAliasQuery(id) {
+  const extra = location.hash.split('?')[1];
+  return `#/${ALIASES[id]}${extra ? `${ALIASES[id].includes('?') ? '&' : '?'}${extra}` : ''}`;
+}
+
 function currentRoute() {
   const id = location.hash.replace(/^#\/?/, '').split('?')[0];
   return ROUTES[id] ? id : 'painel';
@@ -102,17 +115,29 @@ const tabbarIds = () => (store.data.settings.tabbar || ['painel', 'agenda', 'con
 
 // ---------- Ações globais (data-action) ----------
 
-const ACTIONS = {
-  ...itemActions,
-  ...helpActions,
-  ...cloudActions,
-  ...Object.assign({}, ...VIEWS.map((v) => v.actions || {})),
+/**
+ * Junta os mapas de ações. Dois módulos com a MESMA ação faziam um apagar
+ * o outro em silêncio (ex.: "Nova assinatura" abria "Nova subcategoria"):
+ * agora isso aparece no console durante o desenvolvimento.
+ */
+function joinActions(...maps) {
+  const out = {};
+  for (const map of maps) {
+    for (const [name, fn] of Object.entries(map || {})) {
+      if (name in out) console.warn(`[ações] "${name}" definida em dois lugares; vale a última.`);
+      out[name] = fn;
+    }
+  }
+  return out;
+}
 
-  'new:menu': () => E.openNewMenu(),
+const ACTIONS = {
+  ...joinActions(itemActions, helpActions, outlookActions, cloudActions, authActions, ...VIEWS.map((v) => v.actions)),
+
+  'new:menu': () => (store.guest ? openAuth('signin') : E.openNewMenu()),
   'month:prev': () => store.setUI({ ym: addMonthsYM(store.ui.ym, -1) }),
   'month:next': () => store.setUI({ ym: addMonthsYM(store.ui.ym, 1) }),
   'month:today': () => store.setUI({ ym: currentYM() }),
-  'theme:set': (el) => A.setTheme(el.dataset.theme),
   'theme:toggle': () => {
     const mode = resolveTheme(store.data.settings.theme);
     A.setTheme(mode === 'light' ? (store.data.settings.theme === 'oled' ? 'oled' : 'dark') : 'light');
@@ -124,7 +149,7 @@ const ACTIONS = {
   },
   'alerts:open': () => openAlerts(),
   'cloud:open': () => openCloud(),
-  'cloud:sync': async () => { await cloud.syncNow(); toast(cloud.state.status === 'idle' ? 'Sincronizado.' : cloud.state.error || 'Sem conexão agora; os dados estão salvos no aparelho.', { type: cloud.state.status === 'idle' ? 'success' : 'info' }); },
+  'cloud:sync': async () => { await cloud.syncNow(); toast(cloud.state.status === 'idle' ? 'Sincronizado.' : cloud.state.error || 'Sem conexão agora; as alterações sobem quando a internet voltar (não feche o app).', { type: cloud.state.status === 'idle' ? 'success' : 'info' }); },
   'nav:more': () => actionSheet({
     title: 'Mais',
     actions: NAV.filter((n) => !tabbarIds().includes(n.id) && n.id !== 'busca').map((n) => ({
@@ -136,12 +161,7 @@ const ACTIONS = {
   'backup:import': () => importBackup(),
   'export:open': (el) => openExportDialog(el.dataset.kind || 'summary'),
   'palette:open': () => palette(),
-  'palette:voice': () => palette({ voice: true }),
-  'lock:now': () => showLock('relock'),
-  'import:pick': () => pickFile(),
   'install:app': () => installApp(),
-  'demo:stop': () => stopDemo(),
-  'whatsnew:open': () => whatsNew(true),
   'onb:bills': () => E.editRecurring(),
   'onb:card': () => E.editCard(),
   'onb:goal': () => E.editGoal(),
@@ -170,9 +190,9 @@ function palette({ voice = false } = {}) {
       { label: 'Baixar dados (planilhas, holerite, relatório)', icon: 'download', run: () => openExportDialog('summary') },
       { label: 'Fazer backup', icon: 'shield-check', run: () => exportBackup() },
       { label: 'Alternar tema claro/escuro', icon: 'moon', run: () => ACTIONS['theme:toggle']() },
+      { label: 'Fale conosco: feedback, sugestão ou reclamação', icon: 'mail', run: () => { location.hash = '#/ajustes?aba=contato'; } },
       { label: isDiscreet() ? 'Mostrar valores' : 'Modo discreto (esconder valores)', icon: isDiscreet() ? 'eye' : 'eye-off', run: () => ACTIONS['discreet:toggle']() },
       ...(store.undoable ? [{ label: `Desfazer: ${store.undoable.label}`, icon: 'undo-2', run: () => ACTIONS['undo:last']() }] : []),
-      ...(store.pinEnabled ? [{ label: 'Bloquear agora', icon: 'lock-keyhole', run: () => showLock('relock') }] : []),
     ],
     openEditor: (kind, x) => {
       if (kind === 'expense') E.editExpense(x);
@@ -185,7 +205,7 @@ function palette({ voice = false } = {}) {
   });
 }
 
-/** Menu do topo no celular: busca, alertas, nuvem, tema, modo discreto, bloquear, instalar. */
+/** Menu do topo no celular: busca, alertas, conta, tema, modo discreto, instalar. */
 function topMenu() {
   const alerts = alertItems().length;
   const st = cloud.state;
@@ -194,11 +214,13 @@ function topMenu() {
     actions: [
       { label: 'Buscar ou lançar', hint: 'Também por voz', icon: 'search', run: () => palette() },
       { label: alerts ? `Alertas (${alerts})` : 'Alertas', hint: alerts ? 'Contas atrasadas ou vencendo' : 'Nada urgente', icon: 'bell', run: () => openAlerts() },
-      ...(cloud.configured || st.status !== 'off' ? [{ label: 'Nuvem', hint: statusText(st), icon: 'cloud', run: () => openCloud() }] : []),
+      store.guest
+        ? { label: 'Entrar', hint: 'Use o app com os seus dados', icon: 'log-in', run: () => openAuth('signin') }
+        : { label: 'Nuvem', hint: statusText(st), icon: 'cloud', run: () => openCloud() },
       { label: resolveTheme(store.data.settings.theme) === 'light' ? 'Tema escuro' : 'Tema claro', icon: resolveTheme(store.data.settings.theme) === 'light' ? 'moon' : 'sun', run: () => ACTIONS['theme:toggle']() },
       { label: isDiscreet() ? 'Mostrar valores' : 'Esconder valores (modo discreto)', icon: isDiscreet() ? 'eye' : 'eye-off', run: () => ACTIONS['discreet:toggle']() },
-      ...(store.pinEnabled ? [{ label: 'Bloquear agora', icon: 'lock-keyhole', run: () => showLock('relock') }] : []),
       ...(canInstall() ? [{ label: 'Instalar o app', icon: 'smartphone', run: () => installApp() }] : []),
+      { label: 'Fale conosco', hint: 'Feedback, sugestão ou reclamação', icon: 'mail', run: () => { location.hash = '#/ajustes?aba=contato'; } },
       { label: 'Ajustes', icon: 'settings', run: () => { location.hash = '#/ajustes'; } },
     ],
   });
@@ -216,7 +238,9 @@ function bindEvents() {
     if (!el || el.disabled) return;
     // Links com data-action continuam navegando se não houver ação (ex.: #/salario)
     if (!ACTIONS[el.dataset.action]) return console.warn('Ação sem handler:', el.dataset.action);
-    ev.preventDefault();
+    // Caixa de seleção/rádio: deixa o navegador marcar (cancelar desfazia a marca
+    // na tela, e o redesenho não corrige o campo que está com o foco)
+    if (!el.matches('input[type="checkbox"], input[type="radio"]')) ev.preventDefault();
     run(() => ACTIONS[el.dataset.action](el, ev));
   });
   // Elementos de gráfico (role=button) e linhas: Enter/Espaço também disparam
@@ -244,13 +268,13 @@ function bindEvents() {
 
   // Atalhos: N = novo · Ctrl/⌘+K ou "/" = busca · Ctrl+Z = desfazer · D = modo discreto
   document.addEventListener('keydown', (ev) => {
-    if (document.body.classList.contains('is-locked')) return;
+    if (document.body.classList.contains('has-auth')) return;
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'k') { ev.preventDefault(); palette(); return; }
     if (ev.target.closest('input, textarea, select, [contenteditable], dialog')) return;
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z' && store.undoable) { ev.preventDefault(); dispatch('undo:last'); return; }
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     if (!singleKeyShortcuts()) return; // desligados em Ajustes → Geral → Aparência
-    if (ev.key === 'n') { ev.preventDefault(); E.openNewMenu(); }
+    if (ev.key === 'n') { ev.preventDefault(); dispatch('new:menu'); }
     if (ev.key === '/') { ev.preventDefault(); palette(); }
     if (ev.key === 'd') { ev.preventDefault(); dispatch('discreet:toggle'); }
   });
@@ -258,7 +282,7 @@ function bindEvents() {
   // Modo discreto: tocar num valor mostra só ele por 3 s
   document.addEventListener('click', (ev) => {
     if (!isDiscreet()) return;
-    const money = ev.target.closest('.money, .kpi__value, .hero__value, .big-number');
+    const money = ev.target.closest(DISCREET_VALUES);
     if (!money || ev.target.closest('[data-action]')) return;
     money.classList.add('is-peek');
     setTimeout(() => money.classList.remove('is-peek'), 3000);
@@ -268,11 +292,10 @@ function bindEvents() {
   addEventListener('scroll', onScroll, { passive: true });
   onScroll();
   bindDrop();
-  bindAutoLock();
 
   window.addEventListener('hashchange', () => {
     const id = location.hash.replace(/^#\/?/, '').split('?')[0];
-    if (ALIASES[id]) { location.replace(`#/${ALIASES[id]}`); return; }
+    if (ALIASES[id]) { location.replace(withAliasQuery(id)); return; }
     // Só a aba (ou outro parâmetro) mudou, na mesma tela: não rola para o
     // topo nem tira o foco da lista de abas (setas ← → do teclado)
     const sameRoute = lastRendered.split('|')[0] === currentRoute();
@@ -295,7 +318,8 @@ function bindEvents() {
       if (Math.abs(innerWidth - lastWidth) > 80) { lastWidth = innerWidth; renderAll(); }
     }, 200);
   });
-  document.addEventListener('dhenors:save-error', () => toastError('Não foi possível salvar no navegador. Verifique o espaço do aparelho e faça um backup.'));
+  // Tentou salvar sem login: abre a tela de entrar
+  document.addEventListener('dhenors:need-login', () => { if (!authOpen()) openAuth(cloud.user ? 'passphrase' : 'signin'); });
 
   // Atualiza "hoje" quando o app volta do segundo plano em outro dia
   let lastDay = todayISO();
@@ -306,7 +330,7 @@ function bindEvents() {
       renderAll();
       dailyChores();
     }
-    if (document.visibilityState === 'visible' && store.data) runReminders();
+    if (document.visibilityState === 'visible' && !store.guest) runReminders();
   });
 }
 
@@ -315,6 +339,7 @@ async function run(fn) {
   try {
     await fn();
   } catch (err) {
+    if (err instanceof GuestError) return; // a tela de entrar já abriu
     if (err instanceof A.ValidationError) toastError(err.message);
     else { console.error(err); logError(err, 'ação'); toastError('Algo deu errado. Tente novamente.'); }
   }
@@ -350,12 +375,13 @@ function renderShell(routeId) {
       <p class="nav-section">${sec.title}</p>
       ${sec.items.map((n) => navLink(n, routeId))}`)}
     <p class="nav-section">Ajustes</p>
-    ${navLink(SETTINGS_NAV, routeId)}
+    ${navLink(SETTINGS_NAV, location.hash.includes('aba=contato') ? '' : routeId)}
+    <a class="nav-link" href="#/ajustes?aba=contato" ${routeId === 'ajustes' && location.hash.includes('aba=contato') ? html`aria-current="page"` : ''}>${icon('mail')}<span>Fale conosco</span></a>
     ${canInstall() ? html`<button type="button" class="nav-link nav-link--install" data-action="install:app">${icon('smartphone')}<span>Instalar o app</span></button>` : ''}`);
 
   // Rodapé fixo do menu: status da nuvem, versão e avatar
   render($('#sidebar-foot'), html`
-    ${cloudButton({ compact: true }) || html`<button type="button" class="cloud-btn cloud-btn--off cloud-btn--compact" data-action="cloud:open">${icon('cloud-off')}<span class="cloud-btn__text">Só neste aparelho</span></button>`}
+    ${cloudButton({ compact: true })}
     <a class="sidebar__me" href="#/ajustes">
       ${avatar()}
       <span><strong>${store.data.settings.profileName || 'Seu perfil'}</strong><small>Dhenors ${APP_VERSION}</small></span>
@@ -372,7 +398,8 @@ function renderShell(routeId) {
 
   const short = view.shortTitle || view.title;
   render($('#topbar'), html`
-    ${isDemo() ? html`<div class="demo-bar" role="note">${icon('sparkles', 'icon--xs')} Você está vendo dados de exemplo. <button type="button" class="link" data-action="demo:stop">Sair do exemplo</button></div>` : ''}
+    ${store.guest ? html`<div class="demo-bar guest-bar" role="note">${icon('eye', 'icon--xs')}<span>Você está vendo um exemplo. Entre para usar com os seus dados.</span>
+      <span class="guest-bar__actions"><button type="button" class="btn btn--primary btn--sm" data-action="auth:open">Entrar</button><button type="button" class="btn btn--ghost btn--sm" data-action="auth:signup">Criar conta</button></span></div>` : ''}
     <div class="topbar__title">
       <h1 class="page-title"><span class="page-title__full">${view.title}</span><span class="page-title__short">${short}</span></h1>
       ${store.data.settings.profileName && routeId === 'painel' ? html`<p class="muted small topbar__hello">Olá, ${store.data.settings.profileName}!</p>` : ''}
@@ -387,13 +414,12 @@ function renderShell(routeId) {
     <div class="topbar__actions">
       <button type="button" class="icon-btn topbar__desk" data-action="palette:open" aria-label="Buscar ou lançar (Ctrl+K)" title="Buscar ou lançar (Ctrl+K)">${icon('search')}</button>
       <button type="button" class="btn btn--primary topbar__new" data-action="new:menu" title="Atalho: tecla N">${icon('plus')} Novo</button>
-      <span class="topbar__desk">${cloudButton()}</span>
+      ${store.guest ? "" : html`<span class="topbar__desk">${cloudButton()}</span>`}
       <button type="button" class="icon-btn bell topbar__desk" data-action="alerts:open" aria-label="Alertas: ${alerts.length}">
         ${icon('bell')}${alerts.length ? html`<span class="bell__count" aria-hidden="true">${alerts.length > 9 ? '9+' : alerts.length}</span>` : ''}
       </button>
       <button type="button" class="icon-btn topbar__desk" data-action="discreet:toggle" aria-pressed="${isDiscreet()}" aria-label="${isDiscreet() ? 'Mostrar valores' : 'Esconder valores (modo discreto)'}" title="Modo discreto (tecla D)">${icon(isDiscreet() ? 'eye-off' : 'eye')}</button>
       <button type="button" class="icon-btn topbar__desk" data-action="theme:toggle" aria-label="${light ? 'Usar tema escuro' : 'Usar tema claro'}">${icon(light ? 'moon' : 'sun')}</button>
-      ${store.pinEnabled ? html`<button type="button" class="icon-btn topbar__desk" data-action="lock:now" aria-label="Bloquear agora">${icon('lock-keyhole')}</button>` : ''}
       <button type="button" class="topbar__me topbar__mobile" data-action="top:menu" aria-label="Menu: busca, alertas${alerts.length ? ` (${alerts.length})` : ''}, nuvem e tema">
         ${avatar()}${alerts.length ? html`<span class="bell__count" aria-hidden="true">${alerts.length > 9 ? '9+' : alerts.length}</span>` : ''}
         <span class="topbar__me-cloud topbar__me-cloud--${cloud.state.status}" aria-hidden="true"></span>
@@ -437,8 +463,12 @@ function renderAll({ routeChanged = false } = {}) {
   // Só a aba mudou (mesma tela e mês): transição curta só no conteúdo
   const [lastRoute, lastTab, lastYM] = lastRendered.split('|');
   const tabOnly = entering && !routeChanged && lastRoute === routeId && lastYM === store.ui.ym && lastTab !== tabKey;
+  // Só o mês mudou (setas do topo): o conteúdo desliza para o lado, sem a cascata de tela nova
+  const monthOnly = entering && !routeChanged && lastRoute === routeId && lastTab === tabKey && lastYM !== store.ui.ym;
   lastRendered = sig;
-  afterViewRender($('#view'), routeId, { entering, tabOnly });
+  const moved = syncIndicators($('#view'), { animate: !routeChanged });
+  const dir = tabOnly ? moved.tabs : monthOnly ? (store.ui.ym > lastYM ? 1 : -1) : 0;
+  afterViewRender($('#view'), routeId, { entering, tabOnly: tabOnly || monthOnly, dir });
   if (routeChanged) {
     window.scrollTo(0, 0);
     $('#main').focus({ preventScroll: true });
@@ -507,7 +537,7 @@ function handleRouteParams() {
 // ---------- Tarefas do dia (ao abrir e ao virar o dia) ----------
 
 async function dailyChores() {
-  if (isDemo()) return;
+  if (store.guest) return;
   // Reajuste automático das recorrentes no mês do aniversário
   try {
     const changes = A.applyReadjustments(todayISO());
@@ -523,45 +553,51 @@ async function dailyChores() {
 
 // ---------- Inicialização ----------
 
+/** A conta abriu (login): boas-vindas, novidades, lembretes e tarefas do dia. */
+function onAccountOpen() {
+  store.ui.ym = currentYM();
+  if (!store.data.onboarded) onboardingWizard();
+  else whatsNew();
+  handleRouteParams();
+  runReminders();
+  dailyChores();
+}
+
 async function start() {
-  // configuração de um recurso removido na 3.3.1, que ficava no aparelho
-  try { localStorage.removeItem('dhenors:openfinance'); } catch { /* ignora */ }
   initErrorLog();
+  // O antigo modo offline guardava o app no cache do navegador: sai tudo
+  purgeCaches();
   // Volta de um link de e-mail do Supabase (#access_token=…&type=… ou #error=…):
   // confirmação de cadastro ou "Esqueci minha senha"
   let recovery = null;
+  let emailNotice = null;
   if (/access_token=|error_description=/.test(location.hash)) {
     const p = new URLSearchParams(location.hash.slice(1));
-    window.history.replaceState(null, '', `${location.pathname}#/ajustes`);
+    window.history.replaceState(null, '', `${location.pathname}#/painel`);
     if (p.get('type') === 'recovery' && p.get('access_token')) {
       recovery = { access_token: p.get('access_token'), refresh_token: p.get('refresh_token'), expires_in: p.get('expires_in') };
     } else {
       const ok = p.has('access_token');
-      const msg = ok ? 'E-mail confirmado! Agora entre na nuvem com seu e-mail e senha.'
-        : p.get('error_code') === 'otp_expired' ? 'O link do e-mail expirou ou já foi usado. Peça outro (em "Entrar na nuvem").'
-        : `Não foi possível usar o link do e-mail: ${p.get('error_description') || 'erro desconhecido'}.`;
-      setTimeout(() => toast(msg, { type: ok ? 'success' : 'error', duration: 9000 }), 800);
+      emailNotice = { ok, text: ok ? 'E-mail confirmado! Agora entre com o seu e-mail e senha.'
+        : p.get('error_code') === 'otp_expired' ? 'O link do e-mail expirou ou já foi usado. Peça outro na tela de entrar.'
+        : `Não foi possível usar o link do e-mail: ${p.get('error_description') || 'erro desconhecido'}.` };
     }
   }
-  const alias = ALIASES[location.hash.replace(/^#\/?/, '').split('?')[0]];
-  if (alias) window.history.replaceState(null, '', `${location.pathname}#/${alias}`);
+  const aliasId = location.hash.replace(/^#\/?/, '').split('?')[0];
+  if (ALIASES[aliasId]) window.history.replaceState(null, '', `${location.pathname}${withAliasQuery(aliasId)}`);
 
   mountIconSprite();
-  onAfterRender((root) => { enhanceWithin(root); fitCharts(root); }); // selects estilizados + texto dos gráficos no tamanho real
+  onAfterRender((root) => { mountFeedback(root); enhanceWithin(root); fitCharts(root); fitValues(root); }); // selects estilizados, texto dos gráficos no tamanho real e números que cabem no card
   let fitTimer = 0;
-  window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(() => fitCharts(document), 120); });
+  window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(() => { fitCharts(document); fitValues(document); }, 120); });
   autoEnhance(document.body);
   initViewport();
   initInstall();
-  await store.init();
-  // Dados criptografados por PIN: pede o PIN (ou a digital) antes de tudo
-  if (store.locked) {
-    document.body.classList.remove('is-loading');
-    await showLock('unlock');
-  }
+  store.init(); // visitante: dados de exemplo, só na memória
   applyTheme();
   bindEvents();
   initScrollHints();
+  initDiscreet();
   initChartTips();
   initSwipe();
   initListKeys();
@@ -586,48 +622,65 @@ async function start() {
     }
     bar.textContent = store.readOnly;
   };
-  showReadOnly();
 
   let frame = 0;
   store.subscribe((reason) => {
-    if (reason === 'readonly') showReadOnly();
+    if (reason === 'readonly' || reason === 'open' || reason === 'close') showReadOnly();
     if (reason === 'silent') return;
     applyTheme();
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => renderAll());
+    if (reason === 'open') setTimeout(onAccountOpen, 0);
   });
   onInstallChange(() => renderAll());
 
-  renderAll();
-  document.body.classList.remove('is-loading');
-  // Vindo da página de apresentação ("Ver com dados de exemplo")
-  let wantsDemo = false;
-  try { wantsDemo = localStorage.getItem('dhenors:open-demo') === '1'; localStorage.removeItem('dhenors:open-demo'); } catch { /* sem acesso */ }
-  if (wantsDemo && !isDemo()) startDemo();
-  else if (!store.data.onboarded) onboardingWizard();
-  else whatsNew();
-  handleRouteParams();
-  runReminders();
-  dailyChores();
-
   // Nuvem: status no topo e avisos
-  cloud.onChange(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => renderAll()); });
+  cloud.onChange((st) => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => renderAll());
+    // A frase foi trocada em outro aparelho (ou o login venceu): pede de novo
+    if (!store.guest && ((st.status === 'locked' && !cloud.hasKey) || (st.status === 'signedout' && !cloud.user))) {
+      store.close();
+      openAuth(st.status === 'locked' ? 'passphrase' : 'signin');
+    }
+  });
   document.addEventListener('dhenors:cloud-notice', (ev) => {
     const d = ev.detail || {};
     toast(d.text || d, { type: 'info', duration: 9000, ...(d.action === 'conflicts' ? { action: { label: 'Resolver', run: () => dispatch('cloud:conflicts') } } : {}) });
   });
-  cloud.init().catch((err) => { console.warn('[nuvem]', err); logError(err, 'nuvem'); });
-  if (recovery) setTimeout(() => newPasswordDialog(recovery), 400);
+
+  renderAll();
+  document.body.classList.remove('is-loading');
+
+  // Login lembrado: abre direto os dados da nuvem (tela de carregamento enquanto isso)
+  if (recovery) {
+    openAuth('newpass', { recovery });
+  } else if (readAuth()?.session && (await readLegacy().catch(() => null))) {
+    // Login lembrado, mas ainda há dados de uma versão anterior no aparelho
+    // (migração interrompida): a frase é pedida de novo para terminar de levá-los
+    await cloud.init({ open: false }).catch(() => {});
+    openAuth(cloud.user ? 'passphrase' : 'signin');
+  } else if (readAuth()?.session) {
+    openAuth('loading');
+    try { await cloud.init(); } catch (err) { logError(err, 'nuvem'); }
+    settle();
+  } else {
+    await cloud.init().catch(() => {});
+    // Quem vinha de uma versão que guardava os dados aqui: pede para entrar e levá-los
+    const legacy = await readLegacy().catch(() => null);
+    if (legacy) openAuth('signin');
+    else if (emailNotice?.ok) openAuth('signin');
+  }
+  if (emailNotice) setTimeout(() => toast(emailNotice.text, { type: emailNotice.ok ? 'success' : 'error', duration: 9000 }), 400);
 
   initServiceWorker();
-  if (isDemo()) setTimeout(() => toast('Modo exemplo: nada aqui vai para a nuvem.', { type: 'info' }), 600);
 }
 
 start().catch((err) => {
   console.error(err);
   logError(err, 'início');
   document.getElementById('view').innerHTML =
-    '<div class="card empty"><p><strong>Não foi possível iniciar o app.</strong></p><p class="muted">Seu navegador pode estar bloqueando o armazenamento local (modo anônimo?).</p></div>';
+    '<div class="card empty"><p><strong>Não foi possível iniciar o app.</strong></p><p class="muted">Recarregue a página. Se continuar, atualize o navegador.</p></div>';
   document.body.classList.remove('is-loading');
 });
 

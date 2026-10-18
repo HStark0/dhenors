@@ -22,6 +22,8 @@ import { invoice, invoiceMonthFor, invoiceDates } from '../../domain/cards.js';
 import { ACCOUNT_KIND_LABELS } from '../../domain/accounts.js';
 import { computeMonth } from '../../domain/ledger.js';
 import { defaultDate, knownTags, deleteWithUndo } from './bills.js';
+import { bindImpact, flagBadges } from '../outlookUI.js';
+import { purchaseFlags } from '../../domain/weights.js';
 
 const data = () => store.data;
 const COLORS = ['#7C3AED', '#8A05BE', '#EC7000', '#CC092F', '#0B2C5F', '#0F766E', '#111827', '#2563EB', '#16A34A', '#DB2777'];
@@ -79,6 +81,7 @@ export function editPurchase(purchase = null, { cardId = null, preset = {} } = {
         ${dateField({ label: 'Data da compra', name: 'date', value: p.date })}
         ${switchField({ label: 'É um estorno (devolução)', name: 'refund', checked: refund })}
         <div class="field field--full"><p class="preview" data-invoice aria-live="polite"></p></div>
+        <div class="field field--full" data-impact aria-live="polite"></div>
         ${categoryFields(data(), p)}
         ${splitsField(data(), p.splits || [])}
         ${tagsField({ value: p.tags || [], suggestions: knownTags() })}
@@ -101,6 +104,13 @@ export function editPurchase(purchase = null, { cardId = null, preset = {} } = {
       form.addEventListener('input', update);
       form.addEventListener('change', update);
       update();
+      // Faturas em que a compra entra, destacando os meses que ficam apertados
+      bindImpact(form, dlg.querySelector('[data-impact]'), (f) => {
+        const cents = toCents(f.cents.value);
+        const count = Number(f.count.value) || 1;
+        if (f.refund.checked || !Number.isFinite(cents) || cents <= 0 || !f.date.value || !f.cardId.value || count < 1 || count > 48) return null;
+        return { kind: 'card', cardId: f.cardId.value, date: f.date.value, cents, count, replace: purchase ? { kind: 'card', id: purchase.id } : null };
+      });
     },
     onSubmit: (form) => {
       const v = readForm(form);
@@ -131,10 +141,11 @@ export function invoiceDetails(cardId, ym) {
             return html`
               <li>
                 <span>${catIcon(cat, { size: 'xs' })} ${l.purchase.description}
-                  <small class="muted">${formatDateBR(l.purchase.date)}${l.count > 1 ? ` · ${l.n}/${l.count}` : ''}${l.purchase.recurringId ? ' · assinatura' : ''}</small></span>
+                  <small class="muted">${formatDateBR(l.purchase.date)}${l.count > 1 ? ` · ${l.n}/${l.count}` : ''}${l.purchase.recurringId ? ' · assinatura' : ''}</small>
+                  ${l.purchase.recurringId || l.purchase.locked ? '' : flagBadges(purchaseFlags(data(), l.purchase))}</span>
                 <span class="money ${l.cents < 0 ? 'pos' : ''}">${l.cents < 0 ? '−' : ''}${formatBRL(Math.abs(l.cents))}</span>
                 <span class="mini-list__actions">
-                  ${l.purchase.recurringId ? '' : html`
+                  ${l.purchase.recurringId || l.purchase.locked ? '' : html`
                     <button type="button" class="icon-btn icon-btn--sm" data-edit="${l.purchase.id}" aria-label="Editar ${l.purchase.description}">${icon('pencil')}</button>
                     <button type="button" class="icon-btn icon-btn--sm danger" data-del="${l.purchase.id}" aria-label="Excluir ${l.purchase.description}">${icon('trash-2')}</button>`}
                 </span>

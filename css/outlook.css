@@ -1,0 +1,364 @@
+/* =============================================================
+   outlook.css — Salário × ganhos × gastos, situação dos meses,
+   selos de lançamentos, dicas e prévia de impacto
+   -------------------------------------------------------------
+   Só tokens (tokens.css): funciona nos temas claro, escuro e OLED.
+   A cor nunca é a única pista: todo estado tem ícone e texto.
+   ============================================================= */
+
+/* ---------- Topo do painel ---------- */
+.dash-lead { display: flex; flex-direction: column; gap: var(--sp-4); margin-bottom: var(--sp-4); }
+.dash-lead > .dash-edit { margin: 0; }
+.masonry > .masonry__wide { column-span: all; }
+
+/* ---------- Situação do mês (selo) ---------- */
+.mstatus {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: var(--radius-full);
+  font-size: var(--fs-xs); font-weight: 700; white-space: nowrap;
+  background: var(--fill); color: var(--text-2);
+}
+.mstatus--ok { background: var(--pos-soft); color: var(--pos); }
+.mstatus--tight { background: var(--warn-soft); color: var(--warn); }
+.mstatus--short { background: var(--neg-soft); color: var(--neg); }
+.mstatus-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--muted); }
+.mstatus-dot--ok { background: var(--pos); }
+.mstatus-dot--tight { background: var(--warn); }
+.mstatus-dot--short { background: var(--neg); }
+
+/* ---------- Bloco "Seu dinheiro no mês" ---------- */
+.summary { display: flex; flex-direction: column; gap: var(--sp-4); }
+.summary__top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+.summary__title { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-lg); font-weight: 700; letter-spacing: var(--track-tight); }
+.summary__title > .icon { width: 28px; height: 28px; padding: 6px; border-radius: 8px; background: color-mix(in srgb, var(--tone, var(--primary)) 14%, transparent); color: var(--tone, var(--primary)); }
+.summary__top-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+
+.summary__figs { display: grid; grid-template-columns: 1fr; gap: var(--sp-3); }
+@media (min-width: 720px) { .summary__figs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.sfig {
+  display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0;
+  padding: var(--sp-4); border-radius: var(--radius); background: var(--surface-2);
+}
+.sfig--salary { --sfig: var(--neutral); }
+.sfig--earn { --sfig: var(--pos); }
+.sfig--spend { --sfig: var(--chart-spent); }
+.sfig__label { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); font-weight: 500; color: var(--muted); }
+/* Destaque no estilo dos KPIs: ícone num quadrado arredondado com a cor suave */
+.sfig__label > .icon:first-child {
+  width: 28px; height: 28px; padding: 6px; border-radius: 8px; flex: none;
+  background: color-mix(in srgb, var(--sfig) 14%, transparent); color: var(--sfig);
+}
+.sfig__value { font-size: clamp(1.5rem, 3.2vw, 2rem); font-weight: 750; letter-spacing: var(--track-tight); line-height: 1.15; color: var(--text); overflow-wrap: anywhere; }
+.sfig__value.pos { color: var(--pos); }
+.sfig__sub { font-size: var(--fs-sm); color: var(--text-2); }
+.sfig__sub strong { color: var(--text); }
+.sfig__sub.neg, .sfig__sub .neg { color: var(--neg); font-weight: 650; }
+.sfig__sub .pos { color: var(--pos); font-weight: 600; }
+.sfig__chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.sfig .btn { align-self: flex-start; margin-top: var(--sp-1); }
+.sfig__details { font-size: var(--fs-sm); }
+.sfig__details > summary {
+  cursor: pointer; color: var(--text-2); list-style: none; display: flex; align-items: center; gap: 6px;
+  min-height: 32px; border-radius: var(--radius-xs);
+}
+.sfig__details > summary::-webkit-details-marker { display: none; }
+.sfig__details > summary::after { content: '▾'; color: var(--muted); transition: transform var(--dur) var(--ease); }
+.sfig__details[open] > summary::after { transform: rotate(180deg); }
+.sfig__details > summary:focus-visible { outline: none; box-shadow: var(--focus); }
+.sfig__lines { display: flex; flex-direction: column; margin: var(--sp-2) 0; }
+.sfig__lines > div { display: flex; justify-content: space-between; gap: var(--sp-3); padding: 4px 0; border-bottom: 1px dashed var(--separator); }
+.sfig__lines dt { color: var(--text-2); min-width: 0; overflow-wrap: anywhere; }
+.sfig__lines dd { font-weight: 600; white-space: nowrap; }
+.sfig__lines .is-add dd { color: var(--pos); }
+.sfig__lines .is-sub dd { color: var(--neg); }
+.sfig__lines .is-total { border-bottom: 0; }
+.sfig__lines .is-total dt, .sfig__lines .is-total dd { color: var(--text); font-weight: 750; }
+
+.summary__balance { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; }
+.summary__balance-text { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.summary__big { font-size: clamp(2.25rem, 5.4vw, 3.5rem); font-weight: 800; letter-spacing: -.035em; line-height: 1.05; color: var(--tone, var(--text)); }
+.summary__big.neg { color: var(--neg); }
+.summary__status { display: flex; align-items: center; gap: 6px; font-weight: 650; color: var(--tone, var(--text-2)); }
+
+.commit-ring { position: relative; width: 104px; height: 104px; flex: none; }
+.commit-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.commit-ring__track { stroke: var(--fill-strong); }
+.commit-ring__bar { stroke: var(--neutral); stroke-linecap: round; transition: stroke-dashoffset 800ms var(--ease); }
+.commit-ring--ok .commit-ring__bar { stroke: var(--pos); }
+.commit-ring--tight .commit-ring__bar { stroke: var(--warn); }
+.commit-ring--short .commit-ring__bar { stroke: var(--neg); }
+.commit-ring__num { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.commit-ring__num strong { font: 800 1.5rem/1 var(--font-num); letter-spacing: -.03em; }
+.commit-ring__num small { color: var(--muted); font-size: 10px; font-weight: 600; }
+
+/* Barra empilhada: pago · a pagar · em atraso · livre/falta */
+.mstack { display: flex; height: 14px; border-radius: var(--radius-full); overflow: hidden; background: var(--fill); }
+.mstack__part { height: 100%; min-width: 3px; }
+.mstack__part + .mstack__part { border-left: 2px solid var(--surface); }
+.mstack__part--paid { background: var(--pos); }
+.mstack__part--open { background: var(--neutral); }
+.mstack__part--overdue { background: var(--neg); }
+.mstack__part--free { background: repeating-linear-gradient(135deg, var(--pos-soft) 0 6px, color-mix(in srgb, var(--pos) 35%, transparent) 6px 8px); }
+.mstack__part--free.is-missing { background: repeating-linear-gradient(135deg, var(--neg-soft) 0 6px, color-mix(in srgb, var(--neg) 45%, transparent) 6px 8px); }
+.mstack__legend { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-xs); color: var(--text-2); }
+.mstack__key { display: inline-flex; align-items: center; gap: 6px; }
+.mstack__key > span { width: 10px; height: 10px; border-radius: 3px; background: var(--muted); }
+.mstack__key--paid > span { background: var(--pos); }
+.mstack__key--open > span { background: var(--neutral); }
+.mstack__key--overdue > span { background: var(--neg); }
+.mstack__key--free > span { background: color-mix(in srgb, var(--pos) 45%, transparent); }
+.mstack__key--free.is-missing > span { background: color-mix(in srgb, var(--neg) 55%, transparent); }
+.mstack__key--free.is-missing strong { color: var(--neg); }
+
+.summary__notes { display: flex; flex-direction: column; gap: var(--sp-2); }
+.summary__notes:empty { display: none; }
+.summary__note {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; text-align: left;
+  padding: var(--sp-2) var(--sp-3); min-height: 44px; border-radius: var(--radius-sm);
+  background: var(--surface-2); color: var(--text-2); font-size: var(--fs-sm); border: 0; cursor: pointer;
+}
+.summary__note > span { flex: 1; min-width: 0; }
+.summary__note:hover { background: var(--surface-3); }
+.summary__note:focus-visible { outline: none; box-shadow: var(--focus); }
+.summary__note strong { color: var(--text); }
+.summary__note strong.neg { color: var(--neg); }
+.summary .hero__payday { border-top: 1px solid var(--separator); padding-top: var(--sp-3); color: var(--muted); }
+.summary .hero__payday strong { color: var(--text); }
+.summary .hero__mini { flex: 0 1 auto; }
+
+/* ---------- Faixa dos meses ---------- */
+.mstrip-wrap { display: flex; flex-direction: column; gap: var(--sp-2); }
+.mstrip {
+  display: grid; grid-template-columns: repeat(12, minmax(56px, 1fr)); gap: 6px;
+  list-style: none; margin: 0; padding: 2px 2px var(--sp-1); overflow-x: auto; scroll-snap-type: x proximity;
+}
+.mstrip > li { scroll-snap-align: start; min-width: 0; }
+.mstrip__cell {
+  width: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 4px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); cursor: pointer; font: inherit; min-height: 112px;
+  transition: transform var(--dur) var(--ease), box-shadow 300ms var(--ease), background-color 300ms var(--ease), border-color 300ms var(--ease), color 300ms var(--ease);
+}
+.mstrip__cell:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.mstrip__cell:focus-visible { outline: none; box-shadow: var(--focus); }
+.mstrip__cell.is-selected { box-shadow: inset 0 0 0 2px var(--primary); }
+.mstrip__cell--ok { background: var(--pos-soft); border-color: color-mix(in srgb, var(--pos) 25%, transparent); }
+.mstrip__cell--tight { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.mstrip__cell--short { background: var(--neg); border-color: var(--neg); color: #fff; }
+.mstrip__month { font-weight: 700; font-size: var(--fs-sm); text-transform: capitalize; line-height: 1.1; text-align: center; }
+.mstrip__month small { display: block; font-size: 10px; font-weight: 600; opacity: .75; }
+.mstrip__bar { position: relative; width: 10px; height: 34px; border-radius: 4px; background: color-mix(in srgb, currentColor 12%, transparent); overflow: hidden; }
+.mstrip__bar > span { position: absolute; left: 0; right: 0; bottom: 0; height: var(--h, 10%); border-radius: 4px; background: var(--pos); }
+.mstrip__cell--tight .mstrip__bar > span { background: var(--warn); }
+.mstrip__bar > span.is-neg, .mstrip__cell--short .mstrip__bar > span { background: currentColor; }
+.mstrip__value { font-size: 11px; font-weight: 700; white-space: nowrap; }
+.mstrip__cell--ok .mstrip__value { color: var(--pos); }
+.mstrip__cell--tight .mstrip__value { color: var(--warn); }
+.mstrip__icon { line-height: 0; }
+.mstrip__cell--ok .mstrip__icon { color: var(--pos); }
+.mstrip__cell--tight .mstrip__icon { color: var(--warn); }
+.mstrip__legend { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-xs); color: var(--muted); list-style: none; margin: 0; padding: 0; }
+.mstrip__legend li { display: inline-flex; align-items: center; gap: 6px; }
+.outlook__count { flex: none; }
+
+/* ---------- Janela do mês ---------- */
+.mdetail { display: flex; flex-direction: column; gap: var(--sp-3); }
+.mdetail__head { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.mdetail__balance { font-size: var(--fs-3xl); font-weight: 800; letter-spacing: -.03em; line-height: 1.1; color: var(--tone, var(--text)); }
+.mdetail__balance.neg { color: var(--neg); }
+.note--bad { background: var(--neg-soft); }
+.note--bad > .icon { color: var(--neg); }
+.causes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.causes__row { display: grid; grid-template-columns: 1fr auto; gap: 2px var(--sp-3); align-items: baseline; }
+.causes__label { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; flex-wrap: wrap; }
+.causes__row .money { font-weight: 650; }
+.causes__bar { grid-column: 1 / -1; height: 6px; border-radius: var(--radius-full); background: var(--fill); overflow: hidden; }
+.causes__bar > span { display: block; height: 100%; border-radius: inherit; background: var(--tone, var(--neutral)); }
+
+/* ---------- Dicas ---------- */
+.advice-group + .advice-group { margin-top: var(--sp-4); }
+.advice-group__title { margin-bottom: var(--sp-2); }
+.advice-level { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: var(--radius-full); font-size: var(--fs-xs); font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+.advice-level--simples { background: var(--info-soft); color: var(--info); }
+.advice-level--media { background: var(--warn-soft); color: var(--warn); }
+.advice-level--complexa { background: color-mix(in srgb, var(--chart-spent) 16%, transparent); color: var(--text); }
+.next-action--info > .icon { background: var(--info-soft); color: var(--info); }
+
+/* ---------- Selos dos lançamentos ---------- */
+.flag {
+  display: inline-flex; align-items: center; gap: 3px; padding: 0 7px; min-height: 20px;
+  border-radius: var(--radius-full); font-size: 11px; font-weight: 650; white-space: nowrap;
+  border: 1px solid currentColor; background: transparent; line-height: 1.6;
+}
+.flag--over { color: var(--warn); }
+.flag--unusual { color: var(--info); }
+.flag--future { color: var(--text-2); border-style: dashed; }
+
+/* ---------- Prévia do impacto (editor de contas) ---------- */
+.impact { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border-radius: var(--radius); background: var(--surface-2); }
+.impact--good { --tone: var(--pos); }
+.impact--warn { --tone: var(--warn); }
+.impact--bad { --tone: var(--neg); background: var(--neg-soft); }
+.impact--info { --tone: var(--neutral); }
+.impact__headline { display: flex; align-items: flex-start; gap: var(--sp-2); font-weight: 650; color: var(--text); }
+.impact__headline > .icon { flex: none; width: 28px; height: 28px; padding: 6px; border-radius: 8px; background: color-mix(in srgb, var(--tone) 14%, transparent); color: var(--tone); }
+.impact__months { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0 0 4px; overflow-x: auto; }
+.impact__m {
+  flex: 0 0 auto; min-width: 92px; display: flex; flex-direction: column; gap: 2px;
+  padding: 6px 8px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); font-size: var(--fs-xs);
+}
+.impact__mon { font-weight: 700; color: var(--muted); text-transform: capitalize; }
+.impact__m strong { font-size: var(--fs-sm); }
+.impact__m small { color: var(--muted); }
+.impact__m--short strong { color: var(--neg); }
+.impact__m--tight strong { color: var(--warn); }
+.impact__m.is-weighs { border-width: 2px; }
+.impact__m--tight.is-weighs { border-color: var(--warn); background: var(--warn-soft); }
+.impact__m--short.is-weighs { border-color: var(--neg); background: var(--neg-soft); }
+.impact__tag { display: inline-flex; align-items: center; gap: 3px; font-weight: 700; color: var(--tone); }
+.impact__m--short .impact__tag { color: var(--neg); }
+.impact__m--tight .impact__tag { color: var(--warn); }
+.impact .neg { color: var(--neg); }
+
+/* ---------- Peso no futuro ---------- */
+.weight-bars { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--sp-2); align-items: end; list-style: none; margin: 0; padding: 0; height: 104px; }
+.weight-bars > li { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; height: 100%; min-width: 0; }
+.weight-bars__bar { width: 100%; max-width: 36px; height: var(--h, 10%); border-radius: 6px 6px 2px 2px; background: color-mix(in srgb, var(--warn) 70%, transparent); }
+.weight-bars__m { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: capitalize; }
+.weight-bars__v { font-size: 10px; color: var(--text-2); white-space: nowrap; }
+.weight-list small { margin-left: 4px; }
+
+/* ---------- Agenda: situação do mês ---------- */
+.month-banner {
+  display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; width: 100%; text-align: left;
+  margin-bottom: var(--sp-4); padding: var(--sp-3) var(--sp-4); min-height: 48px;
+  border-radius: var(--radius); border: 0;
+  background: var(--surface); color: var(--text); cursor: pointer; font: inherit; box-shadow: var(--shadow-sm);
+}
+.month-banner:focus-visible { outline: none; box-shadow: var(--focus); }
+.month-banner strong { color: var(--tone, var(--text)); }
+.month-banner__more { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--primary-text, var(--primary)); font-weight: 600; font-size: var(--fs-sm); }
+
+/* ---------- 12 meses: linhas por situação ---------- */
+.table tr.is-short > * { background: color-mix(in srgb, var(--neg) 7%, transparent); }
+.table tr.is-tight:not(.is-short) > * { background: color-mix(in srgb, var(--warn) 6%, transparent); }
+
+
+@media (max-width: 559px) {
+  .summary { padding: var(--sp-4); }
+  .commit-ring { width: 84px; height: 84px; }
+  .commit-ring__num strong { font-size: 1.2rem; }
+  .commit-ring__num small { font-size: 8px; }
+  .mstrip { grid-template-columns: repeat(12, 58px); }
+  .summary__top-actions .btn { min-height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mstrip__cell, .commit-ring__bar { transition: none; }
+}
+[data-motion="off"] :is(.mstrip__cell, .commit-ring__bar) { transition: none; }
+
+/* O saldo segue a situação do mês (o tom do card também considera atrasos) */
+:is(.summary__big, .summary__status).summary__big--ok, .summary__status--ok { color: var(--pos); }
+:is(.summary__big, .summary__status).summary__big--tight, .summary__status--tight { color: var(--warn); }
+:is(.summary__big, .summary__status).summary__big--short, .summary__status--short { color: var(--neg); }
+.summary__big--none, .summary__status--none { color: var(--text-2); }
+
+/* =============================================================
+   Alinhamentos (revisão de texto e elementos)
+   ============================================================= */
+
+/* Link no meio de uma frase: segue a linha do texto. A altura mínima de
+   toque (44px, features.css) abria um buraco entre as linhas no celular. */
+:is(p, li, .dialog__text, .note > span, .banner > p) > .link:not(.btn) { display: inline; min-height: 0; padding: 0; vertical-align: baseline; font-size: inherit; }
+
+/* Linha com título e detalhe embaixo (ex.: faturas do mês) */
+.stack-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* Lista do que pesa no futuro: ícone alinhado à primeira linha do nome */
+.weight-row { display: flex; align-items: flex-start; gap: var(--sp-2); min-width: 0; }
+.weight-row > .icon { flex: none; margin-top: 3px; color: var(--muted); }
+.weight-row__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: var(--fs-sm); color: var(--text); overflow-wrap: anywhere; }
+.weight-row__text small { font-size: var(--fs-xs); }
+.weight-list .money { font-size: var(--fs-sm); white-space: nowrap; }
+.weight-list .money small { margin-left: 2px; }
+
+/* Meta de gastos: percentual e barra na largura do card; o gráfico ao
+   lado quando cabe, embaixo quando não cabe — os dois ocupam a linha toda */
+.limit-card__top > div:first-child { flex: 1 1 240px; min-width: 0; }
+.limit-card__top > .limit-card__chart { flex: 1 1 280px; min-width: 0; }
+
+/* Tabelas: coluna de texto (selo, destaques) com o título à esquerda,
+   como o conteúdo; as colunas de valores continuam à direita */
+.table thead th.is-text { text-align: left; }
+
+/* Grade de dois cards que não precisam ter a mesma altura */
+.grid--top { align-items: start; }
+
+/* "Próximo salário" no topo do Painel: ícone + três linhas alinhadas */
+.summary .hero__payday { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--sp-3); row-gap: 2px; align-items: start; }
+.summary .hero__payday > .icon { grid-row: 1 / span 3; margin-top: 2px; }
+.summary .hero__payday > span { grid-column: 2; margin: 0; flex-basis: auto; }
+.summary .hero__perday { color: var(--text-2); }
+
+/* Retrospectiva no celular: valores grandes cabem na caixa */
+@media (max-width: 559px) {
+  .wrapped__grid .big-number { font-size: clamp(1rem, 4.1vw, 1.5rem); letter-spacing: -.02em; }
+}
+
+/* Caixas de resumo (.kv): rótulo em cima, valor embaixo — os valores de
+   uma mesma linha ficam na mesma altura mesmo quando um rótulo quebra */
+.kv > div { justify-content: space-between; gap: 4px; }
+
+/* Faixa só informativa (sem toque): sem cursor nem realce ao passar */
+.mstrip__cell.is-static { cursor: default; }
+.mstrip__cell.is-static:hover { transform: none; box-shadow: none; }
+
+/* Card de conteúdo centralizado (ex.: "Meta de gastos" sem meta) dentro da
+   grade do Painel: a grade força display:block nos cards, o que deixava o
+   ícone e o título à esquerda e só o texto no centro */
+.masonry > .card--center { display: flex; }
+
+/* Celular: a janela vira folha que sobe de baixo, na largura toda da tela,
+   com só os cantos de cima arredondados. (O tamanho médio, o padrão da
+   maioria das janelas, vinha depois e deixava uma faixa vazia à direita.) */
+@media (max-width: 559px) {
+  .dialog, .dialog:is(.dialog--sm, .dialog--md, .dialog--lg) {
+    width: 100vw; max-width: 100vw;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    border-width: 1px 0 0;
+  }
+}
+
+/* Lista de marcar com detalhe embaixo do nome (ex.: investimentos da meta):
+   o detalhe quebra linha em vez de passar da borda da janela */
+.check--sm .stack-text .muted { margin-left: 0; white-space: normal; font-size: var(--fs-xs); }
+.check--sm .stack-text { flex: 1; }
+
+/* ---------- Modo discreto ----------
+   Cada valor vira um olho cortado + "••••" no MESMO lugar (o texto fica
+   transparente, ocupando o espaço: nada pula ao ligar/desligar). Tocar no
+   valor mostra ele por 3 s. Os valores escritos no meio de frases ganham a
+   marcação .money em ui/discreet.js. Lista igual a DISCREET_VALUES. */
+:root {
+  --eye-off: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238E8E93' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49'/%3E%3Cpath d='M14.084 14.158a3 3 0 0 1-4.242-4.242'/%3E%3Cpath d='M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143'/%3E%3Cpath d='m2 2 20 20'/%3E%3C/svg%3E");
+}
+[data-discreet] :is(.money, .kpi__value, .big-number, .hero__value, .sfig__value, .summary__big, .mdetail__balance, .mstrip__value, .weight-bars__v, .cal__chip):not(.is-peek) {
+  position: relative; -webkit-text-fill-color: transparent; cursor: pointer; user-select: none;
+}
+[data-discreet] :is(.money, .kpi__value, .big-number, .hero__value, .sfig__value, .summary__big, .mdetail__balance, .mstrip__value, .weight-bars__v, .cal__chip):not(.is-peek) :is(svg, img) { visibility: hidden; }
+[data-discreet] :is(.money, .kpi__value, .big-number, .hero__value, .sfig__value, .summary__big, .mdetail__balance, .mstrip__value, .weight-bars__v, .cal__chip):not(.is-peek)::after {
+  content: '••••'; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: max-content; padding-left: 1.2em; pointer-events: none;
+  background: var(--eye-off) left center / .95em no-repeat;
+  -webkit-text-fill-color: #8E8E93; color: #8E8E93; letter-spacing: .06em; font-weight: 700; line-height: 1;
+}
+/* Peças pequenas e centralizadas (faixa de meses, barras, agenda): pontos no centro */
+[data-discreet] :is(.mstrip__value, .weight-bars__v, .cal__chip):not(.is-peek)::after { left: 50%; transform: translate(-50%, -50%); }
+/* Valores do texto à direita (listas, tabelas): os pontos encostam à direita como o valor */
+[data-discreet] :is(.item__value, .mini-list .money, td.money, .entity__value):not(.is-peek)::after { left: auto; right: 0; transform: translateY(-50%); }
+/* Gráficos: some só o que é valor (eixo de valores e o centro da rosca); meses e formas ficam */
+[data-discreet] :is(.chart__axis--value, .chart__center) { visibility: hidden; }
+@media print { [data-discreet] * { -webkit-text-fill-color: initial !important; } [data-discreet] *::after { content: none !important; } }
+/* Valor no meio de uma frase: ocupa exatamente o olho + "••••" (sem vão
+   do tamanho do valor original antes do resto do texto) */
+[data-discreet] :is(span, strong, b, small, em).money:not(.is-peek) { display: inline-block; width: 3.9em; white-space: nowrap; vertical-align: bottom; }

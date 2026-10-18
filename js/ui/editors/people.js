@@ -28,7 +28,7 @@ export function editCreditor(creditor = null) {
   });
 }
 
-const personOptions = () => [{ value: '', label: 'Outra pessoa (digitar o nome)' }, ...data().creditors.map((c) => ({ value: c.id, label: c.name }))];
+const personOptions = () => [{ value: '', label: 'Outra pessoa' }, ...data().creditors.map((c) => ({ value: c.id, label: c.name }))];
 
 /** "Alguém me deve": empréstimo para amigo, venda a receber, reembolso pendente. */
 export function editReceivable(r = null) {
@@ -44,7 +44,7 @@ export function editReceivable(r = null) {
         ${field({ label: 'Descrição', name: 'description', value: x.description, required: true, extra: { maxlength: 120 } })}
         ${moneyField({ label: 'Valor', name: 'cents', cents: x.cents })}
         ${dateField({ label: 'Data do empréstimo', name: 'date', value: x.date })}
-        ${dateField({ label: 'Combinou de devolver em (opcional)', name: 'dueDate', value: x.dueDate || '', required: false, hint: 'Aparece na Agenda e nos lembretes.' })}
+        ${dateField({ label: 'Devolve até (opcional)', name: 'dueDate', value: x.dueDate || '', required: false, hint: 'Data combinada: aparece na Agenda e nos lembretes.' })}
         ${textareaField({ label: 'Observação', name: 'notes', value: x.notes || '' })}
       </div>`,
     onMount: (dlg) => {

@@ -14,7 +14,7 @@
 [data-theme="dark"] { --icon-g1: #86EF6F; --icon-g2: #2DD4BF; --icon-g3: #4C9BF0; }
 
 /* ---------- Toque e hover ---------- */
-.btn, .icon-btn, .segmented__btn, .tabs__tab, .nav-link, .tabbar__item, .pay-btn, .chip, .legend__btn, .sheet-item {
+.btn, .icon-btn, .segmented__btn, .tabs__tab, .nav-link, .tabbar__item, .pay-btn, .legend__btn, .sheet-item {
   transition:
     background-color var(--dur) var(--ease), border-color var(--dur) var(--ease),
     color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),

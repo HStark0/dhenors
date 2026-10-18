@@ -147,17 +147,7 @@ export function mergeWithConflicts(base, local, remote) {
   return { state: out, conflicts: [...byItem.values()] };
 }
 
-/** Lê/escreve um valor no estado por caminho (ids nas listas). */
-export function getAtPath(state, path) {
-  let cur = state;
-  for (const k of path) {
-    if (Array.isArray(cur)) cur = cur.find((x) => keyOf(x) === k);
-    else cur = cur?.[k];
-    if (cur === undefined) return undefined;
-  }
-  return cur;
-}
-
+/** Escreve um valor no estado por caminho (ids nas listas); value null/undefined apaga. */
 export function setAtPath(state, path, value) {
   let cur = state;
   for (let i = 0; i < path.length - 1; i++) {

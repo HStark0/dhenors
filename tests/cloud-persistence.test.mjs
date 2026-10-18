@@ -100,6 +100,7 @@ test('C2: dados da nuvem de versão mais nova lançam erro (nunca viram estado v
   const mine = createEmptyState();
   mine.expenses.push({ id: 'x1', description: 'Luz', cents: 100, dueDate: '2026-10-01' });
   store.data = mine;
+  store.guest = false; // conta aberta
   await assert.rejects(store.applyRemote(newer), SchemaTooNewError);
   assert.equal(store.data, mine, 'o estado atual fica como estava');
   assert.equal(store.data.expenses.length, 1);
@@ -108,11 +109,22 @@ test('C2: dados da nuvem de versão mais nova lançam erro (nunca viram estado v
   assert.equal(store.data, mine);
 });
 
+test('saiu da conta durante uma sincronização: dados da nuvem não entram no exemplo', async () => {
+  store.close();
+  const sample = store.data;
+  const real = createEmptyState();
+  real.settings.profileName = 'Conta real';
+  await store.applyRemote(real);
+  assert.equal(store.data, sample);
+  assert.equal(store.guest, true);
+});
+
 test('C2: backup de versão mais nova é recusado sem mexer nos dados', async () => {
   const mine = createEmptyState();
-  store.data = mine;
+  store.open(mine);
   await assert.rejects(store.replace({ ...createEmptyState(), schema: SCHEMA_VERSION + 1 }), /mais nova/);
-  assert.equal(store.data, mine);
+  assert.equal(store.data.updatedAt, mine.updatedAt);
+  assert.equal(store.guest, false);
 });
 
 // ---------- M1: pendências durante o envio ----------
@@ -133,7 +145,9 @@ test('M1: envio só zera "pendente" se nada mudou durante o envio', () => {
 
 // ---------- merge: exclusões ----------
 
-const st = (extra = {}) => ({ ...createEmptyState(), categories: [], ...extra });
+// Datas fixas: createEmptyState() usa a hora atual, e três chamadas em milissegundos
+// diferentes viravam um conflito falso em createdAt (teste instável).
+const st = (extra = {}) => ({ ...createEmptyState(), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', categories: [], ...extra });
 const inst = (paid) => ({ id: 'p1', description: 'TV', totalCents: 3000, count: 3, paid });
 
 test('merge: desmarcar uma parcela num aparelho não volta pelo outro', () => {
@@ -186,28 +200,86 @@ test('conflitos: guarda as 3 cópias mais recentes (aceita o formato antigo)', (
   assert.deepEqual(conflictCopies(undefined), []);
 });
 
-// ---------- C1 / M4: apagar dados ----------
+// ---------- Só na nuvem: store na memória e "lembrar o login" ----------
 
-test('C1: "Apagar todos os dados" desliga a nuvem ANTES e não emite "replace"', async () => {
-  const { cloud, CloudError: Exported } = await import('../js/core/cloud.js');
-  assert.equal(Exported, CloudError, 'API pública da nuvem continua igual');
-  assert.equal(typeof cloud.signOut, 'function');
-  const order = [];
-  store.data = createEmptyState();
-  store.data.expenses.push({ id: 'x' });
-  store.onReset(() => order.push(`hook:${store.data.expenses.length}`));
-  const unsub = store.subscribe((reason) => order.push(`emit:${reason}`));
-  await store.reset();
-  unsub();
-  assert.deepEqual(order, ['hook:1', 'emit:reset']);
-  assert.equal(store.data.expenses.length, 0);
+test('visitante: qualquer alteração pede login e nada muda (aparência vale)', async () => {
+  const { GuestError } = await import('../js/core/store.js');
+  store.init();
+  assert.equal(store.guest, true);
+  assert.ok(store.data.expenses.length > 0, 'visitante vê o exemplo');
+  const before = JSON.stringify(store.data);
+  let asked = 0;
+  const prevDoc = globalThis.document;
+  globalThis.document = { dispatchEvent: (ev) => { if (ev.type === 'dhenors:need-login') asked++; } };
+  try {
+    assert.throws(() => store.commit((d) => { d.expenses.length = 0; }), GuestError);
+    await assert.rejects(store.replace(createEmptyState()), GuestError);
+  } finally { globalThis.document = prevDoc; }
+  assert.equal(asked, 2);
+  assert.equal(JSON.stringify(store.data), before);
+  store.commit((d) => { d.settings.theme = 'dark'; }, 'appearance');
+  assert.equal(store.data.settings.theme, 'dark');
 });
 
-// Por último: depois de wipe() a store não grava mais nada neste processo
-test('M4: apagar após tentativas erradas tira os dados e a chave da memória', async () => {
-  store.data = createEmptyState();
-  await store.wipe();
-  assert.equal(store.data, null);
-  assert.equal(store.pinEnabled, false);
-  assert.throws(() => store.commit(() => {}));
+test('entrar abre os dados da conta; sair tira da memória e volta ao exemplo', () => {
+  const reasons = [];
+  const unsub = store.subscribe((r) => reasons.push(r));
+  const mine = createEmptyState();
+  mine.settings.profileName = 'Minha conta';
+  store.open(mine);
+  assert.equal(store.guest, false);
+  store.commit((d) => { d.expenses.push({ id: 'x' }); }, 'change', { undo: 'teste' });
+  store.close();
+  unsub();
+  assert.equal(store.guest, true);
+  assert.notEqual(store.data.settings.profileName, 'Minha conta');
+  assert.equal(store.undoable, null, 'desfazer não atravessa contas');
+  assert.deepEqual(reasons, ['open', 'change', 'close']);
+});
+
+test('"Apagar todos os dados" vira um estado vazio que vai para a nuvem', async () => {
+  store.open(createEmptyState());
+  store.data.expenses.push({ id: 'x' });
+  const reasons = [];
+  const unsub = store.subscribe((r) => reasons.push(r));
+  await store.reset();
+  unsub();
+  assert.equal(store.data.expenses.length, 0);
+  assert.deepEqual(reasons, ['replace']);
+});
+
+test('lembrar o login: só acesso (sem dados), no lugar certo e com validade', async () => {
+  const fake = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), m }; };
+  const prev = { ls: globalThis.localStorage, ss: globalThis.sessionStorage };
+  const ls = fake();
+  const ss = fake();
+  Object.defineProperty(globalThis, 'localStorage', { value: ls, configurable: true });
+  Object.defineProperty(globalThis, 'sessionStorage', { value: ss, configurable: true });
+  try {
+    const { readAuth, writeAuth, clearAuth } = await import('../js/core/storage.js');
+    writeAuth({ session: { access_token: 't' }, key: 'k', remember: 'session' });
+    assert.equal(ls.m.size, 0, '"só agora" não vai para o localStorage');
+    assert.equal(readAuth().key, 'k');
+    writeAuth({ session: { access_token: 't' }, key: 'k', remember: '30d', until: 1000 });
+    assert.equal(ss.m.size, 0, 'trocar a escolha tira do outro lugar');
+    assert.equal(readAuth(999).remember, '30d');
+    assert.equal(readAuth(1001), null, 'venceu: some');
+    assert.equal(ls.m.size, 0);
+    writeAuth({ session: { access_token: 't' }, remember: 'always' });
+    clearAuth();
+    assert.equal(readAuth(), null);
+  } finally {
+    Object.defineProperty(globalThis, 'localStorage', { value: prev.ls, configurable: true });
+    Object.defineProperty(globalThis, 'sessionStorage', { value: prev.ss, configurable: true });
+  }
+});
+
+test('anexos: a chave própria do arquivo sobrevive à validação do estado', async () => {
+  const { sanitizeState } = await import('../js/domain/schema.js');
+  const st = createEmptyState();
+  st.schema = 1; // força passar pelo sanitizador
+  st.expenses.push({ id: 'e1', description: 'Luz', cents: 100, dueDate: '2026-10-10', attachments: [{ id: 'a1', name: 'x.jpg', type: 'image/jpeg', size: 10, k: 'A'.repeat(43) + '=' }, { id: 'a2', name: 'y', type: '', size: 1, k: 'não é base64!' }] });
+  const out = sanitizeState(st).expenses[0].attachments;
+  assert.equal(out[0].k, 'A'.repeat(43) + '=');
+  assert.equal(out[1].k, undefined);
 });

@@ -59,11 +59,7 @@
   --logo-2: #2DD4BF;
   --logo-3: #1E7BE8;
   --brand-grad: linear-gradient(160deg, var(--logo-1) 0%, var(--logo-2) 45%, var(--logo-3) 100%);
-  --brand-grad-h: var(--primary);
-  --brand-grad-deep: var(--primary);
   --btn-grad: var(--primary);
-  --brand-1: var(--primary);
-  --brand-2: var(--primary);
 }
 
 /* ---------- Tema claro ---------- */

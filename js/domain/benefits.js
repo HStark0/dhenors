@@ -21,7 +21,7 @@
 // quando a soma dos salários passa do teto (o excesso pode ser restituído).
 // =============================================================
 
-import { tablesFor } from './taxTables.js';
+import { tablesForYM } from './taxTables.js';
 import { inssFor, irrfFor } from './payroll.js';
 
 /**
@@ -75,7 +75,7 @@ export const JOB_KIND_LABELS = { clt: 'CLT', servidor: 'Servidor público', pj: 
 /** Líquido de um vínculo no mês. → { gross, inss, ir, tax, net, note } */
 export function jobNet(job, ym) {
   if ((job.from && ym < job.from) || (job.to && ym > job.to) || !job.grossCents) return null;
-  const table = tablesFor(Number(ym.slice(0, 4)));
+  const table = tablesForYM(ym);
   const gross = job.grossCents;
   if (job.kind === 'pj') {
     const tax = Math.round((gross * (job.pjTaxBp || 0)) / 10000);
@@ -94,7 +94,7 @@ export function jobNet(job, ym) {
 /** Todos os vínculos extras do mês. → { list: [{ job, ...jobNet }], net, overCeiling } */
 export function jobsIn(settings, ym, mainGross = 0) {
   const list = (settings.jobs || []).map((job) => ({ job, r: jobNet(job, ym) })).filter((x) => x.r).map(({ job, r }) => ({ job, ...r }));
-  const table = tablesFor(Number(ym.slice(0, 4)));
+  const table = tablesForYM(ym);
   const ceiling = Math.round(table.inss[table.inss.length - 1][0] * 100);
   const cltGross = mainGross + list.filter((x) => x.job.kind === 'clt').reduce((s, x) => s + x.gross, 0);
   return { list, net: list.reduce((s, x) => s + x.net, 0), overCeiling: list.some((x) => x.job.kind === 'clt') && cltGross > ceiling };

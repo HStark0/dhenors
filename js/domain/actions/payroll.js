@@ -12,7 +12,7 @@ import { isValidISO, isValidYM, ymOf, addMonthsYM } from '../../core/dates.js';
 import { newId, createEmptyState } from '../schema.js';
 import { payrollProfileFor } from '../payroll.js';
 import { friendlyName, normalizeName } from '../payslip.js';
-import { ValidationError, text, cents, date, intRange, assertOpen, findOrThrow } from './core.js';
+import { ValidationError, text, cents, date, month, intRange, assertOpen, findOrThrow } from './core.js';
 
 // ---------- Perfil salarial ----------
 
@@ -201,11 +201,6 @@ export function deleteSalaryEntry(fromYM) {
   }, 'change', { undo: 'Registro de salário removido' });
 }
 
-export function setSalaryDay(day) {
-  return store.commit((d) => { d.settings.salaryDay = intRange(day, 'salaryDay', 1, 31, 'O dia'); });
-}
-
-/** Dia fixo (salaryDay) ou N-ésimo dia útil. */
 /**
  * Apaga SÓ a parte do salário. Contas, cartões, metas, investimentos,
  * categorias e o resto do app ficam intactos. Pode ser desfeito.
@@ -245,10 +240,10 @@ export function clearSalaryData({ vacations = true, shifts = false, benefits = f
 export function setOnCallHours(ym, lineId, minutes) {
   return store.commit((d) => {
     d.settings.onCallHours ||= {};
-    const month = (d.settings.onCallHours[ym] ||= {});
-    if (minutes == null) delete month[lineId];
-    else month[lineId] = Math.max(0, Math.min(744 * 60, Math.round(minutes)));
-    if (!Object.keys(month).length) delete d.settings.onCallHours[ym];
+    const hours = (d.settings.onCallHours[ym] ||= {});
+    if (minutes == null) delete hours[lineId];
+    else hours[lineId] = Math.max(0, Math.min(744 * 60, Math.round(minutes)));
+    if (!Object.keys(hours).length) delete d.settings.onCallHours[ym];
   }, 'Horas de sobreaviso');
 }
 
@@ -299,6 +294,57 @@ export function deleteExtraIncome(id) {
     assertOpen(d, item.ym);
     d.extraIncomes = d.extraIncomes.filter((x) => x.id !== id);
   }, 'change', { undo: 'Renda excluída' });
+}
+
+// ---------- Ganhos extras recorrentes (fora da folha) ----------
+
+/**
+ * Renda que se repete todo mês e NÃO vem do empregador (aluguel
+ * recebido, pensão, freela fixo). Valor líquido: não passa pela folha.
+ * input = { id?, description, cents, day, startYM, endYM?, kind, accountId? }
+ */
+export function saveRecurringIncome(input) {
+  return store.commit((d) => {
+    d.recurringIncomes ||= [];
+    const startYM = month(input.startYM, 'startYM');
+    const endYM = month(input.endYM, 'endYM', { required: false });
+    if (endYM && endYM < startYM) throw new ValidationError('O fim precisa ser depois do início.', 'endYM');
+    const item = {
+      description: text(input.description, 'description', 'a descrição'),
+      cents: cents(input.cents, 'cents'),
+      day: intRange(input.day, 'day', 1, 31, 'O dia'),
+      startYM,
+      endYM,
+      kind: INCOME_KINDS.includes(input.kind) && input.kind !== 'plantao' ? input.kind : 'extra',
+      accountId: (d.accounts || []).some((a) => a.id === input.accountId) ? input.accountId : null,
+    };
+    if (input.id) {
+      const current = findOrThrow(d.recurringIncomes, input.id, 'Renda recorrente');
+      Object.assign(current, item);
+      return current;
+    }
+    const created = { id: newId(), ...item, skipped: [] };
+    d.recurringIncomes.push(created);
+    return created;
+  });
+}
+
+export function deleteRecurringIncome(id) {
+  return store.commit((d) => {
+    findOrThrow(d.recurringIncomes || [], id, 'Renda recorrente');
+    d.recurringIncomes = d.recurringIncomes.filter((x) => x.id !== id);
+  }, 'change', { undo: 'Renda recorrente excluída' });
+}
+
+/** Pula (ou volta a contar) a renda recorrente num mês. */
+export function skipRecurringIncomeMonth(id, ym, skip = true) {
+  return store.commit((d) => {
+    const r = findOrThrow(d.recurringIncomes || [], id, 'Renda recorrente');
+    assertOpen(d, month(ym, 'ym'), 'ym');
+    const set = new Set(r.skipped || []);
+    if (skip) set.add(ym); else set.delete(ym);
+    r.skipped = [...set].sort();
+  });
 }
 
 // ---------- Férias e afastamentos ----------
@@ -384,18 +430,6 @@ export function addShifts(dates, typeId, { note = '', cents: value = null } = {}
       d.shifts.push({ id: newId(), date: day, typeId, note: String(note || '').slice(0, 80), ...(Number.isInteger(value) && value > 0 ? { cents: value } : {}) });
     }
     return list.length;
-  });
-}
-
-export function updateShift(id, patch) {
-  return store.commit((d) => {
-    const s = findOrThrow(d.shifts, id, 'Plantão');
-    assertOpen(d, ymOf(s.date), 'date');
-    if (patch.date) { s.date = date(patch.date, 'date'); assertOpen(d, ymOf(s.date), 'date'); }
-    if (patch.typeId) s.typeId = findOrThrow(d.settings.shiftTypes, patch.typeId, 'Tipo de plantão').id;
-    if (patch.note != null) s.note = String(patch.note).slice(0, 80);
-    if (patch.cents === null) delete s.cents;
-    else if (patch.cents != null) s.cents = cents(patch.cents, 'cents');
   });
 }
 

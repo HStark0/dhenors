@@ -54,14 +54,20 @@ export function invoiceLines(state, card, ym) {
       if (parcel.ym === ym) lines.push({ purchase: p, n: parcel.n, count: parcel.count, cents: parcel.cents });
     }
   }
-  // Recorrentes cobradas no cartão (assinaturas): entram na fatura do mês em
-  // que VENCEM, respeitando o ritmo (anual, trimestral, semanal…)
+  // Recorrentes cobradas no cartão (assinaturas): cada COBRANÇA entra na
+  // fatura que fecha depois dela, como uma compra (cobrança no dia do
+  // fechamento vai para a fatura seguinte). Olha o mês da fatura e os 2
+  // anteriores, respeitando o ritmo (anual, trimestral, semanal…)
   for (const r of state.recurring || []) {
     if (r.cardId !== card.id) continue;
-    for (const date of recurringDates(r, ym)) {
-      const entry = state.recurringEntries?.[entryKey(r.id, FREQ_DAYS[r.freq] ? date : ym)] || {};
-      if (entry.skipped) continue;
-      lines.push({ purchase: { id: FREQ_DAYS[r.freq] ? `rec-${r.id}-${date}` : `rec-${r.id}`, description: r.description, categoryId: r.categoryId, subcategoryId: r.subcategoryId, date, recurringId: r.id }, n: 1, count: 1, cents: entry.cents ?? r.cents });
+    for (let back = 2; back >= 0; back--) {
+      const chargeYM = addMonthsYM(ym, -back);
+      for (const date of recurringDates(r, chargeYM)) {
+        if (invoiceMonthFor(card, date) !== ym) continue;
+        const entry = state.recurringEntries?.[entryKey(r.id, FREQ_DAYS[r.freq] ? date : chargeYM)] || {};
+        if (entry.skipped) continue;
+        lines.push({ purchase: { id: FREQ_DAYS[r.freq] ? `rec-${r.id}-${date}` : `rec-${r.id}`, description: r.description, categoryId: r.categoryId, subcategoryId: r.subcategoryId, date, recurringId: r.id }, n: 1, count: 1, cents: entry.cents ?? r.cents });
+      }
     }
   }
   return lines.sort((a, b) => a.purchase.date.localeCompare(b.purchase.date));
@@ -72,18 +78,60 @@ export function invoiceLines(state, card, ym) {
  * → { card, ym, key, lines, total, closing, due, paidAt, paidCents, status: 'open'|'closed'|'paid', parts }
  *   parts = valor por categoria (para os gráficos e orçamentos)
  */
+/**
+ * Crédito que sobrou de faturas anteriores (estorno maior que as compras
+ * do mês) e abate esta fatura, como faz o banco. Só existe se o cartão
+ * tem estorno; olha até 24 meses para trás.
+ */
+function creditFromBefore(state, card, ym) {
+  if (!(state.cardPurchases || []).some((p) => p.cardId === card.id && p.cents < 0)) return 0;
+  let carry = 0;
+  for (let i = 24; i >= 1; i--) {
+    const m = addMonthsYM(ym, -i);
+    const total = sumCents(invoiceLines(state, card, m).map((l) => l.cents)) + carry;
+    // fatura marcada como paga encerra a conta daquele mês
+    carry = total < 0 && !state.cardInvoices?.[invoiceKey(card.id, m)]?.paidAt ? total : 0;
+  }
+  return carry;
+}
+
+/**
+ * Reparte `totalCents` entre as partes (divisão por categoria) na proporção
+ * de cada uma. Arredondar parte a parte podia não fechar com o total: a
+ * diferença de centavos vai para a maior parte.
+ */
+export function scaleSplits(splits, totalCents) {
+  const sum = sumCents(splits.map((s) => s.cents));
+  if (sum === totalCents) return splits;
+  const ratio = totalCents / (sum || 1);
+  const out = splits.map((s) => ({ ...s, cents: Math.round(s.cents * ratio) }));
+  const diff = totalCents - sumCents(out.map((s) => s.cents));
+  if (diff && out.length) {
+    const big = out.reduce((a, s, i) => (Math.abs(s.cents) > Math.abs(out[a].cents) ? i : a), 0);
+    out[big].cents += diff;
+  }
+  return out;
+}
+
 export function invoice(state, card, ym, today = todayISO()) {
   const lines = invoiceLines(state, card, ym);
+  const credit = creditFromBefore(state, card, ym);
+  if (credit) {
+    lines.unshift({
+      purchase: { id: `credit-${card.id}-${ym}`, description: 'Crédito da fatura anterior', date: invoiceDates(card, addMonthsYM(ym, -1)).closing, categoryId: null, locked: true },
+      n: 1, count: 1, cents: credit,
+    });
+  }
   const total = sumCents(lines.map((l) => l.cents));
   const { closing, due } = invoiceDates(card, ym);
   const pay = state.cardInvoices?.[invoiceKey(card.id, ym)] || {};
   const status = pay.paidAt ? 'paid' : today >= closing ? 'closed' : 'open';
   const byCat = new Map();
   for (const l of lines) {
+    if (l.purchase.locked) continue; // crédito da fatura anterior não é gasto de nenhuma categoria
     const splits = l.purchase.splits?.length ? l.purchase.splits : null;
     if (splits) {
-      const ratio = l.cents / sumCents(splits.map((s) => s.cents));
-      for (const s of splits) byCat.set(s.categoryId || '_none', (byCat.get(s.categoryId || '_none') || 0) + Math.round(s.cents * ratio));
+      for (const s of scaleSplits(splits, l.cents)) byCat.set(s.categoryId || '_none', (byCat.get(s.categoryId || '_none') || 0) + s.cents);
     } else byCat.set(l.purchase.categoryId || '_none', (byCat.get(l.purchase.categoryId || '_none') || 0) + l.cents);
   }
   return {
@@ -111,9 +159,20 @@ export function cardUsage(state, card, today = todayISO()) {
     if (p.cardId !== card.id) continue;
     for (const parcel of purchaseSchedule(card, p)) months.add(parcel.ym);
   }
+  // Assinaturas/recorrentes no cartão também ocupam o limite, mesmo em meses
+  // sem compras: faturas com cobranças feitas até hoje (últimos 12 meses)
+  for (const r of state.recurring || []) {
+    if (r.cardId !== card.id) continue;
+    for (let i = 12; i >= 0; i--) {
+      for (const date of recurringDates(r, addMonthsYM(ymOf(today), -i))) if (date <= today) months.add(invoiceMonthFor(card, date));
+    }
+  }
+  // Soma as compras de cada fatura em aberto (sem o crédito levado de uma fatura
+  // para a outra, que já está na soma do mês em que nasceu). Cobrança recorrente
+  // futura ainda não aconteceu: não ocupa limite.
   for (const ym of months) {
-    const inv = invoice(state, card, ym, today);
-    if (!inv.paidAt) used += inv.total;
+    if (state.cardInvoices?.[invoiceKey(card.id, ym)]?.paidAt) continue;
+    used += sumCents(invoiceLines(state, card, ym).filter((l) => !(l.purchase.recurringId && l.purchase.date > today)).map((l) => l.cents));
   }
   const limit = card.limitCents || 0;
   return { used, limit, available: limit ? limit - used : null, pct: limit ? (used / limit) * 100 : 0 };

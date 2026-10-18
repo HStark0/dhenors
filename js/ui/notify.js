@@ -9,13 +9,16 @@
 // Sem servidor, o navegador só avisa quando o app é ABERTO. Para
 // avisos com o app fechado: notificações push (core/push.js, sem
 // valores) ou o calendário do celular (.ics).
+// Além das contas: se algum dos próximos 12 meses não fecha, um aviso
+// por semana (sem valores; desliga em Ajustes → Alertas e dicas).
 // =============================================================
 
 import { store } from '../core/store.js';
-import { todayISO, formatDateBR, relativeDays, weekdayLong, addDaysISO } from '../core/dates.js';
+import { todayISO, formatDateBR, relativeDays, weekdayLong, addDaysISO, formatMonth } from '../core/dates.js';
 import { formatBRL, plural } from '../core/money.js';
 import { dueReminders } from '../domain/planning.js';
 import { computeMonth } from '../domain/ledger.js';
+import { shortMonthsAhead } from '../domain/outlook.js';
 import * as A from '../domain/actions.js';
 import { toast, toastError } from './toast.js';
 import { enablePush, disablePush, syncPushSchedule, pushSupported } from '../core/push.js';
@@ -84,6 +87,27 @@ export async function runReminders(force = false) {
   const key = sentKey(today);
   const sent = readSent(key);
   const mode = r.mode || 'daily';
+
+  // Mês que não fecha: no máximo um aviso por semana (sem valores)
+  if (!sent.includes('short')) {
+    const short = shortMonthsAhead(store.data, today);
+    const week = `dhenors:short-week:${addDaysISO(today, -new Date().getDay())}`;
+    let seen = false;
+    try { seen = localStorage.getItem(week) === '1'; } catch { /* ignora */ }
+    if (short.count && (force || !seen)) {
+      await show(short.count === 1 ? `${formatMonth(short.first)} pode não fechar` : `${short.count} meses podem não fechar`, {
+        body: 'A previsão dos próximos 12 meses tem mês no vermelho. Toque para ver o que pesa e como resolver.',
+        tag: 'dhenors-short',
+        data: { url: './index.html#/planejamento?aba=ano' },
+      });
+      try {
+        for (const k of Object.keys(localStorage)) if (k.startsWith('dhenors:short-week:') && k !== week) localStorage.removeItem(k);
+        localStorage.setItem(week, '1');
+      } catch { /* ignora */ }
+      sent.push('short');
+      saveSent(key, sent);
+    }
+  }
 
   if (mode === 'weekly') {
     if (new Date().getDay() !== 0 && !force) return; // só aos domingos

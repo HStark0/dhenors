@@ -48,9 +48,12 @@ export function scanCode({ formats = ['itf', 'qr_code'], title = 'Aponte a câme
         if (!use.length) throw new Error('Seu navegador não lê esse tipo de código pela câmera.');
         const detector = new BarcodeDetector({ formats: use });
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 } }, audio: false });
+        // A janela fechou enquanto a permissão era pedida: a câmera não pode ficar ligada
+        if (done) { stream.getTracks().forEach((t) => t.stop()); return; }
         const video = dialog.querySelector('video');
         video.srcObject = stream;
         await video.play();
+        if (done) { stream.getTracks().forEach((t) => t.stop()); return; }
         timer = setInterval(async () => {
           try {
             const codes = await detector.detect(video);

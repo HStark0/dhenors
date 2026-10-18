@@ -8,32 +8,33 @@ import { icon } from '../ui/icons.js';
 import { openDialog, confirmDialog } from '../ui/dialog.js';
 import { field, categoryFields, bindCategorySelects, switchField } from '../ui/forms.js';
 import { tabsNav, currentTab } from '../ui/tabs.js';
-import { autoLockMinutes, setAutoLockMinutes, wipeAfter, setWipeAfter } from '../ui/lock.js';
-import { pinPad, bindPinPad } from '../ui/pinpad.js';
-import { enableNotifications, togglePush } from '../ui/notify.js';
+import { togglePush } from '../ui/notify.js';
 import { cloudSettingsSection } from '../ui/cloudUI.js';
+import { feedbackSection } from '../ui/feedback.js';
+import { openAuth } from '../ui/auth.js';
+import { removeAttachment } from '../ui/attachments.js';
 import { toast, toastError } from '../ui/toast.js';
 import { GLOSSARY } from '../ui/help.js';
 import { singleKeyShortcuts, setSingleKeyShortcuts } from '../ui/prefs.js';
 import { canInstall, isStandalone } from '../ui/pwa.js';
-import { startDemo, stopDemo, isDemo } from '../ui/onboarding.js';
 import { catText } from '../ui/forms.js';
 import * as E from '../ui/editors.js';
-import { exportBackup, importBackup, download } from '../ui/backup.js';
+import { download } from '../ui/backup.js';
 import { store } from '../core/store.js';
-import { requestPersistence, storageInfo } from '../core/storage.js';
 import { ACCENTS, isDiscreet, setDiscreet } from '../core/theme.js';
-import { passwordStrength, PIN_KDF } from '../core/crypto.js';
-import { biometricAvailable, biometricEnabled, enableBiometric, disableBiometric } from '../core/biometric.js';
 import { errorLog, clearErrorLog } from '../core/errors.js';
 import { cloud } from '../core/cloud.js';
 import { formatBRL, plural } from '../core/money.js';
 import { formatDateBR, currentYM, todayISO, diffDays } from '../core/dates.js';
 import { payrollFor, payrollProfileFor, paydayLabel, nextPaydayFrom } from '../domain/payroll.js';
 import * as A from '../domain/actions.js';
+import { alertsOf } from '../domain/monthStatus.js';
+import { DEFAULT_ALERTS } from '../domain/schema.js';
 import { APP_VERSION } from '../version.js';
 import { CHANGELOG } from '../changelog.js';
 import { renderCategories, renderCreditors, categoryActions } from './settings/categories.js';
+
+const TABBAR_LABELS = { painel: 'Painel', agenda: 'Agenda', contas: 'Contas a pagar', carteira: 'Cartões e contas', salario: 'Salário', metas: 'Metas', investimentos: 'Investimentos', planejamento: 'Planejamento', analise: 'Análise', ajustes: 'Ajustes' };
 
 const TABS = [
   { id: 'geral', label: 'Geral', icon: 'user-cog' },
@@ -45,12 +46,11 @@ const TABS = [
   { id: 'regras', label: 'Regras', icon: 'wand-sparkles' },
   { id: 'dados', label: 'Dados', icon: 'database' },
   { id: 'ajuda', label: 'Ajuda', icon: 'circle-help' },
+  { id: 'contato', label: 'Fale conosco', icon: 'mail' },
   { id: 'privacidade', label: 'Privacidade', icon: 'shield-check' },
   { id: 'novidades', label: 'Novidades', icon: 'sparkles' },
 ];
 
-let storageCache = null;
-let bioCache = null;
 
 export default {
   id: 'ajustes',
@@ -61,7 +61,7 @@ export default {
     const active = currentTab(TABS);
     const R = {
       geral, seguranca: security, nuvem: () => html`<div class="settings">${cloudSettingsSection()}</div>`, lembretes: reminders,
-      categorias: renderCategories, credores: renderCreditors, regras: rules, dados: data, ajuda: help, privacidade: privacy, novidades: news,
+      categorias: renderCategories, credores: renderCreditors, regras: rules, dados: data, ajuda: help, contato: feedbackSection, privacidade: privacy, novidades: news,
     };
     return html`${tabsNav('ajustes', TABS, active)}${R[active]()}`;
   },
@@ -75,56 +75,68 @@ export default {
       body: field({ label: 'Como quer ser chamado?', name: 'profileName', value: store.data.settings.profileName, extra: { maxlength: 60, autocomplete: 'given-name' } }),
       onSubmit: (form) => { A.updateProfile({ profileName: form.profileName.value }); toast('Perfil salvo.'); },
     }),
+    'set:alerts': () => {
+      const a = alertsOf(store.data.settings);
+      const num = (label, name, value, min, max, hint) => field({ label, name, type: 'number', value, required: true, hint, extra: { min, max, step: 1, inputmode: 'numeric' } });
+      openDialog({
+        title: 'Alertas e dicas',
+        size: 'sm',
+        submitLabel: 'Salvar',
+        body: html`
+          <div class="form-grid">
+            ${num('Mês apertado: sobra menor que (% dos ganhos)', 'tightPct', a.tightPct, 0, 50, 'Padrão 10%. Abaixo disso o mês aparece em amarelo; negativo, em vermelho.')}
+            ${num('Gasto exagerado: acima da média em (%)', 'overspendPct', a.overspendPct, 10, 300, 'Padrão 40%. Compara com a mediana dos últimos 6 meses (precisa de 3 meses de histórico).')}
+            ${num('Gasto grande: a partir de (% dos ganhos do mês)', 'bigPct', a.bigPct, 1, 100, 'Padrão 10% (mínimo R$ 100). Gastos grandes somam por cima do dia a dia nas previsões.')}
+          </div>`,
+        footer: html`<button type="button" class="btn btn--ghost" data-reset>Voltar ao padrão</button>`,
+        onMount: (dlg) => dlg.querySelector('[data-reset]').addEventListener('click', () => {
+          try { A.setAlerts({ ...DEFAULT_ALERTS }); } catch (err) { if (err?.name !== 'GuestError') toastError(err.message); return; }
+          dlg.close();
+          toast('Limites no padrão.');
+        }),
+        onSubmit: (form) => {
+          A.setAlerts({ tightPct: Number(form.tightPct.value), overspendPct: Number(form.overspendPct.value), bigPct: Number(form.bigPct.value) });
+          toast('Limites salvos.');
+        },
+      });
+    },
+    'set:alerts-push': () => {
+      const on = !alertsOf(store.data.settings).push;
+      A.setAlerts({ push: on });
+      toast(on ? 'Você será avisado quando um mês dos próximos não fechar.' : 'Aviso de mês que não fecha desligado.', { type: 'info' });
+    },
     'app:theme': (el) => A.setAppearance({ theme: el.dataset.value }),
     'app:accent': (el) => A.setAppearance({ accent: el.dataset.value }),
     'app:density': (el) => A.setAppearance({ density: el.dataset.value }),
     'app:motion': (el) => A.setAppearance({ motion: el.dataset.value }),
     'app:tabbar': () => tabbarDialog(),
     'app:dashboard': () => { store.setUI({ dashEdit: true }); location.hash = '#/painel'; },
-    'app:demo': () => (isDemo() ? stopDemo() : startDemo()),
-    'set:persist': async () => {
-      const ok = await requestPersistence();
-      storageCache = null;
-      toast(ok ? 'Armazenamento protegido.' : 'O navegador não permitiu agora. Instalar o app (Adicionar à tela inicial) costuma liberar.', { type: ok ? 'success' : 'info' });
-      store.setUI({});
-    },
     'set:wipe-salary': () => wipeSalaryDialog(),
     'set:wipe': async () => {
+      if (store.guest) { openAuth('signin'); return; } // sem login não há dados para apagar
       const ok = await confirmDialog({
         title: 'Apagar todos os dados',
-        message: 'Isso remove TODAS as contas, cartões, parcelamentos, metas, categorias, anexos e histórico deste aparelho. Não dá para desfazer.',
+        message: 'Isso remove TODAS as contas, cartões, parcelamentos, metas, categorias e anexos da sua conta, em todos os aparelhos. As versões anteriores continuam no histórico da nuvem por um tempo (Nuvem → Histórico de versões).',
         confirmLabel: 'Apagar tudo',
         danger: true,
         typed: 'EXCLUIR',
       });
-      if (ok) { await store.reset(); toast('Todos os dados foram apagados.'); location.hash = '#/painel'; }
-    },
-    'pin:set': (el) => pinDialog(el.dataset.kind || store.lockKind || 'pin'),
-    'pin:remove': async () => {
-      const ok = await confirmDialog({ title: 'Desativar a proteção', message: 'Os dados voltam a ser salvos sem criptografia neste aparelho (e a biometria é desligada).', confirmLabel: 'Desativar', danger: true });
-      if (ok) { await store.removePin(); bioCache = null; toast('Proteção desativada.'); store.setUI({}); }
-    },
-    'pin:auto': (el) => { setAutoLockMinutes(Number(el.dataset.min)); store.setUI({}); },
-    'pin:wipe': (el) => { setWipeAfter(Number(el.dataset.n)); store.setUI({}); },
-    'bio:toggle': async () => {
-      try {
-        if (await biometricEnabled()) { await disableBiometric(); toast('Biometria desligada.'); } else { await enableBiometric(); toast('Pronto! Na próxima vez, abra com a digital ou o rosto.'); }
-      } catch (err) { if (err.name !== 'NotAllowedError') toastError(err.message); }
-      bioCache = null;
-      store.setUI({});
+      if (!ok) return;
+      // os anexos também saem da nuvem (o aviso promete isso)
+      const files = store.data.expenses.flatMap((e) => (e.attachments || []).map((a) => a.id));
+      await store.reset();
+      files.forEach((id) => removeAttachment(id));
+      toast('Todos os dados foram apagados.');
+      location.hash = '#/painel';
     },
     'discreet:set': () => { setDiscreet(!isDiscreet()); store.setUI({}); },
     'keys:toggle': () => { setSingleKeyShortcuts(!singleKeyShortcuts()); toast(singleKeyShortcuts() ? 'Atalhos de uma tecla ligados.' : 'Atalhos de uma tecla desligados.', { type: 'info' }); store.setUI({}); },
     'rem:days': (el) => { const r = store.data.settings.reminders || {}; A.setReminders({ ...r, daysBefore: Number(el.dataset.days) }); },
     'rem:mode': (el) => { const r = store.data.settings.reminders || {}; A.setReminders({ ...r, mode: el.dataset.mode }); },
-    'agenda:notify': () => enableNotifications(),
     'rem:push': () => togglePush(),
     'rule:delete': (el) => E.deleteWithUndo(() => A.deleteRule(el.dataset.id), 'Regra removida.'),
     'rule:new': () => ruleDialog(),
-    'backup:import': () => importBackup(),
-    'backup:export': () => exportBackup(),
     'salary:edit': () => E.editSalaryBase(currentYM()),
-    'limit:edit': () => E.editSpendingLimit(),
     'err:export': async () => {
       const log = await errorLog();
       download(`dhenors-erros-${todayISO()}.json`, JSON.stringify({ app: 'Dhenors', version: APP_VERSION, exportedAt: new Date().toISOString(), errors: log }, null, 2), 'application/json');
@@ -155,6 +167,7 @@ function choice(action, value, current, label, ic) {
 
 function geral() {
   const s = store.data.settings;
+  const alerts = alertsOf(s);
   return html`
     <div class="settings">
       <section class="card">
@@ -173,6 +186,27 @@ function geral() {
         <div class="setting">
           <div><strong>Meta de gastos mensal</strong><p class="muted small">${s.spendingLimitCents ? formatBRL(s.spendingLimitCents) : 'Desativada'}</p></div>
           <button type="button" class="btn btn--ghost btn--sm" data-action="limit:edit">Alterar</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card__title">${icon('lightbulb')} Alertas e dicas</h2>
+        <p class="muted small">Os limites que decidem quando um mês está apertado e quando um gasto é exagerado ou fora do comum. Valem para o Painel, a Agenda, os 12 meses, o "Posso comprar?" e a prévia ao lançar contas.</p>
+        <div class="setting">
+          <div><strong>Mês apertado</strong><p class="muted small">Quando sobra menos de <strong>${alerts.tightPct}%</strong> dos ganhos do mês. Negativo é "não fecha".</p></div>
+          <button type="button" class="btn btn--ghost btn--sm" data-action="set:alerts">Alterar</button>
+        </div>
+        <div class="setting">
+          <div><strong>Gasto exagerado</strong><p class="muted small">Quando passa <strong>${alerts.overspendPct}%</strong> da média dos últimos meses (mesma conta, categoria ou cartão).</p></div>
+          <button type="button" class="btn btn--ghost btn--sm" data-action="set:alerts">Alterar</button>
+        </div>
+        <div class="setting">
+          <div><strong>Gasto grande / fora do comum</strong><p class="muted small">Avulsa ou compra a partir de <strong>${alerts.bigPct}%</strong> dos ganhos do mês. Soma por cima do gasto do dia a dia nas previsões.</p></div>
+          <button type="button" class="btn btn--ghost btn--sm" data-action="set:alerts">Alterar</button>
+        </div>
+        <div class="setting">
+          <div><strong>Avisar quando um mês não fecha</strong><p class="muted small">Com os lembretes ligados, uma vez por semana. Sem valores na notificação.</p></div>
+          <button type="button" class="btn ${alerts.push ? 'btn--primary' : 'btn--ghost'} btn--sm" data-action="set:alerts-push" aria-pressed="${alerts.push}">${alerts.push ? 'Ligado' : 'Desligado'}</button>
         </div>
       </section>
 
@@ -218,20 +252,16 @@ function geral() {
           <button type="button" class="btn btn--ghost btn--sm" data-action="app:dashboard">${icon('sliders-horizontal', 'icon--xs')} Organizar</button>
         </div>
         <div class="setting">
-          <div><strong>Atalhos da barra do celular</strong><p class="muted small">${(s.tabbar || []).join(' · ')}</p></div>
+          <div><strong>Atalhos da barra do celular</strong><p class="muted small">${(s.tabbar || ['painel', 'agenda', 'contas']).map((id) => TABBAR_LABELS[id] || id).join(' · ')}</p></div>
           <button type="button" class="btn btn--ghost btn--sm" data-action="app:tabbar">Escolher</button>
         </div>
         ${canInstall() || !isStandalone() ? html`
           <div class="setting">
-            <div><strong>Instalar o app</strong><p class="muted small">Abre em tela cheia, funciona sem internet e o navegador protege melhor os dados.</p></div>
+            <div><strong>Instalar o app</strong><p class="muted small">Abre em tela cheia, com ícone na tela inicial e notificações (no iPhone, só instalado).</p></div>
             <button type="button" class="btn btn--secondary btn--sm" data-action="install:app">${icon('smartphone', 'icon--xs')} Instalar</button>
           </div>` : ''}
-        <div class="setting">
-          <div><strong>${isDemo() ? 'Modo exemplo ligado' : 'Experimentar com dados de exemplo'}</strong><p class="muted small">${isDemo() ? 'Seus dados estão guardados e voltam ao sair.' : 'Veja o app cheio de dados sem mexer nos seus (nada vai para a nuvem).'}</p></div>
-          <button type="button" class="btn btn--ghost btn--sm" data-action="app:demo">${isDemo() ? 'Sair do exemplo' : 'Ver exemplo'}</button>
-        </div>
       </section>
-      <p class="muted small center">Dhenors ${APP_VERSION} · funciona offline</p>
+      <p class="muted small center">Dhenors ${APP_VERSION} · dados só na nuvem, criptografados</p>
     </div>`;
 }
 
@@ -257,56 +287,32 @@ function tabbarDialog() {
 // ---------- Segurança ----------
 
 function security() {
-  if (bioCache == null) Promise.all([biometricAvailable(), biometricEnabled()]).then(([avail, on]) => { bioCache = { avail, on }; store.setUI({}); });
-  const kind = store.lockKind;
-  const weak = store.pinEnabled && kind === 'pin';
   return html`
     <div class="settings">
       <section class="card">
-        <h2 class="card__title">${icon('lock-keyhole')} Bloqueio do app</h2>
-        <div class="setting">
-          <div>
-            <strong>${store.pinEnabled ? (kind === 'password' ? 'Senha ativa' : 'PIN ativo') : 'Sem bloqueio'}</strong>
-            <p class="muted small">${store.pinEnabled
-              ? html`<span class="badge badge--good">Criptografado</span> Os dados (e as cópias da nuvem e anexos) ficam cifrados (AES-256, ${PIN_KDF.iterations.toLocaleString('pt-BR')} iterações) e o app abre pedindo o ${kind === 'password' ? 'senha' : 'PIN'}.`
-              : 'Proteja o app com um PIN (só números) ou uma senha (letras e números). Os dados passam a ser salvos criptografados.'}</p>
-          </div>
-          <div class="setting__actions">
-            ${store.pinEnabled ? html`
-              <button type="button" class="btn btn--ghost btn--sm" data-action="pin:set" data-kind="${kind}">Trocar</button>
-              <button type="button" class="btn btn--ghost btn--sm danger" data-action="pin:remove">Desativar</button>`
-            : html`
-              <button type="button" class="btn btn--primary btn--sm" data-action="pin:set" data-kind="password">${icon('key-round', 'icon--xs')} Criar senha</button>
-              <button type="button" class="btn btn--ghost btn--sm" data-action="pin:set" data-kind="pin">Criar PIN</button>`}
-          </div>
-        </div>
-        ${weak ? html`<div class="note note--warn">${icon('triangle-alert')}<span><strong>PIN é prático, mas fraco contra quem copiar o banco do navegador:</strong> um PIN de 4 a 6 números pode ser descoberto em minutos testando todas as combinações. Uma <strong>senha com letras e números</strong> é muito mais forte. <button type="button" class="link" data-action="pin:set" data-kind="password">Trocar por senha</button></span></div>` : ''}
-        ${store.pinEnabled ? html`
+        <h2 class="card__title">${icon('shield-check')} Onde ficam os seus dados</h2>
+        ${store.guest ? html`
           <div class="setting">
-            <div><strong>Digital ou Face ID</strong><p class="muted small">${bioCache?.avail === false ? 'Este aparelho/navegador não oferece biometria para sites.' : 'Atalho para abrir sem digitar. A chave fica guardada protegida pela biometria do aparelho (WebAuthn com PRF).'}</p></div>
-            ${bioCache?.avail ? html`<button type="button" class="btn ${bioCache.on ? 'btn--ghost' : 'btn--secondary'} btn--sm" data-action="bio:toggle">${icon('fingerprint', 'icon--xs')} ${bioCache.on ? 'Desligar' : 'Ligar'}</button>` : ''}
+            <div><strong>Você está vendo um exemplo</strong><p class="muted small">Entre na sua conta para usar o app com os seus dados.</p></div>
+            <button type="button" class="btn btn--primary btn--sm" data-action="auth:open">${icon('log-in', 'icon--xs')} Entrar</button>
+          </div>` : html`
+          <div class="setting">
+            <div><strong>Só na nuvem, criptografados</strong><p class="muted small">Os dados são cifrados neste aparelho com a sua frase secreta (AES-256) antes de subir. Nada fica salvo no navegador: com o app aberto, eles ficam só na memória.</p></div>
+            <button type="button" class="btn btn--ghost btn--sm" data-action="cloud:passphrase">${icon('key-round', 'icon--xs')} Trocar frase</button>
           </div>
-          <div class="setting setting--stack">
-            <strong>Bloquear automaticamente</strong>
-            <div class="segmented" role="group" aria-label="Bloquear automaticamente">
-              ${[[0, 'Na hora'], [1, '1 min'], [5, '5 min'], [30, '30 min'], [-1, 'Nunca']].map(([m, l]) => html`
-                <button type="button" class="segmented__btn" data-action="pin:auto" data-min="${m}" aria-pressed="${autoLockMinutes() === m}">${l}</button>`)}
-            </div>
-            <p class="muted small">Depois de sair do app por esse tempo.</p>
+          <div class="setting">
+            <div><strong>Sair da conta</strong><p class="muted small">Tira os dados deste aparelho na hora. Use em aparelhos compartilhados.</p></div>
+            <button type="button" class="btn btn--ghost btn--sm danger" data-action="cloud:logout">${icon('log-out', 'icon--xs')} Sair</button>
           </div>
-          <div class="setting setting--stack">
-            <strong>Tentativas erradas</strong>
-            <p class="muted small">A partir da 3ª tentativa errada, o app espera cada vez mais (30 s, 1 min, 2 min…). Você também pode apagar os dados DESTE aparelho depois de várias tentativas (a nuvem e os backups não são afetados).</p>
-            <div class="segmented" role="group" aria-label="Apagar dados após tentativas">
-              ${[[0, 'Nunca apagar'], [10, 'Após 10'], [20, 'Após 20']].map(([n, l]) => html`
-                <button type="button" class="segmented__btn" data-action="pin:wipe" data-n="${n}" aria-pressed="${wipeAfter() === n}">${l}</button>`)}
-            </div>
-          </div>` : ''}
+          <div class="setting">
+            <div><strong>Aparelhos conectados</strong><p class="muted small">Veja onde a conta está aberta e desconecte à distância.</p></div>
+            <button type="button" class="btn btn--ghost btn--sm" data-action="cloud:devices">${icon('monitor-smartphone', 'icon--xs')} Aparelhos</button>
+          </div>`}
       </section>
       <section class="card">
         <h2 class="card__title">${icon('eye-off')} Modo discreto</h2>
         <div class="setting">
-          <div><strong>Esconder os valores</strong><p class="muted small">Útil em público: os valores ficam borrados até você tocar neles. Atalho: ícone de olho no topo ou tecla D. Vale só neste aparelho.</p></div>
+          <div><strong>Esconder os valores</strong><p class="muted small">Útil em público: no lugar de cada valor aparece um olho cortado; toque nele para ver por 3 segundos. Atalho: ícone de olho no topo ou tecla D. Vale só neste aparelho.</p></div>
           <button type="button" class="btn ${isDiscreet() ? 'btn--primary' : 'btn--ghost'} btn--sm" data-action="discreet:set" aria-pressed="${isDiscreet()}">${icon(isDiscreet() ? 'eye-off' : 'eye', 'icon--xs')} ${isDiscreet() ? 'Ligado' : 'Desligado'}</button>
         </div>
       </section>
@@ -314,94 +320,12 @@ function security() {
         <h2 class="card__title">${icon('shield-check')} Proteções do site</h2>
         <ul class="tips">
           <li>Política de segurança de conteúdo (CSP): o app só carrega arquivos dele mesmo e só conversa com o Supabase (nuvem) e, quando você pede, com as APIs públicas do Banco Central e da brapi.</li>
+          <li>No navegador fica só o acesso à conta (pelo tempo que você escolheu ao entrar) e as preferências de aparência — nenhum valor, conta ou anexo.</li>
           <li>Nenhum anúncio, rastreador ou biblioteca de terceiros.</li>
           <li>Backups podem ser criptografados com senha (Dados → Baixar backup).</li>
         </ul>
       </section>
     </div>`;
-}
-
-function pinDialog(kind = 'pin') {
-  if (!globalThis.crypto?.subtle) {
-    toast('Criptografia indisponível: abra o app por https (ou instalado) para usar PIN.', { type: 'error' });
-    return;
-  }
-  if (kind === 'password') {
-    openDialog({
-      title: store.pinEnabled ? 'Trocar a senha' : 'Criar senha',
-      size: 'sm',
-      submitLabel: 'Salvar senha',
-      body: html`
-        <p class="dialog__text muted">Use letras e números (8 ou mais). É bem mais forte que um PIN se alguém copiar os dados do navegador.</p>
-        <div class="form-grid">
-          ${field({ label: 'Senha', name: 'pass', type: 'password', required: true, full: true, extra: { autocomplete: 'new-password', minlength: 8 } })}
-          ${field({ label: 'Repita a senha', name: 'pass2', type: 'password', required: true, full: true, extra: { autocomplete: 'new-password' } })}
-          <p class="field__hint field--full" data-strength aria-live="polite"></p>
-        </div>
-        <p class="field__hint"><strong>Não há como recuperar uma senha esquecida</strong>: mantenha um backup ou a nuvem ligada.</p>`,
-      onMount: (dlg) => dlg.querySelector('[name="pass"]').addEventListener('input', (ev) => {
-        const s = passwordStrength(ev.target.value);
-        dlg.querySelector('[data-strength]').textContent = ev.target.value ? `Força: ${s.label} (~${s.bits} bits)` : '';
-      }),
-      onSubmit: async (form) => {
-        const p = form.pass.value;
-        if (p.length < 8 || !/[a-zA-Z]/.test(p) || !/\d/.test(p)) throw new A.ValidationError('Use pelo menos 8 caracteres, com letras e números.', 'pass');
-        if (p !== form.pass2.value) throw new A.ValidationError('As senhas não conferem.', 'pass2');
-        await store.setPin(p, 'password');
-        bioCache = null;
-        toast('Senha salva. Os dados agora estão criptografados.');
-        store.setUI({});
-      },
-    });
-    return;
-  }
-  // Dois passos no teclado da tela (sem o teclado do celular): digitar e repetir
-  let first = null;
-  let pad;
-  let dlg;
-  const STEP = {
-    1: { text: html`<strong>Passo 1 de 2</strong> · Digite um PIN de 4 a 8 números (prefira 6 ou mais).`, button: 'Continuar' },
-    2: { text: html`<strong>Passo 2 de 2</strong> · Digite o mesmo PIN de novo para confirmar.`, button: 'Salvar PIN' },
-  };
-  const goTo = (n) => {
-    dlg.querySelector('[data-pin-step]').innerHTML = STEP[n].text.toString();
-    dlg.querySelector('[type="submit"]').textContent = STEP[n].button;
-    pad.clear();
-    pad.focus();
-  };
-  openDialog({
-    title: store.pinEnabled ? 'Trocar PIN' : 'Criar PIN',
-    size: 'sm',
-    submitLabel: STEP[1].button,
-    body: html`
-      <p class="dialog__text" data-pin-step aria-live="polite">${STEP[1].text}</p>
-      ${pinPad({ ok: false })}
-      <p class="field__hint pin-dialog__hint"><strong>Não há como recuperar um PIN esquecido</strong>: guarde um backup atualizado. Para mais segurança, use uma senha.</p>`,
-    onMount: (d) => {
-      dlg = d;
-      d.classList.add('pin-dialog');
-      pad = bindPinPad(d, { keyTarget: d, onEnter: () => d.querySelector('form').requestSubmit() });
-      setTimeout(() => pad.focus());
-    },
-    onSubmit: async () => {
-      const pin = pad.value;
-      if (pin.length < 4) { pad.error('O PIN deve ter de 4 a 8 números.'); return true; }
-      if (/^(\d)\1+$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin)) { pad.error('PIN fácil demais (repetido ou em sequência).'); return true; }
-      if (first == null) { first = pin; goTo(2); return true; }
-      if (pin !== first) {
-        first = null;
-        goTo(1);
-        pad.error('Os PINs não conferem. Comece de novo.');
-        return true;
-      }
-      await store.setPin(pin, 'pin');
-      pad.destroy();
-      bioCache = null;
-      toast('PIN salvo. Os dados agora estão criptografados.');
-      store.setUI({});
-      return undefined;
-    },
-  });
 }
 
 // ---------- Lembretes ----------
@@ -496,16 +420,14 @@ function ruleDialog() {
 
 function data() {
   const d = store.data;
-  if (!storageCache) storageInfo().then((info) => { storageCache = info; store.setUI({}); });
   if (store.ui.errors == null) errorLog().then((l) => store.setUI({ errors: l }));
-  const st = storageCache;
   const errors = store.ui.errors || [];
   const last = d.lastBackupAt ? diffDays(todayISO(new Date(d.lastBackupAt)), todayISO()) : null;
   return html`
     <div class="settings">
       <section class="card">
         <h2 class="card__title">${icon('database')} Seus dados</h2>
-        <p class="muted small">Tudo é salvo <strong>primeiro neste aparelho</strong> (funciona offline). Com a nuvem ligada, uma cópia criptografada vai para a sua conta.</p>
+        <p class="muted small">Tudo fica na <strong>sua conta na nuvem</strong>, criptografado, com histórico de versões. O backup em arquivo é uma cópia extra que fica com você.</p>
         <div class="setting">
           <div><strong>Backup</strong><p class="muted small ${last != null && last > 30 ? 'state--warn' : ''}">${last == null ? 'Nenhum backup feito ainda' : `Último: ${formatDateBR(todayISO(new Date(d.lastBackupAt)))} (${last === 0 ? 'hoje' : `há ${last} dias`})`} · pode ser protegido com senha</p></div>
           <div class="setting__actions">
@@ -521,23 +443,13 @@ function data() {
           <div><strong>Importar extrato ou fatura</strong><p class="muted small">OFX, CSV ou PDF da fatura do cartão. Liga as transações às contas já lançadas (conciliação).</p></div>
           <a class="btn btn--ghost btn--sm" href="#/importar">${icon('file-up', 'icon--xs')} Importar</a>
         </div>
-        <div class="setting">
-          <div>
-            <strong>Proteção do armazenamento</strong>
-            <p class="muted small">${st == null ? 'Verificando…'
-              : st.persisted ? 'Ativa: o navegador não apaga os dados para liberar espaço.'
-              : 'Inativa: o navegador pode apagar dados se o aparelho ficar sem espaço.'}
-              ${st?.usage != null ? ` · ${(st.usage / 1024).toFixed(0)} KB usados` : ''}</p>
-          </div>
-          ${st && !st.persisted ? html`<button type="button" class="btn btn--ghost btn--sm" data-action="set:persist">${icon('shield-check', 'icon--xs')} Ativar</button>` : ''}
-        </div>
       </section>
 
       <section class="card">
         <h2 class="card__title">${icon('activity')} Registro de erros</h2>
         <div class="setting">
           <div><strong>${errors.length ? plural(errors.length, 'erro registrado', 'erros registrados') : 'Nenhum erro registrado'}</strong>
-            <p class="muted small">Fica só neste aparelho, sem valores dos seus dados. Exporte e anexe numa issue para ajudar a corrigir.${errors.length ? ` Último: ${errors[errors.length - 1].message}` : ''}</p></div>
+            <p class="muted small">Fica só na memória enquanto o app está aberto, sem valores dos seus dados. Exporte e anexe numa issue para ajudar a corrigir.${errors.length ? ` Último: ${errors[errors.length - 1].message}` : ''}</p></div>
           <div class="setting__actions">
             <button type="button" class="btn btn--ghost btn--sm" data-action="err:export" ${errors.length ? '' : 'disabled'}>${icon('download', 'icon--xs')} Exportar</button>
             <button type="button" class="btn btn--ghost btn--sm" data-action="err:clear" ${errors.length ? '' : 'disabled'}>Limpar</button>
@@ -552,7 +464,7 @@ function data() {
           <button type="button" class="btn btn--ghost danger btn--sm" data-action="set:wipe-salary">Apagar salário</button>
         </div>
         <div class="setting">
-          <div><strong>Apagar todos os dados</strong><p class="muted small">Remove tudo deste aparelho. Faça um backup antes.</p></div>
+          <div><strong>Apagar todos os dados</strong><p class="muted small">Remove tudo da sua conta, em todos os aparelhos. Faça um backup antes.</p></div>
           <button type="button" class="btn btn--danger btn--sm" data-action="set:wipe">Apagar tudo</button>
         </div>
       </section>
@@ -588,7 +500,6 @@ function help() {
           <li>Deslize uma conta para a <strong>direita</strong> para pagar e para a <strong>esquerda</strong> para ver as opções.</li>
           <li>No topo da página, <strong>puxe para baixo</strong> para atualizar e sincronizar.</li>
           <li>Toque e segure o ícone do app para os atalhos "Novo gasto" e "Plantão".</li>
-          <li>Use "Compartilhar" de outro app (foto de comprovante, PDF da fatura, extrato) e escolha o Dhenors.</li>
         </ul>
       </section>
     </div>`;
@@ -599,13 +510,14 @@ function privacy() {
     <div class="settings">
       <section class="card prose">
         <h2 class="card__title">${icon('shield-check')} Política de privacidade (curta)</h2>
-        <p><strong>O que o Dhenors guarda:</strong> só o que você digita (contas, salário, metas…), no <strong>seu aparelho</strong> (IndexedDB do navegador). Não há cadastro obrigatório, anúncios, rastreadores nem análise de uso.</p>
-        <p><strong>Nuvem (opcional):</strong> se você ligar, os dados vão para a SUA conta do Supabase <strong>criptografados no aparelho</strong> com uma frase que só você sabe. O servidor guarda blocos ilegíveis, a lista de aparelhos conectados (nome e data) e o e-mail da conta.</p>
+        <p><strong>O que o Dhenors guarda:</strong> só o que você digita (contas, salário, metas…), na <strong>sua conta</strong> do Supabase, <strong>criptografado no aparelho</strong> com uma frase que só você sabe. O servidor guarda blocos ilegíveis, a lista de aparelhos conectados (nome e data) e o e-mail da conta. Não há anúncios, rastreadores nem análise de uso.</p>
+        <p><strong>No navegador:</strong> só o acesso à conta (pelo tempo que você escolheu ao entrar) e as preferências de aparência. Nenhum dado financeiro, cópia ou anexo fica no aparelho.</p>
         <p><strong>Notificações push (opcional):</strong> o servidor recebe só quantas contas vencem por dia, sem valores nem nomes.</p>
+        <p><strong>Fale conosco:</strong> o que você escreve no formulário (nome, e-mail, mensagem e o anexo, se houver), a versão do app e o tipo de aparelho vão por e-mail (serviço Resend) para quem desenvolve o Dhenors, só para responder você. Nenhum dado financeiro vai junto.</p>
         <p><strong>Serviços externos, só quando você usa:</strong> Banco Central (CDI, Selic, IPCA — nada é enviado), brapi (só os códigos dos ativos, ex.: PETR4) e reconhecimento de voz do navegador (o áudio pode ser processado pelo fornecedor do navegador).</p>
-        <p><strong>Anexos</strong> (fotos de comprovantes) ficam só no aparelho; com PIN, cifrados.</p>
-        <p><strong>Seus direitos (LGPD):</strong> você pode exportar tudo (backup), apagar tudo (Dados → Apagar tudo) e apagar a conta da nuvem (Supabase → Authentication → Users).</p>
-        <p class="muted small">Dúvidas: abra uma issue em github.com/HStark0/dhenors.</p>
+        <p><strong>Anexos</strong> (fotos de comprovantes) vão cifrados para a sua conta, cada um com uma chave própria.</p>
+        <p><strong>Seus direitos (LGPD):</strong> você pode baixar tudo (Dados → Baixar backup), apagar os dados da conta (Dados → Apagar tudo) e pedir a exclusão da conta e do e-mail cadastrado em Ajustes → Fale conosco.</p>
+        <p class="muted small">Responsável pelos dados: o desenvolvedor do Dhenors — contato pelo Fale conosco ou 05henderson.dev@gmail.com. Detalhes em docs/PRIVACIDADE.md.</p>
       </section>
     </div>`;
 }

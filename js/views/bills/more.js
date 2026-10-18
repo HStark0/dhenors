@@ -27,7 +27,7 @@ export function renderSubscriptions() {
         <div><dt>Por ano</dt><dd class="money">${formatBRL(s.annual)}</dd></div>
         <div><dt>Assinaturas</dt><dd>${s.list.length}</dd></div>
       </dl>
-      <button type="button" class="btn btn--primary" data-action="sub:new">${icon('plus')} Nova assinatura</button>
+      <button type="button" class="btn btn--primary" data-action="subscription:new">${icon('plus')} Nova assinatura</button>
     </div>
     ${s.list.length ? html`
       <article class="card">
@@ -51,7 +51,7 @@ export function renderSubscriptions() {
         </ul>
       </article>
       <p class="muted small">Dica: some quanto paga por ano em assinaturas e veja se todas valem a pena. Para lançar o aumento, edite o valor: o histórico de preço fica guardado.</p>`
-    : html`<div class="card empty">${icon('tv', 'icon--lg')}<p><strong>Nenhuma assinatura marcada.</strong></p><p class="muted">Streaming, apps, academia, nuvem… cadastre como recorrente e ligue "É uma assinatura".</p><button type="button" class="btn btn--primary" data-action="sub:new">${icon('plus')} Nova assinatura</button></div>`}`;
+    : html`<div class="card empty">${icon('tv', 'icon--lg')}<p><strong>Nenhuma assinatura marcada.</strong></p><p class="muted">Streaming, apps, academia, nuvem… cadastre como recorrente e ligue "É uma assinatura".</p><button type="button" class="btn btn--primary" data-action="subscription:new">${icon('plus')} Nova assinatura</button></div>`}`;
 }
 
 // ---------- A receber ("quem me deve") ----------
@@ -160,7 +160,7 @@ const findR = (el) => store.data.receivables.find((x) => x.id === el.dataset.id)
 const findD = (el) => store.data.debts.find((x) => x.id === el.dataset.id);
 
 export const moreActions = {
-  'sub:new': () => E.editRecurring(null, { preset: { subscription: true } }),
+  'subscription:new': () => E.editRecurring(null, { preset: { subscription: true } }),
   'rcv:new': () => E.editReceivable(),
   'rcv:edit': (el) => E.editReceivable(findR(el)),
   'rcv:receive': (el) => E.receiveDialog(findR(el)),

@@ -2,8 +2,8 @@
 // toast.js — Avisos rápidos (com botão "Desfazer" opcional)
 // -------------------------------------------------------------
 // Anunciados por leitores de tela (aria-live). `persist: true`
-// deixa o aviso aberto até a pessoa agir (ex.: "Nova versão
-// disponível · Atualizar"). announce() fala sem mostrar nada.
+// deixa o aviso aberto até a pessoa agir. announce() fala sem
+// mostrar nada.
 // =============================================================
 
 import { html, fragment } from './dom.js';
@@ -21,13 +21,18 @@ function region() {
     el.setAttribute('aria-live', 'polite');
     document.body.append(el);
   }
+  // Com uma janela aberta, os avisos precisam ficar DENTRO dela (camada
+  // superior do <dialog>): fora, ficam atrás do fundo escuro e o "Desfazer"
+  // não pode ser tocado. dialog.js devolve a região ao <body> ao fechar.
+  const top = [...document.querySelectorAll('dialog[open]:not(.is-closing)')].pop();
+  const host = top || document.body;
+  if (el.parentElement !== host) host.append(el);
   return el;
 }
 
 /**
  * toast('Salvo!')
  * toast('Conta paga', { type: 'success', action: { label: 'Desfazer', run: fn } })
- * toast('Nova versão', { type: 'update', persist: true, action: { label: 'Atualizar', run } })
  */
 export function toast(message, { type = 'success', action = null, duration = 4500, persist = false, id = null } = {}) {
   if (id) document.querySelector(`.toast[data-id="${id}"]`)?.remove();

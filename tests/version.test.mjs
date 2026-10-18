@@ -1,26 +1,17 @@
-// Versão única: package.json → js/version.js, sw-assets.js (nome do cache
-// do service worker), CHANGELOG.md e js/changelog.js precisam bater.
+// Versão única: package.json → js/version.js, CHANGELOG.md e
+// js/changelog.js precisam bater.
 // Se falhar: rode `npm run sync` e registre a versão nas Novidades.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import vm from 'node:vm';
 
 import { APP_VERSION } from '../js/version.js';
 import { CHANGELOG, newerThan } from '../js/changelog.js';
 import { THEME_COLORS } from '../js/core/theme.js';
-import { computeAssets } from '../tools/sync-version.mjs';
 
 const read = (p) => readFile(new URL(`../${p}`, import.meta.url), 'utf8');
 const pkg = JSON.parse(await read('package.json'));
 const lock = JSON.parse(await read('package-lock.json'));
-
-/** Executa sw-assets.js como o service worker faria (importScripts). */
-async function swAssets() {
-  const self = {};
-  vm.runInNewContext(await read('sw-assets.js'), { self });
-  return self;
-}
 
 test('package.json e package-lock.json têm a mesma versão', () => {
   assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
@@ -28,22 +19,8 @@ test('package.json e package-lock.json têm a mesma versão', () => {
   assert.equal(lock.packages[''].version, pkg.version);
 });
 
-test('js/version.js e sw-assets.js seguem o package.json (npm run sync)', async () => {
+test('js/version.js segue o package.json (npm run sync)', () => {
   assert.equal(APP_VERSION, pkg.version);
-  const sw = await swAssets();
-  assert.equal(sw.DHENORS_VERSION, pkg.version);
-  assert.match(sw.DHENORS_BUILD, /^[0-9a-f]{12}$/);
-});
-
-test('o nome do cache do service worker usa a versão', async () => {
-  const src = await read('sw.js');
-  assert.match(src, /importScripts\(['"]\.\/sw-assets\.js['"]\)/);
-  assert.match(src, /const VERSION = `dhenors-v\$\{self\.DHENORS_VERSION\}-\$\{self\.DHENORS_BUILD\}`/);
-});
-
-test('a lista de arquivos do cache está atualizada', async () => {
-  const sw = await swAssets();
-  assert.deepEqual([...sw.DHENORS_ASSETS], await computeAssets(), 'rode npm run sync');
 });
 
 test('Novidades: CHANGELOG.md e js/changelog.js começam pela versão atual', async () => {

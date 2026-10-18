@@ -1,35 +1,18 @@
 // @ts-check
 // =============================================================
-// errors.js — Registro local de erros (para depurar)
+// errors.js — Registro de erros (para depurar)
 // -------------------------------------------------------------
 // Erros não tratados (window.onerror, promessas rejeitadas) e os
-// registrados pelo app ficam guardados NESTE aparelho (últimos 100),
-// sem valores dos seus dados. Em Ajustes → Dados você exporta o
-// registro para mandar junto de uma issue. Com PIN, fica cifrado.
+// registrados pelo app ficam na MEMÓRIA enquanto o app está aberto
+// (últimos 100), sem valores dos seus dados — nada vai para o
+// navegador. Em Ajustes → Dados você exporta o registro para mandar
+// junto de uma issue.
 // =============================================================
 
-import { store } from './store.js';
 import { APP_VERSION } from '../version.js';
 
 const MAX = 100;
 let buffer = [];
-let loaded = false;
-let saveTimer = 0;
-
-async function load() {
-  if (loaded) return;
-  loaded = true;
-  try { buffer = [...((await store.getSecure('errors:log')) || []), ...buffer].slice(-MAX); } catch { /* bloqueado */ }
-}
-
-function persist() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    if (store.locked) return;
-    await load();
-    try { await store.setSecure('errors:log', buffer.slice(-MAX)); } catch { /* sem espaço */ }
-  }, 500);
-}
 
 /** Registra um erro: { at, message, stack, where, route, version }. */
 export function logError(err, where = '') {
@@ -44,7 +27,6 @@ export function logError(err, where = '') {
     ua: (globalThis.navigator?.userAgent || '').slice(0, 160),
   });
   if (buffer.length > MAX) buffer = buffer.slice(-MAX);
-  persist();
 }
 
 export function initErrorLog() {
@@ -53,11 +35,9 @@ export function initErrorLog() {
 }
 
 export async function errorLog() {
-  await load();
   return [...buffer];
 }
 
 export async function clearErrorLog() {
   buffer = [];
-  await store.setSecure('errors:log', []);
 }

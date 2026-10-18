@@ -1,10 +1,9 @@
 // =============================================================
-// pwa.js — Instalação, atualização e ajustes de celular
+// pwa.js — Instalação e ajustes de celular
 // -------------------------------------------------------------
-// • Atualização: o service worker baixa a versão nova e ESPERA. O app
-//   mostra "Nova versão disponível · Atualizar"; ao tocar, a nova
-//   versão assume e a página recarrega uma vez (sem misturar módulos
-//   antigos e novos no meio do uso).
+// • Atualização: nada a fazer. O app não fica guardado no navegador
+//   (o service worker não tem cache), então cada abertura já vem na
+//   versão mais nova. As Novidades aparecem depois, como sempre.
 // • Instalar: guarda o evento "beforeinstallprompt" e oferece um botão
 //   "Instalar app". No iPhone (que não tem esse evento) mostra o passo
 //   a passo do "Adicionar à Tela de Início".
@@ -59,9 +58,9 @@ export async function installApp() {
           <li>Abra o Dhenors no <strong>Safari</strong> (no Chrome do iPhone não dá).</li>
           <li>Toque no botão <strong>Compartilhar</strong> ${icon('share-2', 'icon--xs')} na barra de baixo.</li>
           <li>Role e toque em <strong>Adicionar à Tela de Início</strong>.</li>
-          <li>Toque em <strong>Adicionar</strong>. O app abre em tela cheia e funciona sem internet.</li>
+          <li>Toque em <strong>Adicionar</strong>. O app abre em tela cheia, com ícone próprio.</li>
         </ol>
-        <p class="field__hint">Dica: instalado, o iPhone guarda os dados com mais segurança (o Safari pode apagar dados de sites não usados por 7 dias).</p>`,
+        <p class="field__hint">No iPhone, os lembretes com o app fechado (push) só funcionam com o app instalado.</p>`,
     });
     return;
   }
@@ -72,40 +71,12 @@ export async function installApp() {
   });
 }
 
-// ---------- Atualização (service worker) ----------
+// ---------- Service worker (só push e instalação) ----------
 
 export function initServiceWorker() {
   if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
-  let reloading = false;
-  // Só recarrega quando uma versão NOVA assume o lugar de outra. Na 1ª
-  // visita não havia service worker controlando a página: se ele passar
-  // a controlar (navegador, extensão, outra aba), recarregar ali só
-  // piscaria a tela e perderia o que estava sendo digitado.
-  let hadController = Boolean(navigator.serviceWorker.controller);
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!hadController) { hadController = true; return; } // 1º controle: as próximas trocas são atualizações
-    if (reloading) return;
-    reloading = true;
-    location.reload();
-  });
-  navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then((reg) => {
-    const offer = (worker) => {
-      if (!worker || !navigator.serviceWorker.controller) return; // 1ª instalação: nada a avisar
-      toast('Nova versão do Dhenors disponível.', {
-        type: 'update', persist: true, id: 'sw-update',
-        action: { label: 'Atualizar', run: () => worker.postMessage({ type: 'SKIP_WAITING' }) },
-      });
-    };
-    if (reg.waiting) offer(reg.waiting);
-    reg.addEventListener('updatefound', () => {
-      const w = reg.installing;
-      w?.addEventListener('statechange', () => { if (w.state === 'installed') offer(w); });
-    });
-    // Procura versão nova ao voltar para o app e a cada 30 min
-    const check = () => reg.update().catch(() => {});
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
-    setInterval(check, 30 * 60_000);
-  }).catch((err) => console.warn('Service worker não registrado', err));
+  navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+    .catch((err) => console.warn('Service worker não registrado', err));
 }
 
 // ---------- Teclado do celular e área segura ----------

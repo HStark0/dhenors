@@ -14,7 +14,7 @@ import { newId } from './schema.js';
 import { positionAt, investingOf } from './investments.js';
 import { accountsSummary } from './accounts.js';
 import { shiftsIn, shiftTypeOf } from './shifts.js';
-import { invoicesIn } from './cards.js';
+import { invoice } from './cards.js';
 
 // ---------- Orçamento por categoria ----------
 
@@ -191,21 +191,22 @@ export function spendingRoom(state, today = todayISO()) {
   const days = Math.max(1, diffDays(today, nextPay));
   const m = computeMonth(state, ym, today);
 
-  const salaryFn = (month) => {
-    const inc = incomeFor(state, month);
-    return { date: paydayIn(s, month), cents: inc.salary + (inc.payrollExtrasNet || 0) };
-  };
+  const salaryFn = employerIncomeFn(state);
   const anchored = (state.accounts || []).filter((a) => !a.archived && a.anchor?.date);
   let cash;
   let source;
   if (anchored.length) {
-    cash = accountsSummary({ ...state, accounts: anchored }, today, { salaryFn }).total;
+    // O que foi pago sem conta (parcelas, contas sem conta escolhida, fatura de
+    // cartão sem conta de débito) sai de "a pagar" mas não mexe no saldo das
+    // contas: sem descontar aqui, pagar uma conta AUMENTAVA o livre.
+    cash = accountsSummary({ ...state, accounts: anchored }, today, { salaryFn }).total
+      - unlinkedPaidSince(state, anchored, today);
     source = 'accounts';
   } else {
     const received = sumCents(incomeEvents(state, ym).filter((e) => e.date <= today).map((e) => e.cents));
     const salaryArrived = paydayIn(s, ym) <= today;
     const prev = computeMonth(state, addMonthsYM(ym, -1), today);
-    const carry = salaryArrived ? 0 : Math.max(0, prev.income.total - prev.totals.paid);
+    const carry = salaryArrived ? 0 : Math.max(0, prev.income.total + (prev.income.thirteenthNet || 0) - prev.totals.paid);
     cash = carry + received - m.totals.paid;
     source = 'estimate';
   }
@@ -220,21 +221,52 @@ export function spendingRoom(state, today = todayISO()) {
   return { perDay: Math.max(0, Math.floor(free / days)), free, cash, dueBefore, dueAfter, nextPay, days, source, before, after };
 }
 
-/** Entradas de dinheiro previstas no mês, com data. → [{ date, cents, label }] */
+/**
+ * Total pago (até hoje) em itens NÃO ligados a nenhuma das contas com saldo
+ * de partida, depois do saldo de partida mais recente. Usa a data mais
+ * recente para não descontar duas vezes um pagamento que já está no saldo
+ * informado de alguma conta. Parcelas marcadas como pagas no cadastro (sem
+ * data real) ficam de fora: foram pagas antes de usar o app.
+ */
+function unlinkedPaidSince(state, anchored, today) {
+  const ids = new Set(anchored.map((a) => a.id));
+  const from = anchored.map((a) => a.anchor.date).sort().at(-1);
+  const cardLinked = new Set((state.cards || []).filter((c) => ids.has(c.accountId)).map((c) => c.id));
+  let total = 0;
+  // meses de vencimento: até 12 antes do saldo (atrasadas pagas depois) e 2 à frente (pagas adiantado)
+  for (let ym = addMonthsYM(ymOf(from), -12); ym <= addMonthsYM(ymOf(today), 2); ym = addMonthsYM(ym, 1)) {
+    for (const i of computeMonth(state, ym, today).items) {
+      if (!i.paidAt || i.paidAt <= from || i.paidAt > today) continue;
+      if (i.kind === 'installment' && !i.paidAtKnown) continue;
+      const linked = i.kind === 'invoice' ? cardLinked.has(i.refId) : ids.has(i.accountId);
+      if (!linked) total += i.cents;
+    }
+  }
+  return total;
+}
+
+/**
+ * O que cai na conta-salário no mês: salário, 13º, férias, PLR/benefícios
+ * e outros vínculos (as rendas fora da folha entram pela conta escolhida
+ * em cada uma). Usado no saldo calculado das contas bancárias.
+ */
+export const employerIncomeFn = (state) => (ym) => incomeEvents(state, ym).filter((e) => e.kind !== 'extra');
+
+/** Entradas de dinheiro previstas no mês, com data. → [{ date, cents, label, kind }] */
 export function incomeEvents(state, ym) {
   const s = state.settings;
   const inc = incomeFor(state, ym);
   const out = [];
   const salaryCash = inc.salary + (inc.payrollExtrasNet || 0);
-  if (salaryCash) out.push({ date: paydayIn(s, ym), cents: salaryCash, label: 'Salário' });
-  for (const x of inc.extras) if (!x.payroll) out.push({ date: x.date || `${ym}-01`, cents: x.cents, label: x.description });
-  if (inc.thirteenth) out.push({ date: dateInMonth(ym, inc.thirteenth.part === 1 ? 30 : 20), cents: inc.thirteenth.net, label: inc.thirteenth.label });
+  if (salaryCash) out.push({ date: paydayIn(s, ym), cents: salaryCash, label: 'Salário', kind: 'salary' });
+  for (const x of inc.extras) if (!x.payroll) out.push({ date: x.date || `${ym}-01`, cents: x.cents, label: x.description, kind: 'extra' });
+  if (inc.thirteenth) out.push({ date: dateInMonth(ym, inc.thirteenth.part === 1 ? 30 : 20), cents: inc.thirteenth.net, label: inc.thirteenth.label, kind: 'thirteenth' });
   if (inc.vacation) {
     const d = addDaysISO(inc.vacation.start, -2);
-    out.push({ date: d < `${ym}-01` ? `${ym}-01` : d, cents: inc.vacation.net, label: 'Férias' });
+    out.push({ date: d < `${ym}-01` ? `${ym}-01` : d, cents: inc.vacation.net, label: 'Férias', kind: 'vacation' });
   }
-  for (const b of inc.benefits?.cash || []) out.push({ date: paydayIn(s, ym), cents: b.net, label: b.name });
-  for (const j of inc.jobs?.list || []) out.push({ date: dateInMonth(ym, j.job.day || 5), cents: j.net, label: j.job.name });
+  for (const b of inc.benefits?.cash || []) out.push({ date: paydayIn(s, ym), cents: b.net, label: b.name, kind: 'benefit' });
+  for (const j of inc.jobs?.list || []) out.push({ date: dateInMonth(ym, j.job.day || 5), cents: j.net, label: j.job.name, kind: 'job' });
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -309,7 +341,10 @@ export function simulate(state, scenario, fromYM, months = 12, today = todayISO(
 
   for (const id of sc.cutRecurring || []) {
     const r = sim.recurring.find((x) => x.id === id);
-    if (r) r.endYM = addMonthsYM(fromYM, -1) < r.startYM ? r.startYM : addMonthsYM(fromYM, -1);
+    if (!r) continue;
+    // Começa no mês da simulação (ou depois): cancelar = não existir
+    if (r.startYM >= fromYM) sim.recurring = sim.recurring.filter((x) => x.id !== id);
+    else r.endYM = addMonthsYM(fromYM, -1);
   }
 
   for (const id of sc.payoff || []) {
@@ -374,13 +409,13 @@ export function calendarEvents(state, ym, today = todayISO()) {
     const t = shiftTypeOf(state, s.typeId);
     add(s.date, { type: 'shift', label: t ? t.name : 'Plantão', cents: s.cents ?? t?.cents ?? 0 });
   }
-  for (const inv of invoicesIn(state, ym, today)) {
-    if (ymOf(inv.closing) === ym) add(inv.closing, { type: 'card', label: `Fechamento: ${inv.card.name}`, cents: inv.total });
-  }
+  // Fechamento de cada cartão no mês, com o valor da fatura que fecha nele.
+  // Vence depois de fechar (fecha 3, vence 10): a fatura que fecha neste mês
+  // vence neste mês; vence antes (fecha 28, vence 5): vence no mês seguinte.
   for (const card of state.cards || []) {
-    const next = addMonthsYM(ym, 1);
-    const closing = dateInMonth(card.dueDay > card.closingDay ? next : ym, card.closingDay);
-    if (ymOf(closing) === ym && !(out[closing] || []).some((e) => e.type === 'card')) add(closing, { type: 'card', label: `Fechamento: ${card.name}`, cents: 0 });
+    if (card.archived) continue;
+    const inv = invoice(state, card, card.dueDay > card.closingDay ? ym : addMonthsYM(ym, 1), today);
+    if (ymOf(inv.closing) === ym) add(inv.closing, { type: 'card', label: `Fechamento: ${card.name}`, cents: inv.total });
   }
   for (const r of state.receivables || []) {
     if (!r.receivedAt && r.dueDate && ymOf(r.dueDate) === ym) add(r.dueDate, { type: 'receivable', label: `A receber: ${r.person || r.description}`, cents: r.cents });

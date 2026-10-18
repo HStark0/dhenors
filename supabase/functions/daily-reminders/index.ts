@@ -6,6 +6,8 @@
 // PRIVACIDADE: o servidor não sabe valores nem descrições. Cada
 // aparelho envia só QUANTAS contas vencem em cada dia (tabela
 // dhenors_push.schedule). Aos domingos manda o resumo da semana.
+// Às segundas, se `schedule.short` > 0, avisa que algum dos próximos
+// 12 meses não fecha (só a quantidade de meses, nunca valores).
 //
 // Publicar:
 //   supabase functions deploy daily-reminders --no-verify-jwt
@@ -25,10 +27,30 @@ function dateISO(daysFromToday: number): string {
   return now.toISOString().slice(0, 10);
 }
 
+/** Compara em tempo constante (não revela, pelo tempo de resposta, quantos caracteres batem). */
+function sameSecret(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a);
+  const y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
+// Só manda push para os serviços de push conhecidos dos navegadores (https).
+// A inscrição é gravada pelo próprio usuário: sem esta lista, alguém poderia
+// pôr uma URL qualquer e fazer o servidor mandar POST para ela.
+const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /^[a-z0-9-]+(\.[a-z0-9-]+)*\.notify\.windows\.com$/, /^web\.push\.apple\.com$/];
+function pushEndpointOk(sub: unknown): boolean {
+  try {
+    const u = new URL(String((sub as { endpoint?: unknown })?.endpoint || ''));
+    return u.protocol === 'https:' && !u.port && !u.username && !u.password && PUSH_HOSTS.some((re) => re.test(u.hostname));
+  } catch { return false; }
+}
+
 Deno.serve(async (req) => {
   const auth = req.headers.get('Authorization') || '';
   const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-  if (!service || auth !== `Bearer ${service}`) return new Response('forbidden', { status: 403 });
+  if (!service || !sameSecret(auth, `Bearer ${service}`)) return new Response('forbidden', { status: 403 });
 
   webpush.setVapidDetails(
     Deno.env.get('VAPID_SUBJECT') || 'mailto:dhenors@example.com',
@@ -45,7 +67,11 @@ Deno.serve(async (req) => {
   let sent = 0;
 
   for (const row of rows || []) {
-    const s = (row.schedule || {}) as Record<string, number>;
+    if (!pushEndpointOk(row.subscription)) {
+      console.warn('[daily-reminders] endpoint de push recusado (host desconhecido ou sem https)', row.user_id);
+      continue;
+    }
+    const s =(row.schedule || {}) as Record<string, number>;
     const messages: { title: string; body: string; tag: string; url: string }[] = [];
     const nToday = s[today] || 0;
     const nTomorrow = s[tomorrow] || 0;
@@ -60,6 +86,12 @@ Deno.serve(async (req) => {
       if (nToday) parts.push(`${nToday} hoje`);
       if (nTomorrow) parts.push(`${nTomorrow} amanhã`);
       messages.push({ title: 'Contas para pagar', body: `Você tem contas: ${parts.join(', ')}.`, tag: 'dhenors-daily', url: './index.html#/contas' });
+    }
+    // Previsão: meses que não fecham (só a quantidade). Uma vez por semana, às segundas.
+    const nShort = s.short || 0;
+    const isMonday = new Date(`${today}T12:00:00Z`).getUTCDay() === 1;
+    if (nShort && isMonday) {
+      messages.push({ title: nShort === 1 ? 'Um mês pode não fechar' : `${nShort} meses podem não fechar`, body: 'A previsão dos próximos 12 meses tem mês no vermelho. Toque para ver o que pesa e como resolver.', tag: 'dhenors-short', url: './index.html#/planejamento?aba=ano' });
     }
     for (const m of messages) {
       try {

@@ -5,3 +5,13 @@ playwright-report/
 tests/e2e/__screenshots__/*-actual.png
 .DS_Store
 *.log
+
+# Nunca enviar: segredos, backups e documentos pessoais
+.env
+.env.*
+*.pem
+*.key
+dhenors-backup-*.json
+*.pdf
+*.ofx
+Senha*

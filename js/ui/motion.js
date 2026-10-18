@@ -6,8 +6,12 @@
 //   para a cascata dos cards, o desenho dos gráficos e o
 //   preenchimento das barras — e só nessa hora, para que mudanças
 //   pequenas (pagar uma conta, digitar num filtro) não "pisquem".
+// • Troca de aba ou de mês (.tab-enter + data-dir): só o conteúdo
+//   desliza, do lado para onde se andou; a pílula das abas desliza
+//   junto (ui/indicator.js). Mudar de mês não refaz a cascata da tela.
 // • Números que contam: valores em R$ dos destaques sobem do zero
 //   ao entrar na tela e deslizam do valor antigo ao novo quando mudam.
+// • Reordenar cards (flipLayout): cada card desliza até o novo lugar.
 // Quem pede "reduzir movimento" no sistema não vê nada disso.
 // =============================================================
 
@@ -25,14 +29,17 @@ let lastRoute = '';
 let enterTimer = 0;
 
 /** Chame depois de cada render da tela. */
-export function afterViewRender(root, route, { entering = false, tabOnly = false } = {}) {
+export function afterViewRender(root, route, { entering = false, tabOnly = false, dir = 0 } = {}) {
   if (tabOnly) {
-    // Troca de aba: só o conteúdo abaixo das abas aparece suave (sem cascata)
+    // Troca de aba ou de mês: só o conteúdo abaixo das abas desliza, vindo
+    // do lado para onde se andou (aba à direita / mês seguinte → da direita)
     document.body.classList.remove('route-enter', 'tab-enter');
+    if (dir) document.body.dataset.dir = dir > 0 ? 'next' : 'prev';
+    else delete document.body.dataset.dir;
     void document.body.offsetWidth;
     document.body.classList.add('tab-enter');
     clearTimeout(enterTimer);
-    enterTimer = setTimeout(() => document.body.classList.remove('tab-enter'), 400);
+    enterTimer = setTimeout(() => { document.body.classList.remove('tab-enter'); delete document.body.dataset.dir; }, 450);
   } else if (entering) {
     document.body.classList.remove('route-enter', 'tab-enter');
     // força o navegador a "esquecer" a animação anterior antes de reiniciar
@@ -70,16 +77,55 @@ function countNumbers(root, route, entering) {
   lastRoute = route;
 }
 
+/**
+ * Anima uma mudança de layout (técnica FLIP): guarda onde cada elemento
+ * `selector` estava, roda `change()` e, depois do próximo desenho, faz
+ * cada um deslizar da posição antiga até a nova.
+ */
+export function flipLayout(selector, change) {
+  if (reduced() || motionOff()) { change(); return; }
+  const before = new Map();
+  for (const el of document.querySelectorAll(selector)) {
+    const key = el.getAttribute('data-key');
+    if (key) before.set(key, el.getBoundingClientRect());
+  }
+  change();
+  // o redesenho da tela também vem num requestAnimationFrame (main.js), registrado antes deste
+  requestAnimationFrame(() => {
+    for (const el of document.querySelectorAll(selector)) {
+      const old = before.get(el.getAttribute('data-key'));
+      if (!old) continue;
+      const now = el.getBoundingClientRect();
+      const dx = old.left - now.left;
+      const dy = old.top - now.top;
+      if (!dx && !dy) continue;
+      el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 380, easing: 'cubic-bezier(.32, .72, 0, 1)' });
+    }
+  });
+}
+
+const motionOff = () => globalThis.document?.documentElement.dataset.motion === 'off';
+
+/** Animação em curso por nó de texto: uma nova (ou um redesenho) cancela a anterior. */
+const running = new WeakMap();
+
 function tween(node, from, to, format, original, duration) {
   const start = performance.now();
   const ease = (t) => 1 - (1 - t) ** 3;
+  const token = {};
+  running.set(node, token);
+  let written = format(from);
   const step = (now) => {
-    if (!node.isConnected) return;
+    // Parou: nó saiu da tela, outra animação começou nele, ou o redesenho
+    // trocou o texto (senão o fim desta escreveria o número antigo)
+    if (!node.isConnected || running.get(node) !== token || node.data !== written) return;
     // o horário do quadro pode vir um pouco antes de "start": limita entre 0 e 1
     const t = Math.max(0, Math.min(1, (now - start) / duration));
-    node.data = t < 1 ? format(Math.round(from + (to - from) * ease(t))) : original;
+    written = t < 1 ? format(Math.round(from + (to - from) * ease(t))) : original;
+    node.data = written;
     if (t < 1) requestAnimationFrame(step);
+    else running.delete(node);
   };
-  node.data = format(from);
+  node.data = written;
   requestAnimationFrame(step);
 }

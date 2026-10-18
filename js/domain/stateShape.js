@@ -9,7 +9,16 @@
 import { DEFAULT_CATEGORIES, CATEGORY_COLORS } from './defaults.js';
 import { DEFAULT_INVESTING } from './investments.js';
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
+
+/**
+ * Limites dos alertas (Ajustes → Geral → Alertas e dicas).
+ *   tightPct     mês "apertado" quando sobra menos que X% dos ganhos
+ *   overspendPct gasto "exagerado" quando passa X% da média do histórico
+ *   bigPct       gasto avulso "grande" quando passa X% dos ganhos do mês
+ *   push         avisar (sem valores) quando um mês dos próximos não fecha
+ */
+export const DEFAULT_ALERTS = { tightPct: 10, overspendPct: 40, bigPct: 10, push: true };
 
 export function newId() {
   if (globalThis.crypto?.randomUUID) return crypto.randomUUID().slice(0, 13).replace('-', '');
@@ -58,6 +67,7 @@ export function createEmptyState() {
       reminders: { enabled: false, daysBefore: 1, mode: 'daily', push: false },
       rules: [],
       spendingLimitCents: 0,
+      alerts: { ...DEFAULT_ALERTS },
       investing: structuredClone(DEFAULT_INVESTING),
       indices: { ipca12Bp: 450, igpm12Bp: 400, ipcaMonthly: {}, igpmMonthly: {}, updatedAt: null },
       quotes: {},
@@ -83,6 +93,7 @@ export function createEmptyState() {
       motion: 'full',
     },
     extraIncomes: [],
+    recurringIncomes: [],
     expenses: [],
     recurring: [],
     recurringEntries: {},

@@ -95,7 +95,7 @@ export function renderMonth() {
           <span class="money strong header-total">${formatBRL(total)}</span>
           ${active ? html`<button type="button" class="btn btn--ghost btn--sm" data-action="bills:clear">Limpar filtros</button>` : ''}
           ${s.on ? '' : html`<button type="button" class="btn btn--ghost btn--sm" data-action="sel:on" ${items.length ? '' : 'disabled'} aria-label="Selecionar contas" title="Selecionar">${icon('list-checks', 'icon--xs')}<span class="hide-sm"> Selecionar</span></button>`}
-          <button type="button" class="btn btn--ghost btn--sm" data-action="bills:group" aria-pressed="${f.group === 'date'}" title="Agrupar por data">${icon('rows-3', 'icon--xs')}</button>
+          <button type="button" class="btn btn--ghost btn--sm" data-action="bills:group" aria-pressed="${f.group === 'date'}" aria-label="Agrupar por data" title="Agrupar por data">${icon('rows-3', 'icon--xs')}</button>
           <button type="button" class="btn btn--ghost btn--sm" data-action="bills:csv" aria-label="Baixar CSV" title="Baixar CSV">${icon('file-spreadsheet', 'icon--xs')}<span class="hide-sm"> CSV</span></button>
         </div>
       </header>
@@ -125,9 +125,12 @@ function select(id, label, name, value, options) {
     </div>`;
 }
 
+/** Itens marcados que estão na tela agora (mês e filtros atuais): nunca age sobre o que não se vê. */
 function chosenItems() {
   const keys = new Set(sel().keys);
-  return [...keys].map((k) => itemByKey(k)).filter(Boolean);
+  const f = { ...DEFAULTS, ...store.ui.filters.bills };
+  const visible = new Set(filteredItems(store.data, store.ui.ym, f).items.map((i) => i.key));
+  return [...keys].filter((k) => visible.has(k)).map((k) => itemByKey(k)).filter(Boolean);
 }
 
 export const monthActions = {

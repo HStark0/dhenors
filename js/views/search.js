@@ -20,6 +20,8 @@ import { store } from '../core/store.js';
 import { formatBRL, plural, toCents } from '../core/money.js';
 import { formatDateBR, currentYM, addMonthsYM, ymOf, todayISO } from '../core/dates.js';
 import { monthItems } from '../domain/ledger.js';
+import { purchaseFlags } from '../domain/weights.js';
+import { flagBadges } from '../ui/outlookUI.js';
 import * as A from '../domain/actions.js';
 
 const EMPTY = { q: '', from: '', to: '', categoryId: '', tag: '', min: '', max: '', status: '' };
@@ -104,7 +106,7 @@ export default {
                 const card = d.cards.find((c) => c.id === p.cardId);
                 return html`
                   <li>
-                    <span class="row-flex">${catIcon(cat)} <span><strong>${p.description}</strong><br><span class="muted small">${formatDateBR(p.date)} · ${card?.name || 'cartão'}${p.count > 1 ? ` · ${p.count}x` : ''}</span></span></span>
+                    <span class="row-flex">${catIcon(cat)} <span><strong>${p.description}</strong> ${flagBadges(purchaseFlags(d, p))}<br><span class="muted small">${formatDateBR(p.date)} · ${card?.name || 'cartão'}${p.count > 1 ? ` · ${p.count}x` : ''}</span></span></span>
                     <span class="money">${formatBRL(p.cents)}</span>
                   </li>`;
               })}

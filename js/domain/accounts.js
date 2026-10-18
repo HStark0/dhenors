@@ -18,6 +18,7 @@
 import { sumCents } from '../core/money.js';
 import { todayISO, ymOf, addMonthsYM, monthsBetween } from '../core/dates.js';
 import { invoice } from './cards.js';
+import { recurringIncomeBetween } from './recurringIncome.js';
 
 export const ACCOUNT_KIND_LABELS = {
   corrente: 'Conta corrente', salario: 'Conta-salário', poupanca: 'Poupança', digital: 'Conta digital',
@@ -32,7 +33,8 @@ const inRange = (date, from, to) => (!from || date > from) && date <= to;
 /**
  * Movimentos de uma conta entre o saldo de partida e `date`.
  * → [{ date, cents (+ entra / − sai), label, kind }]
- * `salaryFn(ym)` devolve { date, cents } do salário que cai no mês (opcional).
+ * `salaryFn(ym)` devolve o que cai na conta-salário no mês: { date, cents, label }
+ * ou uma lista delas (salário, 13º, férias, benefícios — planning.employerIncomeFn).
  */
 export function accountMovements(state, account, date = todayISO(), { salaryFn = null } = {}) {
   const from = account.anchor?.date || null;
@@ -40,6 +42,10 @@ export function accountMovements(state, account, date = todayISO(), { salaryFn =
   const add = (d, cents, label, kind) => { if (d && cents && inRange(d, from, date)) out.push({ date: d, cents, label, kind }); };
 
   for (const x of state.extraIncomes || []) if (x.accountId === account.id && !x.payroll) add(x.date || `${x.ym}-01`, x.cents, x.description, 'income');
+  for (const r of state.recurringIncomes || []) {
+    if (r.accountId !== account.id) continue;
+    for (const x of recurringIncomeBetween(r, from ? ymOf(from) : r.startYM, ymOf(date))) add(x.date, x.cents, x.description, 'income');
+  }
   for (const e of state.expenses || []) if (e.accountId === account.id && e.paidAt) add(e.paidAt, -e.cents, e.description, 'expense');
   for (const r of state.recurring || []) {
     if (r.accountId !== account.id || r.cardId) continue;
@@ -63,8 +69,8 @@ export function accountMovements(state, account, date = todayISO(), { salaryFn =
   if (salaryFn && state.settings.salaryAccountId === account.id) {
     const startYM = from ? ymOf(from) : ymOf(date);
     for (let i = 0; i <= Math.max(0, monthsBetween(startYM, ymOf(date))); i++) {
-      const s = salaryFn(addMonthsYM(startYM, i));
-      if (s) add(s.date, s.cents, 'Salário', 'salary');
+      const got = salaryFn(addMonthsYM(startYM, i));
+      for (const s of Array.isArray(got) ? got : got ? [got] : []) add(s.date, s.cents, s.label || 'Salário', 'salary');
     }
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));

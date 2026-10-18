@@ -5,9 +5,9 @@
 // Todo o estado do app é UM objeto JSON. Ele é salvo no
 // navegador (IndexedDB) e é exatamente o que vai no backup.
 //
-// Formato (schema 8):
+// Formato (schema 9):
 // {
-//   schema: 8,
+//   schema: 9,
 //   settings: {
 //     profileName, salaryDay, theme, accent, density, motion,
 //     payday: { mode: 'fixed'|'business', nth, saturday, nextMonth },
@@ -23,6 +23,7 @@
 //     reminders: { enabled, daysBefore, mode: 'each'|'daily'|'weekly', push },
 //     rules: [{ id, pattern, categoryId, subcategoryId }],    // categorização automática
 //     spendingLimitCents,                                      // meta (limite) de gastos mensal
+//     alerts: { tightPct, overspendPct, bigPct, push },        // limites de "apertado", "exagerado", "grande"
 //     investing: { cdiBp, ipcaBp, selicBp, monthlyTargetCents, targets: { classe: % }, ratesUpdatedAt },
 //     indices: { ipca12Bp, igpm12Bp, ipcaMonthly: { "AAAA-MM": bp }, igpmMonthly, updatedAt }, // BCB
 //     quotes: { TICKER: { price (centavos), at } },           // cotações (brapi)
@@ -48,8 +49,10 @@
 //                    ticker, quantity, avgPriceCents,
 //                    movements: [{ id, date, kind: 'aporte'|'resgate'|'provento'|'saldo'|'venda', cents, qty, note, expenseId }] }],
 //   extraIncomes: [{ id, ym, description, cents, date, payroll, kind, accountId }],  // plantões, freelas, reembolsos…
+//   recurringIncomes: [{ id, description, cents, day, startYM, endYM, kind, accountId, skipped: ["AAAA-MM"] }],
+//                                                               // ganhos FORA da folha que se repetem todo mês
 //   expenses:     [{ id, description, cents, dueDate, paidAt, categoryId, subcategoryId, creditorId, notes,
-//                    accountId, tags, splits: [{ categoryId, subcategoryId, cents }], attachments: [{ id, name, type, size }], boleto, pix }],
+//                    accountId, tags, splits: [{ categoryId, subcategoryId, cents }], attachments: [{ id, name, type, size, k }], boleto, pix }],
 //   recurring:    [{ id, description, cents, dueDay, startYM, endYM, categoryId, subcategoryId, creditorId, notes,
 //                    freq, anchorDate, variable, subscription, renewal, adjust: { index, month, lastYM }, priceHistory, accountId, cardId, tags }],
 //   recurringEntries: { "idRecorrente|AAAA-MM" ou "idRecorrente|AAAA-MM-DD": { paidAt, cents, skipped } },
@@ -78,6 +81,9 @@
 //   8 → cartões, contas, plantões, dívidas…; data REAL do pagamento das
 //       parcelas; reserva de emergência só por marcação (não pelo nome);
 //       cores de categoria que conflitavam com as cores de estado.
+//   9 → ganhos extras recorrentes (recurringIncomes) e limites dos
+//       alertas (settings.alerts). Nada muda nos dados antigos: os
+//       campos novos começam vazios / com o padrão.
 //
 // O código está dividido em módulos coesos; este arquivo mantém a
 // MESMA API pública (reexporta tudo):
@@ -88,7 +94,7 @@
 //   sanitizeUtil.js     validadores básicos
 // =============================================================
 
-export { SCHEMA_VERSION, newId, createDefaultCategories, DEFAULT_SHIFT_TYPES, createEmptyState, FREQS, INCOME_KINDS, ACCOUNT_KINDS } from './stateShape.js';
+export { SCHEMA_VERSION, newId, createDefaultCategories, DEFAULT_SHIFT_TYPES, DEFAULT_ALERTS, createEmptyState, FREQS, INCOME_KINDS, ACCOUNT_KINDS } from './stateShape.js';
 export { sanitizeState } from './sanitizeState.js';
 export { sanitizeProfile } from './sanitizePayroll.js';
 

@@ -105,7 +105,9 @@ export const payslipActions = {
       const line = findLine(el);
       const ok = await confirmDialog({
         title: 'Remover',
-        message: `Remover "${line.description}" do salário a partir de ${formatMonth(store.ui.ym)}? Os meses anteriores não mudam.`,
+        message: line.loan
+          ? `Remover o consignado "${line.description}"? Ele sai de TODOS os meses, inclusive os anteriores (se ele acabou, edite o número de parcelas em vez de remover).`
+          : `Remover "${line.description}" do salário a partir de ${formatMonth(store.ui.ym)}? Os meses anteriores não mudam.`,
         confirmLabel: 'Remover', danger: true,
       });
       if (ok) E.deleteWithUndo(() => A.deletePayrollLine(store.ui.ym, el.dataset.kind, line.id), 'Removido.');

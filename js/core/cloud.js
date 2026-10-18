@@ -1,8 +1,10 @@
 // =============================================================
 // cloud.js — Sincronização com a nuvem (Supabase), sem bibliotecas
 // -------------------------------------------------------------
-// • O app continua "local primeiro": tudo é salvo no aparelho na
-//   hora e funciona offline. A nuvem recebe uma cópia logo depois.
+// • A nuvem é o ÚNICO lugar onde os dados ficam. Ao entrar, o estado
+//   é baixado para a memória; cada alteração sobe logo em seguida. No
+//   navegador fica só o acesso à conta ("lembrar o login", ver
+//   core/storage.js) — nenhum dado financeiro, nem cópia, nem cache.
 // • Antes de sair do aparelho, os dados são CRIPTOGRAFADOS com a
 //   sua frase secreta (AES-GCM, chave PBKDF2). O Supabase só guarda
 //   envelopes ilegíveis. Cada envelope é amarrado (AAD) ao usuário,
@@ -25,6 +27,8 @@
 // • Aparelhos: cada aparelho se registra em `dhenors_devices`; dá para
 //   ver a lista e desconectar um aparelho remotamente (o que também
 //   encerra as sessões dos outros aparelhos no Supabase).
+// • Anexos: cada arquivo vai cifrado (chave própria, guardada no estado
+//   cifrado) para o Supabase Storage, bucket `dhenors-files`.
 //
 // Módulos:
 //   cloud/http.js     configuração, chamadas REST, erros traduzidos
@@ -35,10 +39,11 @@
 //   Auth:  POST /auth/v1/signup · /auth/v1/token?grant_type=password|refresh_token · /auth/v1/logout
 //          POST /auth/v1/recover (e-mail de nova senha) · PUT /auth/v1/user (grava a nova senha)
 //   Dados: /rest/v1/dhenors_state · dhenors_chunks · dhenors_versions · dhenors_devices
+//   Anexos: /storage/v1/object/dhenors-files/<usuário>/<id>
 // =============================================================
 
 import { store } from './store.js';
-import { getItem, setItem } from './storage.js';
+import { readAuth, writeAuth, saveKey, loadKey } from './storage.js';
 import { deriveKey, randomSalt, exportRawKey, importRawKey, toB64, fromB64, PIN_KDF, LEGACY_PASS_ITERATIONS } from './crypto.js';
 import { APP_VERSION } from '../version.js';
 import { mergeWithConflicts, setAtPath } from '../domain/merge.js';
@@ -54,14 +59,15 @@ import {
 export { CloudError };
 
 const T = { state: 'dhenors_state', chunks: 'dhenors_chunks', versions: 'dhenors_versions', devices: 'dhenors_devices' };
-const PUSH_DELAY = 1500;
+const PUSH_DELAY = 600;          // os dados só existem na memória: envia logo
 const POLL_MS = 60_000;          // sem tempo real
 const POLL_LIVE_MS = 5 * 60_000; // com tempo real (só reserva)
 const KEEP_VERSIONS = 30;
 const MAX_CHUNK = 4.5 * 1024 * 1024;
 const PAUSE_DAYS = 7;            // projeto gratuito do Supabase pausa após 7 dias sem uso
 const ORPHAN_GRACE_MS = 86_400_000; // parte sem índice só é apagada depois de 1 dia (outro aparelho pode estar no meio de um envio)
-const IGNORE = new Set(['ui', 'remote', 'external', 'unlock', 'security', 'silent', 'reset', 'readonly']);
+const IGNORE = new Set(['ui', 'remote', 'open', 'close', 'readonly']); // 'silent' sobe também: só não redesenha
+const BUCKET = 'dhenors-files';
 
 const listeners = new Set();
 let session = null;   // { access_token, refresh_token, expires_at, user: { id, email } }
@@ -76,13 +82,21 @@ let realtime = null;
 let pollTimer = 0;
 let upgradePass = null; // frase digitada numa conta com PBKDF2 antigo: recifra tudo depois de ligar
 let repairOnLink = false; // faltavam partes na nuvem ao desbloquear: reenvia todas ao ligar
+let forceLocal = false;   // "Usar os deste aparelho": vale até o primeiro envio aceito
+/** Cópias de trabalho da sincronização (base do merge, índice, conflitos): só na memória. */
+const mem = new Map();
+const memGet = (k) => mem.get(k);
+const memSet = (k, v) => { if (v === undefined) mem.delete(k); else mem.set(k, v); };
 
 const randomRev = () => (crypto.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).replace(/-/g, '').slice(0, 20);
-const uid = () => session.user.id;
+const uid = () => {
+  if (!session?.user?.id) throw new CloudError('Entre na sua conta.');
+  return session.user.id;
+};
 
 // ---------- HTTP (com a sessão) ----------
 
-async function http(path, { auth = true, headers = {}, ...opts } = {}) {
+async function http(path, { auth = true, headers = {}, ...opts } = {}, retried = false) {
   if (auth) await ensureFreshToken();
   try {
     const json = await request(path, { ...opts, headers, token: auth ? session?.access_token : null });
@@ -90,33 +104,66 @@ async function http(path, { auth = true, headers = {}, ...opts } = {}) {
     return json;
   } catch (err) {
     if (err.status) meta.lastContact = Date.now(); // o servidor respondeu (com erro)
+    // Token recusado (relógio do aparelho errado, renovado em outra aba…): renova e tenta uma vez
+    if (auth && !retried && err.status === 401 && session) {
+      session.expires_at = 0;
+      return http(path, { auth, headers, ...opts }, true);
+    }
     throw err;
   }
 }
 
-// ---------- Sessão (cifrada com o PIN, se houver) ----------
+// ---------- Sessão ("lembrar o login") ----------
 
 function saveSession(s) {
   session = s ? {
     access_token: s.access_token,
     refresh_token: s.refresh_token,
-    expires_at: s.expires_at || Math.floor(Date.now() / 1000) + (s.expires_in || 3600),
+    // validade contada no relógio DESTE aparelho (um relógio adiantado ou atrasado
+    // renovaria o token a toda hora ou nunca)
+    expires_at: Math.floor(Date.now() / 1000) + (Number(s.expires_in) || Math.max(60, (Number(s.expires_at) || 0) - Math.floor(Date.now() / 1000)) || 3600),
     user: { id: s.user?.id || session?.user?.id, email: s.user?.email || session?.user?.email },
   } : null;
-  return store.setSecure('cloud:session', session || undefined);
+  return persistAuth();
 }
 
 let refreshing = null;
+
+/** Outra aba deste navegador renovou o token (o de renovação é de uso único): usa o dela. */
+function adoptStoredSession() {
+  const stored = readAuth()?.session;
+  if (!stored || !session || stored.user?.id !== session.user?.id) return false;
+  if (stored.refresh_token === session.refresh_token) return false;
+  session = stored;
+  return true;
+}
+
 async function ensureFreshToken() {
   if (!session) throw new CloudError('Entre na sua conta da nuvem.');
   if (session.expires_at - 60 > Date.now() / 1000) return;
-  refreshing ||= (async () => {
+  if (adoptStoredSession() && session.expires_at - 60 > Date.now() / 1000) return;
+  const renew = async () => {
     try {
       const s = await http('/auth/v1/token?grant_type=refresh_token', { method: 'POST', auth: false, body: { refresh_token: session.refresh_token } });
       await saveSession(s);
     } catch (err) {
-      if (!err.offline) { await saveSession(null); setStatus('signedout'); }
+      // Token de renovação recusado: talvez outra aba tenha acabado de renovar
+      if ((err.status === 400 || err.status === 401) && adoptStoredSession()) return;
+      // Recusado de vez (400/401): precisa entrar de novo. Outros erros (sem internet,
+      // projeto pausado, 5xx, muitas tentativas) são temporários: a sessão continua.
+      if (err.status === 400 || err.status === 401) {
+        rescuePending();
+        await saveSession(null);
+        setStatus('signedout', 'A sessão expirou. Entre de novo.');
+      }
       throw err;
+    }
+  };
+  // Uma renovação por vez, também entre abas (navigator.locks, quando houver)
+  refreshing ||= (async () => {
+    try {
+      if (globalThis.navigator?.locks) await navigator.locks.request('dhenors-refresh', async () => { if (!adoptStoredSession() || session.expires_at - 60 <= Date.now() / 1000) await renew(); });
+      else await renew();
     } finally { refreshing = null; }
   })();
   return refreshing;
@@ -136,50 +183,56 @@ function setStatus(status, error = '') {
   for (const fn of listeners) { try { fn(state); } catch { /* ignora */ } }
 }
 
-const saveMeta = () => setItem('cloud:meta', { ...meta });
+const saveMeta = () => persistAuth();
 
-// ---------- Chave da frase secreta ("lembrar neste aparelho") ----------
-// remember: 'session' (só enquanto o app estiver aberto) | '30d' | 'always'
-//  • sem PIN: a chave fica como CryptoKey no IndexedDB ('cloud:key')
-//  • com SENHA do app (letras e números): a chave vai cifrada por ela ('cloud:keyraw')
-//  • com PIN só de números: a chave fica SÓ NA MEMÓRIA. Um PIN de 4–8
-//    números pode ser testado inteiro fora do app por quem copiar o
-//    navegador; guardar a chave cifrada por ele entregaria a nuvem toda
-//    (inclusive o histórico). A frase é pedida de novo ao reabrir o app.
+// ---------- O que fica no navegador ----------
+// Só o acesso: sessão, chave da frase (nunca a frase), sal e por quanto
+// tempo lembrar. remember: 'session' (até fechar o app) | '30d' | 'always'.
 
-/** A frase só pode ficar na memória neste aparelho (PIN numérico)? */
-const memoryOnly = () => store.pinEnabled && store.lockKind === 'pin';
+//  • "Sempre" / "30 dias": a chave vai como CryptoKey NÃO exportável para o
+//    IndexedDB "dhenors-auth" (o script do app usa, mas ninguém lê os bytes).
+//  • "Só até fechar o app": vai em base64 no sessionStorage, que some ao fechar.
+let storedKey = null; // a chave já gravada (evita regravar a cada envio)
 
-async function persistKey() {
-  await setItem('cloud:key', undefined);
-  await store.setSecure('cloud:keyraw', undefined);
-  if (!key || meta.remember === 'session') return;
-  if (store.pinEnabled) {
-    if (memoryOnly()) return;
-    try { await store.setSecure('cloud:keyraw', toB64(await exportRawKey(key))); } catch { /* chave antiga não exportável: só na memória */ }
-    return; // com PIN/senha, NUNCA grava a CryptoKey sem cifra
-  }
-  await setItem('cloud:key', key);
+async function persistAuth() {
+  const s = session; // fotografia: um signOut no meio de um await não pode regravar a chave
+  const k = key;
+  if (!s) { writeAuth(null); storedKey = null; await saveKey(null); return; }
+  const session_ = meta.remember === 'session';
+  let raw = null;
+  if (k && session_) { try { raw = toB64(await exportRawKey(k)); } catch { /* chave não exportável: fica só na memória */ } }
+  if (session !== s) return; // saiu da conta enquanto isso
+  writeAuth({
+    session: s, key: raw, salt: meta.salt, it: meta.iterations, userId: meta.userId, lastContact: meta.lastContact || null,
+    remember: meta.remember || 'always', until: meta.remember === '30d' ? meta.rememberUntil : null,
+  });
+  if (session_ || !k) { if (storedKey) { storedKey = null; await saveKey(null); } return; }
+  if (storedKey === k) return;
+  let locked = k;
+  if (k.extractable) { try { locked = await importRawKey(await exportRawKey(k), false); } catch { locked = k; } }
+  if (session !== s) return;
+  storedKey = k;
+  await saveKey(locked);
 }
 
-async function loadKey() {
-  if (meta.rememberUntil && Date.now() > meta.rememberUntil) {
-    await setItem('cloud:key', undefined);
-    await store.setSecure('cloud:keyraw', undefined);
-    meta.rememberUntil = null;
-    return null;
-  }
-  const raw = await store.getSecure('cloud:keyraw');
-  if (raw) {
-    try {
-      const k = await importRawKey(fromB64(raw), true);
-      // Guardada por uma versão anterior com PIN numérico: usa agora, mas apaga a cópia
-      if (memoryOnly()) await store.setSecure('cloud:keyraw', undefined);
-      return k;
-    } catch { /* corrompido */ }
-  }
-  if (store.pinEnabled) { await setItem('cloud:key', undefined); return null; }
-  return (await getItem('cloud:key')) || null;
+async function loadAuth() {
+  const auth = readAuth();
+  session = auth?.session || null;
+  meta = { ...EMPTY_META, salt: auth?.salt || null, iterations: auth?.it || null, userId: auth?.userId || null, lastContact: auth?.lastContact || null, remember: auth?.remember || 'always', rememberUntil: auth?.until || null };
+  key = null;
+  if (!session) { await saveKey(null); return; }
+  if (auth?.key) { try { key = await importRawKey(fromB64(auth.key), true); } catch { key = null; } }
+  else { key = await loadKey(); storedKey = key; }
+}
+
+/**
+ * A conta vai fechar (frase trocada em outro aparelho, sessão recusada) com
+ * alterações ainda não enviadas: guarda uma cópia na memória para juntar com
+ * a nuvem quando a pessoa entrar de novo (ver link).
+ */
+let rescue = null;
+function rescuePending() {
+  if (meta.dirty && store.data && !store.guest) rescue = { userId: meta.userId, local: structuredClone(store.data), base: memGet('cloud:base') || null };
 }
 
 // ---------- Linhas remotas ----------
@@ -189,8 +242,8 @@ async function fetchRow() {
   return rows?.[0] || null;
 }
 
-/** Última versão em comum com a nuvem (base do merge de 3 vias) — cifrada com o PIN. */
-const saveBase = (data) => store.setSecure('cloud:base', structuredClone(data));
+/** Última versão em comum com a nuvem (base do merge de 3 vias) — só na memória. */
+const saveBase = (data) => memSet('cloud:base', structuredClone(data));
 
 const missingPart = () => Object.assign(new CloudError('Uma parte dos dados da nuvem não foi encontrada. Tente sincronizar de novo.'), { missing: true });
 
@@ -352,9 +405,10 @@ async function push() {
   meta.version = version;
   manifest = { ...newManifest, version };
   settlePending(meta, gen);
+  forceLocal = false;
   meta.lastSync = Date.now();
   meta.pushes = (meta.pushes || 0) + 1;
-  await store.setSecure('cloud:manifest', manifest);
+  memSet('cloud:manifest', manifest);
   await saveBase(snapshot);
   await saveMeta();
   setStatus(meta.dirty ? 'pending' : 'idle');
@@ -415,7 +469,7 @@ async function pull() {
     await saveMeta();
     return setStatus('idle');
   }
-  const base = await store.getSecure('cloud:base');
+  const base = memGet('cloud:base');
   const { remote, man, damaged } = await readRemoteOrRepair(row, base);
   if (damaged) notify(REPAIRED_NOTICE);
   if (meta.dirty) {
@@ -428,6 +482,13 @@ async function pull() {
       await saveBase(remote);
       if (conflicts.length) await addConflicts(conflicts, row.device);
       return push(); // envia o resultado juntado
+    }
+    if (forceLocal) {
+      // A pessoa escolheu "Usar os deste aparelho": eles substituem a nuvem
+      await keepBackup(remote, 'nuvem');
+      meta.version = row.version;
+      manifest = null;
+      return push();
     }
     const localTime = Date.parse(store.data.updatedAt || 0) || 0;
     const remoteTime = Date.parse(remote.updatedAt || row.updated_at || 0) || 0;
@@ -446,7 +507,7 @@ async function pull() {
   meta.dirty = false;
   meta.pending = 0;
   meta.lastSync = Date.now();
-  if (man) await store.setSecure('cloud:manifest', man);
+  if (man) memSet('cloud:manifest', man);
   await saveBase(remote);
   if (damaged) {
     meta.dirty = true; // manifest = null: reenvia todas as partes e a nuvem volta a ficar inteira
@@ -459,22 +520,22 @@ async function pull() {
 
 /** Guarda uma cópia completa (até 3, as mais recentes). */
 async function keepBackup(data, origin) {
-  const saved = await store.getSecure('cloud:conflict');
-  await store.setSecure('cloud:conflict', addConflictCopy(saved, { at: Date.now(), origin, data: structuredClone(data) }));
+  const saved = memGet('cloud:conflict');
+  memSet('cloud:conflict', addConflictCopy(saved, { at: Date.now(), origin, data: structuredClone(data) }));
 }
 
 // ---------- Conflitos ----------
 
 const COLLECTION_LABEL = {
   expenses: 'Conta', recurring: 'Recorrente', installments: 'Parcelamento', goals: 'Meta', investments: 'Investimento',
-  creditors: 'Credor', categories: 'Categoria', extraIncomes: 'Renda extra', settings: 'Ajuste', cards: 'Cartão',
+  creditors: 'Credor', categories: 'Categoria', extraIncomes: 'Renda extra', recurringIncomes: 'Renda recorrente', settings: 'Ajuste', cards: 'Cartão',
   accounts: 'Conta/carteira', cardPurchases: 'Compra no cartão', transfers: 'Transferência', shifts: 'Plantão',
   debts: 'Dívida', subscriptions: 'Assinatura', receivables: 'A receber', envelopes: 'Envelope', wishlist: 'Desejo',
   recurringEntries: 'Pagamento de recorrente', closedMonths: 'Mês fechado', incomes: 'Receita', jobs: 'Vínculo',
 };
 
 async function addConflicts(list, from) {
-  const current = (await store.getSecure('cloud:conflicts')) || [];
+  const current = (memGet('cloud:conflicts')) || [];
   const at = Date.now();
   for (const c of list) {
     const label = c.local?.description || c.local?.name || c.remote?.description || c.remote?.name || c.key || c.collection;
@@ -482,7 +543,7 @@ async function addConflicts(list, from) {
     const i = current.findIndex((x) => x.id === c.id);
     if (i >= 0) current[i] = entry; else current.push(entry);
   }
-  await store.setSecure('cloud:conflicts', current.slice(-100));
+  memSet('cloud:conflicts', current.slice(-100));
   state.conflicts = current.length;
   notify(`${list.length === 1 ? 'Um item foi alterado' : `${list.length} itens foram alterados`} neste e em outro aparelho ao mesmo tempo. Ficou a versão da nuvem; toque em Nuvem → Conflitos para escolher.`, { action: 'conflicts' });
 }
@@ -501,7 +562,7 @@ async function checkDevice(force = false) {
     const rows = await http(`/rest/v1/${T.devices}?select=revoked&user_id=eq.${uid()}&device_id=eq.${encodeURIComponent(id)}`);
     if (rows?.[0]?.revoked) {
       await cloud.signOut({ remote: false });
-      notify('Este aparelho foi desconectado da nuvem por outro aparelho. Os dados continuam aqui; para voltar, entre de novo.');
+      notify('Este aparelho foi desconectado da nuvem por outro aparelho. Os dados continuam na nuvem; para voltar, entre de novo.');
       throw new CloudError('Aparelho desconectado da nuvem.');
     }
     // `revoked` não vai no corpo: só o banco (e "Desconectar") mexe nele
@@ -524,22 +585,28 @@ async function rejoinDevice() {
   meta.deviceCheck = 0;
 }
 
-/** Modo exemplo (ui/onboarding.js): dados de mentira nunca vão para a nuvem. */
-const demoMode = () => { try { return localStorage.getItem('dhenors:demo') === '1'; } catch { return false; } };
 
-const ready = () => Boolean(session && key && meta.linked && readConfig().url && !demoMode() && !store.readOnly);
+/** Pronto para enviar/receber: conta aberta, com a chave da frase. */
+const ready = () => Boolean(session && key && meta.linked && readConfig().url && !store.guest && !store.readOnly);
 
 function run(fn) {
   return serial(async () => {
     try { await fn(); } catch (err) {
       if (err.tooNew) {
-        // Nuvem com dados de uma versão mais nova: não aplica, não envia, não grava
+        // Nuvem com dados de uma versão mais nova: não aplica, não envia
         store.setReadOnly(err.message);
         notify(err.message);
         setStatus('error', err.message);
       } else if (err.paused) setStatus('paused', err.message);
       else if (err.offline) setStatus('offline', err.message);
-      else if (err.badKey) { key = null; await persistKey(); setStatus('locked', err.message); } else setStatus(session ? 'error' : 'signedout', err.message);
+      else if (err.badKey) {
+        // A frase foi trocada em outro aparelho: pede a nova (o que não subiu fica guardado)
+        rescuePending();
+        key = null;
+        meta.linked = false;
+        await persistAuth();
+        setStatus('locked', err.message);
+      } else setStatus(session ? 'error' : 'signedout', err.message);
     }
   });
 }
@@ -547,7 +614,6 @@ function run(fn) {
 function schedulePush() {
   meta.dirty = true;
   meta.pending = (meta.pending || 0) + 1;
-  saveMeta();
   setStatus(state.status === 'idle' ? 'pending' : state.status, state.error);
   clearTimeout(pushTimer);
   pushTimer = setTimeout(() => run(push), PUSH_DELAY);
@@ -570,28 +636,95 @@ function schedulePoll() {
   pollTimer = setInterval(() => { if (ready() && document.visibilityState === 'visible') run(() => pull()); }, realtime?.live ? POLL_LIVE_MS : POLL_MS);
 }
 
+/** Liga os avisos da store e do navegador (uma vez). */
+function wire() {
+  if (wired) return;
+  wired = true;
+  store.subscribe((reason) => { if (!IGNORE.has(reason) && ready()) schedulePush(); });
+  const sync = () => { if (ready() && document.visibilityState === 'visible') run(() => (meta.dirty ? push() : pull())); };
+  document.addEventListener('visibilitychange', sync);
+  // Indo para segundo plano (trocou de app, bloqueou a tela): envia já, sem esperar
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && ready() && meta.dirty) { clearTimeout(pushTimer); run(push); } });
+  // Outra aba renovou o token ou saiu da conta
+  addEventListener('storage', (ev) => {
+    if (ev.key !== 'dhenors:auth') return;
+    if (!ev.newValue && session && ready()) { cloud.signOut({ remote: false }); return; }
+    adoptStoredSession();
+  });
+  addEventListener('online', sync);
+  addEventListener('focus', sync);
+  // Saindo com algo ainda não enviado: tenta enviar e pede confirmação ao navegador
+  addEventListener('pagehide', () => { if (ready() && meta.dirty) run(push); });
+  addEventListener('beforeunload', (ev) => {
+    if (!ready() || !meta.dirty) return;
+    run(push);
+    ev.preventDefault();
+    ev.returnValue = '';
+  });
+}
+
+/** Começa a sincronizar a conta aberta. */
+async function start() {
+  wire();
+  startRealtime();
+  schedulePoll();
+  setStatus(meta.dirty ? 'pending' : 'idle');
+  await run(() => (meta.dirty ? push() : pull()));
+  if (upgradePass) {
+    // Conta antiga (PBKDF2 com menos iterações): recifra tudo com a proteção atual
+    const p = upgradePass;
+    upgradePass = null;
+    await run(() => rekeyCloud(p));
+  }
+}
+
+/**
+ * Abre os dados da nuvem → { remote, man, damaged }.
+ * Faltou alguma parte: completa com o histórico de versões (damaged = true,
+ * man = null: o próximo envio manda todas as partes de novo).
+ */
+async function openRemote(row) {
+  try {
+    return await readRemote(row, null);
+  } catch (err) {
+    if (!err.missing) throw err;
+    const { remote } = await readRemote(row, null, { fill: historyFill(), partial: true });
+    return { remote: remote?.schema == null ? null : remote, man: null, damaged: true }; // sem a parte "meta" não há o que aproveitar
+  }
+}
+
 /**
  * Recifra TUDO com uma frase (nova ou a mesma) num sal novo e com as
  * iterações atuais. Os outros aparelhos vão pedir a frase de novo.
+ * (Os anexos têm chave própria, guardada no estado: não precisam mudar.)
  */
 async function rekeyCloud(passphrase) {
   await pull(); // garante a versão mais recente antes de recriptografar
   const salt = randomSalt();
-  key = await deriveKey(passphrase, salt, PIN_KDF.iterations, { extractable: true });
+  const next = await deriveKey(passphrase, salt, PIN_KDF.iterations, { extractable: true });
+  const old = { key, salt: meta.salt, iterations: meta.iterations, manifest, dirty: meta.dirty, version: meta.version };
+  key = next;
   meta.salt = salt;
   meta.iterations = PIN_KDF.iterations;
   manifest = null; // todas as partes são enviadas de novo, com a chave nova
   meta.dirty = true;
-  await push();
+  try {
+    await push();
+    // outro aparelho salvou no meio (push caiu no pull): a troca não foi aceita
+    if (meta.dirty || meta.version === old.version) throw new CloudError('Outro aparelho salvou ao mesmo tempo. A frase NÃO foi trocada; tente de novo.');
+  } catch (err) {
+    // Volta tudo para a frase antiga: ela continua valendo
+    key = old.key; meta.salt = old.salt; meta.iterations = old.iterations; manifest = old.manifest; meta.dirty = old.dirty;
+    throw err;
+  }
   try { await http(`/rest/v1/${T.versions}?user_id=eq.${uid()}&version=lt.${meta.version}`, { method: 'DELETE' }); } catch { /* ignora */ }
-  await persistKey();
-  await saveMeta();
+  await persistAuth();
   collectGarbage().catch(() => {});
 }
 
-// "Apagar todos os dados" / apagar após tentativas erradas: este aparelho sai da
-// nuvem ANTES (sem chamar o servidor), senão o estado vazio seria enviado.
-store.onReset(({ wipe = false } = {}) => cloud.signOut({ remote: false, quiet: wipe }));
+// ---------- Anexos (Supabase Storage) ----------
+
+const objectPath = (id) => `/storage/v1/object/${BUCKET}/${uid()}/${encodeURIComponent(id)}`;
 
 // ---------- API pública ----------
 
@@ -606,8 +739,8 @@ export const cloud = {
   get deviceId() { return deviceId(); },
   get deviceName() { return localDeviceName(); },
   get remember() { return meta.remember || 'always'; },
-  /** Com PIN numérico a frase só fica na memória (pede de novo ao reabrir). */
-  get rememberLimited() { return memoryOnly(); },
+  /** Há alterações ainda não enviadas? (os dados só existem na memória) */
+  get unsent() { return Boolean(meta.dirty); },
 
   /** Requisição autenticada (usada por push.js, aparelhos etc.). */
   request: (path, opts) => http(path, opts),
@@ -616,9 +749,12 @@ export const cloud = {
 
   setConfig({ url, anonKey }) {
     const clean = { url: String(url || '').trim().replace(/\/+$/, ''), anonKey: String(anonKey || '').trim() };
-    if (!/^https:\/\/[\w.-]+(:\d+)?$/.test(clean.url) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(clean.url)) throw new CloudError('URL inválida. Exemplo: https://abcdefgh.supabase.co');
+    // A política de segurança do app (CSP em index.html) só deixa conectar em *.supabase.co
+    if (!/^https:\/\/[\w-]+\.supabase\.co$/.test(clean.url)) throw new CloudError('Use o endereço do seu projeto no Supabase. Exemplo: https://abcdefgh.supabase.co');
     if (clean.anonKey.length < 20) throw new CloudError('Chave inválida. Copie a chave "anon"/"publishable" inteira.');
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(clean));
+    const changed = clean.url !== readConfig().url;
+    try { localStorage.setItem(CONFIG_KEY, JSON.stringify(clean)); } catch { throw new CloudError('O navegador não deixou guardar a configuração (armazenamento bloqueado).'); }
+    if (changed && session) { this.signOut({ remote: false }); return; } // a sessão era do outro servidor
     setStatus(session ? state.status : 'signedout');
   },
 
@@ -628,48 +764,46 @@ export const cloud = {
     if (ready()) run(() => checkDevice(true));
   },
 
-  /** Carrega sessão/chave salvas e começa a sincronizar. */
-  async init() {
-    session = (await store.getSecure('cloud:session')) || null;
-    meta = { ...EMPTY_META, ...((await getItem('cloud:meta')) || {}) };
-    key = key || await loadKey(); // com PIN numérico a chave pode estar só na memória
-    manifest = (await store.getSecure('cloud:manifest')) || null;
-    state.conflicts = ((await store.getSecure('cloud:conflicts')) || []).length;
+  /**
+   * Abertura do app: lê o login lembrado e, se houver chave, baixa os
+   * dados da nuvem (lança erro se não conseguir — ex.: sem internet).
+   * Sem login: status 'signedout'; com login mas sem a frase: 'locked'.
+   */
+  async init({ open = true } = {}) {
+    await loadAuth();
     if (!this.configured) return setStatus('off');
     if (!session) return setStatus('signedout');
-    if (!key || !meta.linked) return setStatus('locked');
-    if (store.readOnly) return setStatus('error', store.readOnly);
+    if (!key || !open) return setStatus('locked');
+    return this.resume();
+  },
 
-    if (!wired) {
-      wired = true;
-      store.subscribe((reason) => {
-        if (reason === 'security') persistKey();
-        if (!IGNORE.has(reason) && ready()) schedulePush();
-      });
-      const sync = () => { if (ready() && document.visibilityState === 'visible') run(() => pull()); };
-      document.addEventListener('visibilitychange', sync);
-      addEventListener('online', sync);
-      addEventListener('focus', sync);
-      // tenta enviar antes de fechar
-      addEventListener('pagehide', () => { if (ready() && meta.dirty) run(push); });
+  /** Login lembrado: baixa os dados da conta e começa a sincronizar. */
+  async resume() {
+    setStatus('syncing');
+    try {
+      const row = await fetchRow();
+      if (!row) return await this.link('local', null, null); // conta ainda sem dados
+      const { remote, man, damaged } = await openRemote(row);
+      if (!remote) throw new CloudError('Os dados da nuvem estão incompletos. Entre de novo com a frase secreta para recuperá-los.');
+      manifest = man;
+      repairOnLink = damaged;
+      if (damaged) notify(REPAIRED_NOTICE);
+      return await this.link('cloud', remote, row.version);
+    } catch (err) {
+      if (err.badKey) {
+        key = null;
+        await persistAuth();
+        return setStatus('locked', 'A frase secreta foi trocada em outro aparelho. Digite a frase nova.');
+      }
+      setStatus(err.offline ? 'offline' : err.paused ? 'paused' : session ? 'error' : 'signedout', err.message);
+      throw err;
     }
-    startRealtime();
-    schedulePoll();
-    setStatus(meta.dirty ? 'pending' : 'idle');
-    await run(() => pull());
-    if (upgradePass) {
-      // Conta antiga (PBKDF2 com menos iterações): recifra tudo com a proteção atual
-      const p = upgradePass;
-      upgradePass = null;
-      await run(() => rekeyCloud(p));
-    }
-    return undefined;
   },
 
   async signIn(email, password) {
     const s = await http('/auth/v1/token?grant_type=password', { method: 'POST', auth: false, body: { email: String(email).trim(), password } });
-    await saveSession(s);
     if (meta.userId && meta.userId !== s.user?.id) await this.forgetLink(); // outra conta: começa do zero
+    await saveSession(s);
     meta.userId = s.user?.id;
     await rejoinDevice();
     await saveMeta();
@@ -681,6 +815,7 @@ export const cloud = {
     const back = encodeURIComponent(`${location.origin}${location.pathname}`);
     const s = await http(`/auth/v1/signup?redirect_to=${back}`, { method: 'POST', auth: false, body: { email: String(email).trim(), password } });
     if (!s?.access_token) return { needsConfirm: true };
+    if (meta.userId && meta.userId !== s.user?.id) await this.forgetLink();
     await saveSession(s);
     meta.userId = s.user?.id;
     await saveMeta();
@@ -712,20 +847,21 @@ export const cloud = {
       if (err.status === 401 || err.status === 403) throw new CloudError('O link de recuperação expirou ou já foi usado. Peça outro em "Esqueci minha senha".');
       throw err;
     }
-    await saveSession({ ...recovery, expires_in: Number(recovery.expires_in) || 3600, user });
     if (meta.userId && meta.userId !== user?.id) await this.forgetLink();
+    await saveSession({ ...recovery, expires_in: Number(recovery.expires_in) || 3600, user });
     meta.userId = user?.id;
     await rejoinDevice();
     await saveMeta();
-    await this.init();
+    setStatus('locked');
   },
 
+  /** Esquece a chave e as cópias de trabalho (a sessão continua). */
   async forgetLink() {
-    key = null; manifest = null; upgradePass = null;
-    meta = { ...EMPTY_META, remember: meta.remember };
-    await persistKey();
-    await store.setSecure('cloud:manifest', undefined);
-    await store.setSecure('cloud:base', undefined);
+    key = null; manifest = null; upgradePass = null; repairOnLink = false;
+    meta = { ...EMPTY_META, remember: meta.remember, userId: meta.userId };
+    mem.clear();
+    state.conflicts = 0;
+    await persistAuth();
   },
 
   /** Há dados desta conta na nuvem? → { exists, updatedAt, device } */
@@ -735,14 +871,14 @@ export const cloud = {
   },
 
   /**
-   * Define (1º aparelho) ou confere (outros aparelhos) a frase secreta.
-   * remember: 'session' | '30d' | 'always'
-   * → { remote: dadosDaNuvem | null, version }
+   * Define (conta nova) ou confere a frase secreta e abre os dados da nuvem.
+   * remember: 'session' | '30d' | 'always' (por quanto tempo lembrar o login)
+   * → { remote: dadosDaNuvem | null, version, damaged }
    */
   async unlock(passphrase, { remember = 'always' } = {}) {
     if (String(passphrase).length < 8) throw new CloudError('A frase secreta precisa ter pelo menos 8 caracteres.');
     const row = await fetchRow();
-    const salt = row?.data?.salt || meta.salt || randomSalt();
+    const salt = row?.data?.salt || randomSalt();
     const iterations = row ? (row.data?.it || LEGACY_PASS_ITERATIONS) : PIN_KDF.iterations;
     const k = await deriveKey(passphrase, salt, iterations, { extractable: true });
     let remote = null;
@@ -751,24 +887,11 @@ export const cloud = {
     if (row) {
       key = k;
       try {
-        ({ remote, man } = await readRemote(row, null));
+        ({ remote, man, damaged } = await openRemote(row));
       } catch (err) {
-        if (!err.missing) {
-          key = null;
-          if (err.badKey) throw new CloudError('Frase secreta incorreta. É a mesma que você criou no primeiro aparelho.');
-          throw err;
-        }
-        // A frase está certa (o índice abriu), mas faltam partes na nuvem.
-        // Aparelho já ligado: a sincronização completa com os dados dele.
-        // Aparelho novo: usa o histórico de versões e, sem cópia, segue sem aquela parte.
-        damaged = true;
-        if (meta.linked) {
-          meta.dirty = true; // mesmo sem mudanças locais, reenvia todas as partes
-          await store.setSecure('cloud:manifest', undefined);
-        } else {
-          ({ remote } = await readRemote(row, null, { fill: historyFill(), partial: true }));
-          if (remote?.schema == null) remote = null; // sem a parte "meta" não há o que aproveitar
-        }
+        key = null;
+        if (err.badKey) throw new CloudError('Frase secreta incorreta. É a mesma que você criou ao começar a usar a nuvem.');
+        throw err;
       }
     }
     key = k;
@@ -779,43 +902,65 @@ export const cloud = {
     manifest = man;
     repairOnLink = damaged;
     upgradePass = row && iterations < PIN_KDF.iterations ? String(passphrase) : null;
-    await persistKey();
-    await saveMeta();
+    await persistAuth();
     return { remote, version: row?.version ?? null, damaged };
   },
 
-  /** Muda por quanto tempo a frase fica lembrada neste aparelho. */
+  /** Muda por quanto tempo o login fica lembrado neste aparelho. */
   async setRemember(remember) {
     meta.remember = ['session', '30d', 'always'].includes(remember) ? remember : 'always';
     meta.rememberUntil = meta.remember === '30d' ? Date.now() + 30 * 86_400_000 : null;
-    await persistKey();
-    await saveMeta();
+    await persistAuth();
   },
 
   /**
-   * Liga este aparelho à conta.
-   * choice: 'cloud' (usa os dados da nuvem) | 'local' (envia os deste aparelho)
+   * Abre a conta neste aparelho e começa a sincronizar.
+   * choice: 'cloud' (usa os dados da nuvem) | 'local' (envia `data` — ex.:
+   * os dados que uma versão anterior guardava no aparelho — ou começa do zero)
    */
-  async link(choice, remote, version) {
+  async link(choice, data, version) {
     meta.linked = true;
-    if (choice === 'cloud' && remote) {
-      await store.applyRemote(remote);
-      await saveBase(remote);
-      meta.version = version;
+    setStatus('syncing'); // sai de "falta a frase" antes de abrir os dados
+    meta.version = version;
+    const saved = rescue && rescue.userId === meta.userId ? rescue : null;
+    rescue = null;
+    if (choice === 'cloud' && data && saved) {
+      // Havia alterações não enviadas quando a conta fechou: junta item a item com a nuvem
+      const base = saved.base || data;
+      const { state: merged, conflicts } = mergeWithConflicts(base, saved.local, data);
+      store.open(merged);
+      saveBase(data);
+      meta.dirty = true;
+      meta.pending = 1;
+      if (conflicts.length) await addConflicts(conflicts, 'outro aparelho');
+      notify('As alterações que ainda não tinham subido foram juntadas com a nuvem.');
+    } else if (choice === 'cloud' && data) {
+      store.open(data);
+      saveBase(data);
       meta.dirty = repairOnLink; // faltavam partes na nuvem: reenvia todas
+      meta.pending = 0;
       meta.lastSync = Date.now();
     } else {
-      meta.version = version; // sobrescreve a versão atual da nuvem
-      meta.dirty = true;
-      manifest = null; // reenvia todas as partes
+      forceLocal = choice === 'local' && Boolean(data);
+      store.open(data || null);
+      memSet('cloud:base', undefined);
+      meta.dirty = true; // sobrescreve a versão atual da nuvem
+      meta.pending = 1;
+      manifest = null; // envia todas as partes
     }
-    if (!manifest) await store.setSecure('cloud:manifest', undefined); // init() não pode trazer um índice antigo de volta
     repairOnLink = false;
-    await saveMeta();
-    await this.init();
+    await persistAuth();
+    await start();
   },
 
   syncNow() { return run(() => (meta.dirty ? push() : pull())); },
+
+  /** Envia agora o que estiver pendente (antes de sair da conta, por exemplo). */
+  async flush() {
+    clearTimeout(pushTimer);
+    if (ready() && meta.dirty) await run(push);
+    return !meta.dirty;
+  },
 
   /**
    * Troca a frase secreta: deriva uma chave nova, recriptografa TODAS as
@@ -832,6 +977,23 @@ export const cloud = {
     return serial(() => rekeyCloud(next));
   },
 
+  // ---------- Anexos ----------
+
+  /** Envia um arquivo já cifrado (bytes) para o Storage. */
+  async putFile(id, bytes) {
+    if (!session) throw new CloudError('Entre na sua conta para anexar arquivos.');
+    await http(objectPath(id), { method: 'POST', raw: true, body: bytes, headers: { 'Content-Type': 'application/octet-stream', 'x-upsert': 'true' } });
+  },
+
+  /** Baixa um arquivo (bytes ainda cifrados). */
+  async getFile(id) {
+    return new Uint8Array(await http(objectPath(id), { raw: true }));
+  },
+
+  async deleteFile(id) {
+    await http(objectPath(id), { method: 'DELETE' });
+  },
+
   // ---------- Histórico de versões ----------
 
   async listVersions() {
@@ -844,7 +1006,7 @@ export const cloud = {
     const rows = await http(`/rest/v1/${T.versions}?select=manifest&user_id=eq.${uid()}&version=eq.${Number(version)}`);
     if (!rows?.[0]) throw new CloudError('Versão não encontrada.');
     const man = await openManifest(rows[0].manifest, key, { userId: uid(), version: Number(version) });
-    const { state: old } = await loadManifest(man, await store.getSecure('cloud:base'));
+    const { state: old } = await loadManifest(man, memGet('cloud:base'));
     assertSchema(old);
     return old;
   },
@@ -854,13 +1016,12 @@ export const cloud = {
     const old = await this.loadVersion(version);
     await store.replace(old);
     meta.dirty = true;
-    await saveMeta();
     return this.syncNow();
   },
 
   // ---------- Conflitos ----------
 
-  async conflicts() { return (await store.getSecure('cloud:conflicts')) || []; },
+  async conflicts() { return memGet('cloud:conflicts') || []; },
 
   /** choice: 'local' (volta a minha versão) | 'remote' (mantém a da nuvem, que já está valendo) */
   async resolveConflict(id, choice) {
@@ -868,28 +1029,40 @@ export const cloud = {
     const c = list.find((x) => x.id === id);
     if (!c) return;
     if (choice === 'local') {
-      store.commit((d) => { setAtPath(d, c.path, c.local == null ? null : structuredClone(c.local)); });
+      const fields = (c.fields || []).filter((x) => x && x !== '(valor)');
+      store.commit((d) => {
+        if (c.local != null && c.remote != null && fields.length) {
+          // Só os campos que mudaram nos dois: o resto do item fica como veio da nuvem
+          for (const fld of fields) {
+            const sub = fld.split('.');
+            const value = sub.reduce((o, k) => (o == null ? undefined : o[k]), c.local);
+            setAtPath(d, [...c.path, ...sub], value === undefined ? null : structuredClone(value));
+          }
+        } else {
+          setAtPath(d, c.path, c.local == null ? null : structuredClone(c.local));
+        }
+      });
     }
     const rest = list.filter((x) => x.id !== id);
-    await store.setSecure('cloud:conflicts', rest);
+    memSet('cloud:conflicts', rest);
     state.conflicts = rest.length;
     setStatus(state.status, state.error);
   },
 
   async clearConflicts() {
-    await store.setSecure('cloud:conflicts', []);
+    memSet('cloud:conflicts', []);
     state.conflicts = 0;
     setStatus(state.status, state.error);
   },
 
-  /** Cópias completas guardadas (até 3, mais nova primeiro): [{ at, origin, data }] */
-  async conflictBackups() { return conflictCopies(await store.getSecure('cloud:conflict')); },
+  /** Cópias completas guardadas nesta sessão (até 3, mais nova primeiro): [{ at, origin, data }] */
+  async conflictBackups() { return conflictCopies(memGet('cloud:conflict')); },
   /** A cópia mais recente (ou undefined). */
   async conflictBackup() { return (await this.conflictBackups())[0]; },
   /** Descarta uma cópia (pelo `at`) ou todas (sem argumento). */
   async clearConflict(at) {
     const rest = at == null ? [] : (await this.conflictBackups()).filter((c) => c.at !== at);
-    return store.setSecure('cloud:conflict', rest.length ? rest : undefined);
+    return memSet('cloud:conflict', rest.length ? rest : undefined);
   },
 
   // ---------- Aparelhos ----------
@@ -928,16 +1101,25 @@ export const cloud = {
     return { days, warn: days >= PAUSE_DAYS - 2, paused: state.status === 'paused', left: Math.max(0, PAUSE_DAYS - days) };
   },
 
-  /** quiet: sem avisar as telas (dados sendo apagados). */
-  async signOut({ remote = true, quiet = false } = {}) {
+  /**
+   * Sai da conta: os dados saem da memória (o app volta para o exemplo)
+   * e o login lembrado é apagado. Na nuvem, nada muda.
+   */
+  async signOut({ remote = true } = {}) {
+    // Os lembretes push eram desta conta: este aparelho deixa de recebê-los
+    if (session && remote) { try { await (await import('./push.js')).disablePush(); } catch { /* sem push */ } }
+    rescue = null;
+    forceLocal = false;
     clearTimeout(pushTimer);
     clearInterval(pollTimer);
     realtime?.stop();
     realtime = null;
     try { if (session && remote) await http('/auth/v1/logout', { method: 'POST' }); } catch { /* ignora */ }
-    await saveSession(null);
+    session = null;
     await this.forgetLink();
-    await saveMeta();
-    if (!quiet) setStatus(this.configured ? 'signedout' : 'off');
+    meta.userId = null;
+    writeAuth(null);
+    store.close();
+    setStatus(this.configured ? 'signedout' : 'off');
   },
 };

@@ -98,7 +98,3 @@ export const INCOME_KIND_LABELS = {
   plantao: 'Plantão', extra: 'Renda extra', freela: 'Freela', reembolso: 'Reembolso', venda: 'Venda',
   presente: 'Presente', rendimento: 'Rendimento', outro: 'Outra receita',
 };
-export const INCOME_KIND_ICONS = {
-  plantao: 'stethoscope', extra: 'circle-dollar-sign', freela: 'laptop', reembolso: 'rotate-ccw', venda: 'store',
-  presente: 'gift', rendimento: 'trending-up', outro: 'circle-dollar-sign',
-};

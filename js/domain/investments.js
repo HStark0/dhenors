@@ -266,12 +266,13 @@ export function evolution(state, endYM, count = 12, today = todayISO()) {
   });
 }
 
-/** Média de aportes líquidos (aportes − resgates) dos últimos `months` meses fechados. */
+/** Média de aportes líquidos (aportes − resgates e vendas) dos últimos `months` meses fechados. */
 export function averageMonthlyContribution(state, months = 6, today = todayISO()) {
   const range = monthRange(addMonthsYM(ymOf(today), -1), months);
   const movs = (state.investments || []).flatMap((i) => i.movements || []);
   const total = sumCents(range.map((ym) => sumCents(movs.filter((m) => ymOf(m.date) === ym)
-    .map((m) => (m.kind === 'aporte' ? m.cents : m.kind === 'resgate' ? -m.cents : 0)))));
+    // venda de ações/FII também tira dinheiro da carteira, como o resgate
+    .map((m) => (m.kind === 'aporte' ? m.cents : m.kind === 'resgate' || m.kind === 'venda' ? -m.cents : 0)))));
   return Math.max(0, Math.round(total / months));
 }
 

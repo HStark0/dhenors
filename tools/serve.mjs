@@ -33,7 +33,9 @@ http.createServer((req, res) => {
   }
   if (path.endsWith('/')) path += 'index.html';
   const file = resolve(join(root, path));
-  if (!(file === root || file.startsWith(root + sep)) || !existsSync(file) || statSync(file).isDirectory()) {
+  // Nada de arquivos/pastas ocultos (.git, .env…) nem node_modules
+  const hidden = file.slice(root.length).split(/[\\/]+/).some((part) => part.startsWith('.') || part === 'node_modules');
+  if (!(file === root || file.startsWith(root + sep)) || hidden || !existsSync(file) || statSync(file).isDirectory()) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Não encontrado');
     return;

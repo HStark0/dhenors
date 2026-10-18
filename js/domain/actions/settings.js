@@ -5,6 +5,7 @@
 import { store } from '../../core/store.js';
 import { currentYM } from '../../core/dates.js';
 import { ValidationError, text, cents, intRange } from './core.js';
+import { DEFAULT_ALERTS } from '../stateShape.js';
 
 export function updateProfile({ profileName }) {
   return store.commit((d) => {
@@ -17,7 +18,7 @@ export function setSpendingLimit(value) {
 }
 
 export function setTheme(theme) {
-  return store.commit((d) => { d.settings.theme = ['auto', 'light', 'dark', 'oled'].includes(theme) ? theme : 'auto'; });
+  return store.commit((d) => { d.settings.theme = ['auto', 'light', 'dark', 'oled'].includes(theme) ? theme : 'auto'; }, 'appearance');
 }
 
 /** Aparência: tema, cor de destaque, densidade e efeitos (animações). */
@@ -28,7 +29,7 @@ export function setAppearance(patch) {
     if (patch.accent != null) s.accent = ['azul', 'verde', 'roxo', 'laranja', 'rosa'].includes(patch.accent) ? patch.accent : 'azul';
     if (patch.density != null) s.density = patch.density === 'compact' ? 'compact' : 'comfortable';
     if (patch.motion != null) s.motion = ['full', 'calm', 'off'].includes(patch.motion) ? patch.motion : 'full';
-  });
+  }, 'appearance'); // vale também para o visitante (nada é salvo)
 }
 
 export function completeOnboarding({ profileName, salaryCents, salaryDay, dependents = 0 }) {
@@ -69,6 +70,21 @@ export function setReminders({ enabled, daysBefore = 1, mode, push }) {
       mode: ['each', 'daily', 'weekly'].includes(mode) ? mode : prev.mode || 'daily',
       push: push == null ? Boolean(prev.push) : Boolean(push),
     };
+  });
+}
+
+/**
+ * Limites dos alertas e dicas (Ajustes → Geral → Alertas e dicas).
+ * patch = { tightPct?, overspendPct?, bigPct?, push? } — ver DEFAULT_ALERTS.
+ */
+export function setAlerts(patch) {
+  return store.commit((d) => {
+    const cur = { ...DEFAULT_ALERTS, ...(d.settings.alerts || {}) };
+    if (patch.tightPct != null) cur.tightPct = intRange(patch.tightPct, 'tightPct', 0, 50, 'A folga mínima (%)');
+    if (patch.overspendPct != null) cur.overspendPct = intRange(patch.overspendPct, 'overspendPct', 10, 300, 'O limite de gasto exagerado (%)');
+    if (patch.bigPct != null) cur.bigPct = intRange(patch.bigPct, 'bigPct', 1, 100, 'O limite de gasto grande (%)');
+    if (patch.push != null) cur.push = Boolean(patch.push);
+    d.settings.alerts = cur;
   });
 }
 

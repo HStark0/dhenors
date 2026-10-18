@@ -79,10 +79,6 @@ async function readFile(file, dlg, ym) {
   }
 }
 
-/** Texto já extraído (ex.: PDF compartilhado) → revisão direta. */
-export function reviewPayslipText(text, ym = store.ui.ym) {
-  return startReview(text, { close() {} }, ym);
-}
 
 /** Analisa o texto; se achou verbas, abre a revisão. */
 function startReview(text, dlg, ym) {

@@ -89,9 +89,8 @@ a { color: var(--primary-text); text-decoration-thickness: 1px; text-underline-o
    No toque, nenhuma barra aparece (página, janelas, listas, tabelas);
    com mouse/trackpad aparecem barras finas.
    A rolagem continua funcionando com roda do mouse, toque e teclado.
-   Para avisar que há mais conteúdo (ui/scrollHint.js):
-   • áreas internas com [data-scroll-more] ganham um esmaecido com seta;
-   • a página ganha um botão flutuante com seta (.page-cue).          */
+   Para avisar que há mais conteúdo (ui/scrollHint.js), as áreas
+   internas com [data-scroll-more] esmaecem a própria borda de baixo. */
 html, * { scrollbar-width: none; -ms-overflow-style: none; }
 ::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
@@ -106,40 +105,9 @@ html, * { scrollbar-width: none; -ms-overflow-style: none; }
   ::-webkit-scrollbar-track { background: transparent; }
 }
 
-:root {
-  --cue-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A94A6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+/* Tem mais abaixo: o próprio conteúdo esmaece na borda de baixo (máscara).
+   Não pinta nada por cima — funciona sobre qualquer fundo, nos dois temas. */
+[data-scroll-more] {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
 }
-
-/* Esmaecido + seta presos no rodapé da área que rola */
-[data-scroll-more]::after {
-  content: ''; display: block; flex: none;
-  position: sticky; bottom: 0; z-index: 1;
-  height: 40px; margin-top: -40px; pointer-events: none;
-  background:
-    var(--cue-arrow) center bottom 4px / 18px no-repeat,
-    linear-gradient(to bottom, transparent, var(--cue-bg, var(--surface)) 75%);
-  animation: cue-bob 1.6s var(--ease) infinite;
-}
-.dialog__body[data-scroll-more]::after { margin-inline: calc(var(--sp-6) * -1); }
-.sidebar__nav { --cue-bg: var(--surface-glass); }
-@keyframes cue-bob {
-  0%, 100% { background-position: center bottom 4px, 0 0; }
-  50%      { background-position: center bottom 0, 0 0; }
-}
-
-/* Botão flutuante da página */
-.page-cue {
-  position: fixed; left: 50%; z-index: var(--z-nav);
-  bottom: calc(var(--tabbar-h) + 22px + env(safe-area-inset-bottom));
-  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 999px;
-  background: var(--surface); color: var(--muted); border: 1px solid var(--border); box-shadow: var(--shadow);
-  opacity: 0; pointer-events: none; transform: translate(-50%, 8px);
-  transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
-}
-.page-cue.is-visible { opacity: .9; pointer-events: auto; transform: translate(-50%, 0); animation: page-cue-bob 1.6s var(--ease) infinite; }
-.page-cue:hover { opacity: 1; color: var(--text); }
-@keyframes page-cue-bob { 50% { transform: translate(-50%, 3px); } }
-@media (min-width: 1024px) {
-  .page-cue { bottom: 20px; left: calc(50% + (var(--sidebar-w) + 12px) / 2); }
-}
-@media print { .page-cue { display: none; } }

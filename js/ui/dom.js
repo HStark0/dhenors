@@ -44,7 +44,6 @@ export function attrs(obj) {
 }
 
 export const $ = (sel, root = document) => root.querySelector(sel);
-export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 let afterRender = null;
 /** Registra uma função chamada depois de cada render() (usado por select.js). */
@@ -89,11 +88,16 @@ function sameKind(a, b) {
   return a.tagName === b.tagName && !a.hasAttribute('data-enhanced') && keyOf(a) === keyOf(b);
 }
 
+/** Elementos criados pela interface (ex.: indicador das abas) que o morph não apaga. */
+const persistent = (n) => n.nodeType === 1 && n.hasAttribute('data-persist');
+
 function morphChildren(from, to) {
   const keyed = new Map();
   for (const n of from.childNodes) { const k = keyOf(n); if (k) keyed.set(k, n); }
   let cursor = from.firstChild;
+  const skip = () => { while (cursor && persistent(cursor)) cursor = cursor.nextSibling; };
   for (const next of [...to.childNodes]) {
+    skip();
     const k = keyOf(next);
     let match = null;
     if (k && keyed.has(k) && sameKind(keyed.get(k), next)) match = keyed.get(k);
@@ -107,7 +111,7 @@ function morphChildren(from, to) {
       from.insertBefore(next, cursor);
     }
   }
-  while (cursor) { const after = cursor.nextSibling; from.removeChild(cursor); cursor = after; }
+  while (cursor) { const after = cursor.nextSibling; if (!persistent(cursor)) from.removeChild(cursor); cursor = after; }
 }
 
 function morphNode(a, b) {

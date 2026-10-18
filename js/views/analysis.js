@@ -21,6 +21,11 @@ import {
   buildSnapshot, monthlyReport, yearWrapped,
 } from '../domain/analysis.js';
 import { financialScore, scoreHistory } from '../domain/planning.js';
+import { adviceFor } from '../domain/advice.js';
+import { futureWeight, futureWeightSummary } from '../domain/weights.js';
+import { yearPlan } from '../domain/yearplan.js';
+import { adviceList, monthStrip, weightList } from '../ui/outlookUI.js';
+import { helpTip } from '../ui/help.js';
 import * as A from '../domain/actions.js';
 import { APP_VERSION } from '../version.js';
 
@@ -48,7 +53,7 @@ export default {
     'an:period': (el) => store.setUI({ filters: { ...store.ui.filters, analysisMonths: Number(el.dataset.months) } }),
     'an:month': (el) => report(el.dataset.key),
     'an:category': (el) => {
-      store.setUI({ filters: { ...store.ui.filters, bills: { ...(store.ui.filters.bills || {}), category: el.dataset.id } } });
+      store.setUI({ filters: { ...store.ui.filters, bills: { ...(store.ui.filters.bills || {}), category: el.dataset.id, status: '' } } });
       location.hash = '#/contas?aba=mes';
     },
     'cmp:preset': (el) => store.setUI({ filters: { ...store.ui.filters, cmp: presets()[el.dataset.preset] } }),
@@ -100,6 +105,9 @@ function period() {
   const proj = projection(d, currentYM(), 6, today);
   const ending = endingInstallments(d, currentYM()).slice(0, 8);
   const anomalies = spendingAnomalies(d, ym, today);
+  const advice = adviceFor(d, ym, today);
+  const weight = futureWeight(d, ym, today);
+  const outlook = yearPlan(d, currentYM(), 12, today).months.slice(0, 6);
 
   return html`
     <div class="page-head">
@@ -127,6 +135,20 @@ function period() {
         </ul>
         <p class="field__hint">Comparado com a mediana dos últimos 6 meses (só aparece com pelo menos 3 meses de histórico).</p>
       </article>` : ''}
+
+    <section class="grid grid--two grid--top">
+      <article class="card">
+        <header class="card__header"><h2 class="card__title">${icon('lightbulb')} Dicas para ${formatMonth(ym)} e os próximos meses ${helpTip('dicas')}</h2></header>
+        ${adviceList(advice, { limit: 5 })}
+      </article>
+      <article class="card">
+        <header class="card__header"><h2 class="card__title">${icon('hourglass')} O que ${formatMonth(ym)} deixa para depois ${helpTip('pesoFuturo')}</h2></header>
+        ${weight.count ? html`
+          <p class="small"><strong>${futureWeightSummary(weight)}.</strong></p>
+          ${weightList(weight, 8)}`
+        : html`<p class="muted small">Nada lançado neste mês continua comprometendo os próximos.</p>`}
+      </article>
+    </section>
 
     <section class="grid grid--two">
       <article class="card">
@@ -165,11 +187,12 @@ function period() {
 
     <article class="card">
       <header class="card__header"><h2 class="card__title">${icon('trending-up')} Projeção dos próximos 6 meses</h2></header>
-      <p class="muted small">Considera salário, recorrentes, parcelas e faturas agendadas e uma estimativa de gastos avulsos (mediana dos últimos 3 meses). Renda extra futura só entra se já estiver lançada.</p>
+      <p class="muted small">Considera salário, 13º, férias, benefícios, receitas recorrentes, recorrentes, parcelas e faturas agendadas e uma estimativa de gastos avulsos (mediana dos últimos 3 meses; gastos grandes somam por cima). Renda extra avulsa futura só entra se já estiver lançada.</p>
       ${lineChart(proj.map((p) => formatMonthShort(p.ym)), [
         { name: 'Saldo projetado', values: proj.map((p) => p.balance), className: 'is-balance' },
         { name: 'Compromissos', values: proj.map((p) => p.spent), className: 'is-spent', dashed: true },
       ], { label: 'Projeção de saldo e compromissos', width: chartWidth(1) })}
+      ${monthStrip(outlook)}
     </article>
 
     <section class="grid grid--two">
@@ -380,7 +403,7 @@ export function report(ym) {
               </tbody>
             </table>
           </div>` : html`<p class="muted small">Nenhum lançamento.</p>`}
-        <footer class="report__foot">Gerado pelo Dhenors ${APP_VERSION} em ${formatDateBR(today)} · dados do seu aparelho</footer>
+        <footer class="report__foot">Gerado pelo Dhenors ${APP_VERSION} em ${formatDateBR(today)}</footer>
       </div>`,
     onMount: (dlg) => dlg.querySelector('[data-print]').addEventListener('click', () => {
       document.body.classList.add('is-printing');
