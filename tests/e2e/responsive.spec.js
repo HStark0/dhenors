@@ -64,6 +64,10 @@ function inspect(mobile) {
   const visible = (el) => {
     const st = getComputedStyle(el);
     if (st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) === 0) return false;
+    // Dentro de um <details> fechado (fora do <summary>) nada é desenhado; o
+    // Chromium não faz o layout desse conteúdo e devolve medidas sem sentido.
+    const closed = el.parentElement?.closest('details:not([open])');
+    if (closed && ![...closed.children].some((c) => c.tagName === 'SUMMARY' && c.contains(el))) return false;
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
   };
