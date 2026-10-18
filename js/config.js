@@ -23,7 +23,7 @@
 export const CLOUD_CONFIG = {
   url: 'https://ftyagpdnvmllduhlrvef.supabase.co',
   anonKey: 'sb_publishable_8lJK-xkt6l-T9P238_bTpg_SeE0b6GN',
-  vapidPublicKey: '',
+  vapidPublicKey: 'BLEBehHaAW2f361UMEBvj8nhalQCPEa2VglZ9D4YoPpF-uatts1925SUHt3kQXL7CTnQWw4Ql13XIHzDlgOUYsM',
 };
 
 export const MARKET_CONFIG = {
