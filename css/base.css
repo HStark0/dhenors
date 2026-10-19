@@ -86,24 +86,13 @@ a { color: var(--primary-text); text-decoration-thickness: 1px; text-underline-o
 }
 
 /* ---------- Barras de rolagem ----------
-   No toque, nenhuma barra aparece (página, janelas, listas, tabelas);
-   com mouse/trackpad aparecem barras finas.
-   A rolagem continua funcionando com roda do mouse, toque e teclado.
+   Nenhuma barra aparece, nem no toque nem com mouse/trackpad
+   (página, janelas, listas, tabelas). A rolagem continua funcionando
+   com roda do mouse, toque, trackpad e teclado.
    Para avisar que há mais conteúdo (ui/scrollHint.js), as áreas
    internas com [data-scroll-more] esmaecem a própria borda de baixo. */
 html, * { scrollbar-width: none; -ms-overflow-style: none; }
 ::-webkit-scrollbar { display: none; width: 0; height: 0; }
-
-/* Mouse/trackpad (pointer: fine): barras FINAS de volta, para quem
-   arrasta a barra ou não usa roda (acessibilidade). No toque, seguem
-   escondidas. As tabelas e listas horizontais continuam com o esmaecido. */
-@media (pointer: fine) {
-  html, * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; -ms-overflow-style: auto; }
-  ::-webkit-scrollbar { display: block; width: 8px; height: 8px; }
-  ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
-  ::-webkit-scrollbar-track { background: transparent; }
-}
 
 /* Tem mais abaixo: o próprio conteúdo esmaece na borda de baixo (máscara).
    Não pinta nada por cima — funciona sobre qualquer fundo, nos dois temas. */
