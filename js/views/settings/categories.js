@@ -13,8 +13,8 @@ import { toast } from '../../ui/toast.js';
 import * as E from '../../ui/editors.js';
 import { store } from '../../core/store.js';
 import { formatBRL, toCents, percent, plural } from '../../core/money.js';
-import { formatMonth, todayISO, formatDateBR, formatMonthShort } from '../../core/dates.js';
-import { computeMonth, creditorOutstanding, installmentSummary } from '../../domain/ledger.js';
+import { formatMonth, todayISO, formatDateBR, formatMonthShort, ymOf } from '../../core/dates.js';
+import { computeMonth, creditorOutstanding, creditorMonthly, installmentSummary } from '../../domain/ledger.js';
 import { GROUP_LABELS, EMOJI_ICONS } from '../../domain/defaults.js';
 import * as A from '../../domain/actions.js';
 
@@ -137,13 +137,44 @@ export function renderCreditors() {
               </span>
             </li>`)}
         </ul>
-      </article>` : html`
+      </article>
+      ${monthlyTable(rows.map((r) => r.c), today)}` : html`
       <div class="card empty">
         ${icon('handshake', 'icon--lg')}
         <p><strong>Ninguém cadastrado.</strong></p>
         <p class="muted">Associe contas e parcelamentos a um banco, loja ou pessoa para saber quanto deve a cada um — e quanto te devem.</p>
         <button type="button" class="btn btn--primary" data-action="cred:new">${icon('plus')} Nova</button>
       </div>`}`;
+}
+
+/**
+ * Saldo devedor de cada credor mês a mês (até 12 meses, cortando
+ * os meses em que já não deve nada a ninguém).
+ */
+function monthlyTable(creditors, today) {
+  const d = store.data;
+  const per = creditors
+    .map((c) => ({ c, months: creditorMonthly(d, c.id, ymOf(today), 12, today) }))
+    .filter((x) => x.months.some((m) => m.balanceCents || m.dueCents));
+  if (!per.length) return '';
+  const last = Math.max(...per.map((x) => x.months.findLastIndex((m) => m.balanceCents || m.dueCents)));
+  const months = per[0].months.slice(0, last + 1).map((m) => m.ym);
+  const totals = months.map((_, i) => per.reduce((a, x) => a + x.months[i].balanceCents, 0));
+  const cell = (m) => html`<td class="money">${formatBRL(m.balanceCents)}${m.dueCents ? html`<br><small class="muted">paga ${formatBRL(m.dueCents)}</small>` : ''}</td>`;
+  return html`
+    <article class="card">
+      <h2 class="card__title">${icon('calendar')} Saldo devedor mês a mês</h2>
+      <p class="muted small">Quanto você ainda deve a cada um no início do mês e, embaixo, quanto vence naquele mês. Contas atrasadas entram no mês atual; recorrentes contam só no "paga".</p>
+      <div class="table-wrap">
+        <table class="table table--compact">
+          <thead><tr><th scope="col">Credor</th>${months.map((ym) => html`<th scope="col">${formatMonthShort(ym)}</th>`)}</tr></thead>
+          <tbody>
+            ${per.map((x) => html`<tr><th scope="row">${x.c.name}</th>${x.months.slice(0, months.length).map(cell)}</tr>`)}
+          </tbody>
+          ${per.length > 1 ? html`<tfoot><tr><th scope="row">Total</th>${totals.map((t) => html`<td class="money"><strong>${formatBRL(t)}</strong></td>`)}</tr></tfoot>` : ''}
+        </table>
+      </div>
+    </article>`;
 }
 
 const findCred = (el) => store.data.creditors.find((c) => c.id === el.dataset.id);
@@ -158,10 +189,14 @@ function details(c) {
   const installments = d.installments.filter((i) => i.creditorId === c.id).map((i) => ({ i, s: installmentSummary(i) })).filter((x) => !x.s.finished);
   const recurring = d.recurring.filter((r) => r.creditorId === c.id && !r.endYM);
   const owes = (d.receivables || []).filter((r) => r.creditorId === c.id && !r.receivedAt);
+  const today = todayISO();
+  const months = creditorMonthly(d, c.id, ymOf(today), 12, today).filter((m) => m.balanceCents || m.dueCents);
   openDialog({
     title: c.name,
     body: html`
       ${c.notes ? html`<p class="dialog__text muted">${c.notes}</p>` : ''}
+      ${months.length ? html`<h3 class="dialog__subtitle">Saldo devedor por mês</h3><ul class="mini-list">${months.map((m) => html`
+        <li><span>${formatMonth(m.ym)} <small class="muted">${m.dueCents ? `paga ${formatBRL(m.dueCents)}` : 'nada vence'}</small></span><span class="money">${formatBRL(m.balanceCents)}</span></li>`)}</ul>` : ''}
       <h3 class="dialog__subtitle">Contas em aberto</h3>
       ${expenses.length ? html`<ul class="mini-list">${expenses.map((e) => html`
         <li><span>${e.description} <small class="muted">${formatDateBR(e.dueDate)}</small></span><span class="money">${formatBRL(e.cents)}</span></li>`)}</ul>`

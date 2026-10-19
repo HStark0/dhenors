@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 import { toCents, splitCents, formatBRL, percent } from '../js/core/money.js';
 import { addMonthsYM, addMonthsISO, dateInMonth, nextPayday, diffDays, monthRange } from '../js/core/dates.js';
-import { installmentSchedule, installmentInMonth, computeMonth, entryKey, overdueBefore, goalPlan } from '../js/domain/ledger.js';
+import { installmentSchedule, installmentInMonth, computeMonth, entryKey, overdueBefore, goalPlan, creditorMonthly } from '../js/domain/ledger.js';
 import { createEmptyState, sanitizeState } from '../js/domain/schema.js';
 import { payrollProfileFor, computePayroll, payrollFor, thirteenthFor, thirteenthMonths, inssBandFor } from '../js/domain/payroll.js';
 import { tablesFor } from '../js/domain/taxTables.js';
@@ -298,4 +298,20 @@ test('líquido conferido no holerite substitui a estimativa', () => {
   const m = computeMonth(s, '2026-10', '2026-10-12');
   assert.equal(m.income.total, 412345);
   assert.notEqual(m.income.estimatedNet, 412345);
+});
+
+test('saldo devedor do credor mês a mês', () => {
+  const s = createEmptyState();
+  s.creditors = [{ id: 'c1', name: 'Banco', notes: '' }];
+  // 4 parcelas de R$ 100 (set a dez), a 1ª já paga
+  s.installments = [{ id: 'i1', description: 'TV', totalCents: 40000, count: 4, firstDueDate: '2026-09-10', dueDay: 10, paid: [1], creditorId: 'c1' }];
+  // conta avulsa atrasada de agosto: entra no mês atual
+  s.expenses = [{ id: 'e1', description: 'Acordo', cents: 5000, dueDate: '2026-08-20', paidAt: null, creditorId: 'c1' }];
+  const rows = creditorMonthly(s, 'c1', '2026-10', 4, '2026-10-05');
+  assert.deepEqual(rows.map((r) => [r.ym, r.balanceCents, r.dueCents]), [
+    ['2026-10', 35000, 15000],
+    ['2026-11', 20000, 10000],
+    ['2026-12', 10000, 10000],
+    ['2027-01', 0, 0],
+  ]);
 });

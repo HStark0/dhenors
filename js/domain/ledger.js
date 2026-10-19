@@ -419,6 +419,43 @@ export function creditorOutstanding(state, creditorId, today = todayISO()) {
 }
 
 /**
+ * Saldo devedor de um credor mês a mês, a partir de `fromYM`.
+ * → [{ ym, dueCents, recurringCents, balanceCents }]
+ *   balanceCents   = quanto ainda deve no início do mês (contas avulsas e
+ *                    parcelas em aberto que vencem no mês ou depois)
+ *   dueCents       = quanto vence no mês (as atrasadas entram no 1º mês)
+ *   recurringCents = parte de dueCents que é conta recorrente (não tem
+ *                    saldo: se repete todo mês, então não entra no saldo)
+ */
+export function creditorMonthly(state, creditorId, fromYM, months = 12, today = todayISO()) {
+  const debts = []; // { ym, cents } — dívida com fim (entra no saldo)
+  const at = (iso) => (ymOf(iso) < fromYM ? fromYM : ymOf(iso));
+  for (const e of state.expenses) if (e.creditorId === creditorId && !e.paidAt) debts.push({ ym: at(e.dueDate), cents: e.cents });
+  for (const inst of state.installments) {
+    if (inst.creditorId !== creditorId) continue;
+    for (const p of installmentSchedule(inst)) if (!p.paid) debts.push({ ym: at(p.dueDate), cents: p.cents });
+  }
+  // recorrentes atrasadas de meses anteriores viram dívida no 1º mês
+  for (const item of overdueBefore(state, fromYM, today)) {
+    if (item.kind === 'recurring' && item.creditorId === creditorId) debts.push({ ym: fromYM, cents: item.cents });
+  }
+  const rows = [];
+  for (let i = 0; i < months; i++) {
+    const ym = addMonthsYM(fromYM, i);
+    const recurringCents = sumCents(monthItems(state, ym, today)
+      .filter((x) => x.kind === 'recurring' && x.creditorId === creditorId && x.status !== 'paid')
+      .map((x) => x.cents));
+    rows.push({
+      ym,
+      dueCents: sumCents(debts.filter((x) => x.ym === ym).map((x) => x.cents)) + recurringCents,
+      recurringCents,
+      balanceCents: sumCents(debts.filter((x) => x.ym >= ym).map((x) => x.cents)),
+    });
+  }
+  return rows;
+}
+
+/**
  * Quanto falta guardar por mês para bater a meta no prazo.
  * `linkedCents` = valor atual dos investimentos ligados à meta (a meta
  * "Viagem" usa o CDB X): conta como guardado, sem duplicar.
