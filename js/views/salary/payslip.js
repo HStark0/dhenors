@@ -261,7 +261,7 @@ function baseCardBody(profile, ym) {
       <dl class="kv kv--stack">
         <div><span>Dependentes</span><strong>${profile.dependents || 0}</strong></div>
         <div><span>Vale desde</span><strong>${formatMonthShort(profile.from)}</strong></div>
-        <div><span>Tabelas INSS/IR</span><strong class="${tables.missing ? 'state--warn' : ''}">${tables.year}${tables.custom ? ' (suas)' : ''}${tables.missing ? ' ⚠' : ''}</strong></div>
+        <div><span>Tabelas INSS/IR</span><strong class="${tables.missing ? 'state--warn' : ''}">${tables.year}${tables.custom ? ' (suas)' : ''}${tables.missing ? html` ${icon('triangle-alert', 'icon--xs')}` : ''}</strong></div>
         <div><span>Previdência</span><strong>${emp.regime === 'fixed' ? `${formatPercent(emp.fixedRateBp / 100, 2)} fixo` : 'INSS'}</strong></div>
         <div><span>Admissão</span><strong>${emp.admission ? formatDateBR(emp.admission) : '—'}</strong></div>
         <div><span>13º automático</span><strong>${emp.thirteenth ? 'Sim' : 'Não'}</strong></div>

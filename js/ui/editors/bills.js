@@ -20,6 +20,7 @@ import {
 } from '../../core/dates.js';
 import * as A from '../../domain/actions.js';
 import { installmentSummary, entryKey, planInstallment, FREQ_LABELS, FREQ_DAYS, computeMonth } from '../../domain/ledger.js';
+import { trackingStartYM } from '../../domain/tracking.js';
 import { bindImpact } from '../outlookUI.js';
 import { parseBoleto, formatLine } from '../../domain/boleto.js';
 import { parsePix } from '../../domain/pix.js';
@@ -488,7 +489,7 @@ export function editInstallment(inst = null) {
   // Valores iniciais: na edição, deduz parcela, pagas e próximo vencimento do cadastro atual
   let init;
   if (inst) {
-    const s = installmentSummary(inst);
+    const s = installmentSummary(inst, trackingStartYM(data()));
     init = { ...inst, parcelCents: Math.round(inst.totalCents / inst.count), paidCount: s.paidCount, nextDueDate: s.nextOpen?.dueDate || nextPayday(inst.dueDay), dueDay: inst.dueDay };
   } else {
     init = { description: '', parcelCents: null, count: 10, paidCount: 0, dueDay: 10, nextDueDate: nextPayday(10), tags: [] };
@@ -585,7 +586,7 @@ export function installmentDetails(instId) {
   const render = () => {
     const inst = data().installments.find((x) => x.id === instId);
     if (!inst) return html`<p>Parcelamento removido.</p>`;
-    const s = installmentSummary(inst);
+    const s = installmentSummary(inst, trackingStartYM(data()));
     return html`
       <div class="kv">
         <div><span>Total</span><strong>${formatBRL(inst.totalCents)}</strong></div>

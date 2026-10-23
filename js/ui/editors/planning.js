@@ -1,5 +1,5 @@
 // =============================================================
-// editors/planning.js — Metas, desejos e envelopes
+// editors/planning.js — Reservas, desejos e envelopes
 // =============================================================
 
 import { html } from '../dom.js';
@@ -13,11 +13,12 @@ import { store } from '../../core/store.js';
 import { toCents, formatBRL } from '../../core/money.js';
 import { todayISO } from '../../core/dates.js';
 import * as A from '../../domain/actions.js';
-import { goalProgress } from '../../domain/planning.js';
+import { goalProgress, goalTarget } from '../../domain/planning.js';
+import { GOAL_KINDS } from '../../domain/goals.js';
 import { positionAt, investingOf } from '../../domain/investments.js';
 
 const data = () => store.data;
-const GOAL_ICONS = ['🎯', '✈️', '🏠', '🚗', '🎓', '💍', '🛡️', '💻', '📱', '🏖️', '👶', '🐷'];
+const GOAL_ICONS = ['i:shield', 'i:shopping-bag', 'i:coins', 'i:piggy-bank', 'i:plane', 'i:graduation-cap', 'i:tree-palm', 'i:target', 'i:house', 'i:car', 'i:heart', 'i:laptop', 'i:smartphone', 'i:baby', 'i:gift', 'i:trophy'];
 
 export function iconPicker(name, icons, selected, { svg = false } = {}) {
   const list = icons.includes(selected) ? icons : [selected, ...icons];
@@ -34,48 +35,96 @@ export function iconPicker(name, icons, selected, { svg = false } = {}) {
     </fieldset>`;
 }
 
-// ---------- Metas ----------
+// ---------- Reservas (antigas "Metas") ----------
 
-export function editGoal(goal = null) {
-  const g = goal || { description: '', targetCents: null, deadline: '', icon: '🎯', emergency: false, investmentIds: [] };
+/** Escolha do tipo da reserva (ver GOAL_KINDS em domain/goals.js). */
+function kindPicker(selected, locked) {
+  return html`
+    <fieldset class="field field--full picker">
+      <legend class="field__label">Para que é esta reserva?</legend>
+      <div class="kind-grid">
+        ${GOAL_KINDS.map((k) => html`
+          <label class="kind-opt">
+            <input type="radio" name="kind" value="${k.id}" ${k.id === selected ? 'checked' : ''} ${locked && k.id !== selected ? 'disabled' : ''}>
+            <span><span class="kind-opt__icon" aria-hidden="true">${icon(k.icon.slice(2))}</span><strong>${k.label}</strong><small>${k.hint}</small></span>
+          </label>`)}
+      </div>
+      ${locked ? html`<p class="field__hint">A Reserva de emergência é padrão em toda conta: o tipo não muda e ela não pode ser excluída.</p>` : ''}
+    </fieldset>`;
+}
+
+export function editGoal(goal = null, preset = {}) {
+  const g = goal || { description: '', kind: 'compra', targetCents: null, autoTarget: false, deadline: '', icon: 'i:shopping-bag', investmentIds: [], ...preset };
   const invs = data().investments || [];
   const taken = new Map(data().goals.filter((x) => x.id !== goal?.id).flatMap((x) => (x.investmentIds || []).map((id) => [id, x.description])));
   const investing = investingOf(data().settings);
+  const autoNow = goalTarget(data(), { ...g, autoTarget: true });
   openDialog({
-    title: goal ? 'Editar meta' : 'Nova meta',
-    submitLabel: goal ? 'Salvar' : 'Criar meta',
+    title: goal ? 'Editar reserva' : 'Nova reserva',
+    submitLabel: goal ? 'Salvar' : 'Criar reserva',
     body: html`
       <div class="form-grid">
-        ${field({ label: 'Objetivo', name: 'description', value: g.description, required: true, placeholder: 'Ex.: Reserva de emergência, Viagem', full: true, extra: { maxlength: 120 } })}
-        ${moneyField({ label: 'Valor da meta', name: 'targetCents', cents: g.targetCents })}
-        ${dateField({ label: 'Prazo (opcional)', name: 'deadline', value: g.deadline || '', required: false, min: todayISO() })}
+        ${kindPicker(g.kind || (g.emergency ? 'emergencia' : 'outro'), Boolean(g.system))}
+        ${field({ label: 'Nome', name: 'description', value: g.description, required: true, placeholder: 'Ex.: Carro novo, Viagem de férias', full: true, extra: { maxlength: 120 } })}
+        <div class="field field--full" data-show="emergencia">
+          ${switchField({ label: 'Calcular o alvo sozinho', name: 'autoTarget', checked: g.autoTarget, hint: `6 meses dos seus gastos${autoNow ? `: hoje, ${formatBRL(autoNow)}` : ' (aparece quando houver gastos lançados)'}. Atualiza sozinho.` })}
+        </div>
+        <div data-target>${moneyField({ label: 'Valor alvo', name: 'targetCents', cents: g.autoTarget ? null : g.targetCents, required: false })}</div>
+        <div data-hide="mensal">${dateField({ label: 'Prazo (opcional)', name: 'deadline', value: g.deadline || '', required: false, min: todayISO() })}</div>
         ${goal ? '' : moneyField({ label: 'Já guardado (opcional)', name: 'initialCents', required: false, hint: 'Fora dos investimentos ligados abaixo.' })}
-        ${switchField({ label: 'É a minha reserva de emergência', name: 'emergency', checked: g.emergency, hint: 'Entra na Saúde financeira. O app não adivinha mais pelo nome.' })}
         ${invs.length ? html`
           <fieldset class="field field--full">
-            <legend class="field__label">Ligar a investimentos (o dinheiro da meta está aplicado)</legend>
-            <p class="field__hint">O saldo desses investimentos conta como guardado na meta — sem contar em dobro na reserva.</p>
+            <legend class="field__label">Ligar a investimentos (o dinheiro da reserva está aplicado)</legend>
+            <p class="field__hint">O saldo desses investimentos conta como guardado na reserva, sem contar em dobro.</p>
             <div class="check-list">
               ${invs.map((inv) => html`
                 <label class="check check--sm ${taken.has(inv.id) ? 'is-disabled' : ''}">
                   <input type="checkbox" name="inv" value="${inv.id}" ${(g.investmentIds || []).includes(inv.id) ? 'checked' : ''} ${taken.has(inv.id) ? 'disabled' : ''}>
                   <span class="stack-text"><span>${inv.name}</span>
-                    <small class="muted">${formatBRL(positionAt(inv, investing, todayISO(), data().settings.quotes).value)}${taken.has(inv.id) ? ` · já na meta "${taken.get(inv.id)}"` : ''}</small></span>
+                    <small class="muted">${formatBRL(positionAt(inv, investing, todayISO(), data().settings.quotes).value)}${taken.has(inv.id) ? ` · já na reserva "${taken.get(inv.id)}"` : ''}</small></span>
                 </label>`)}
             </div>
           </fieldset>` : ''}
-        ${iconPicker('icon', GOAL_ICONS, g.icon)}
+        ${iconPicker('icon', GOAL_ICONS, g.icon, { svg: true })}
       </div>`,
+    onMount: (dlg) => {
+      const form = dlg.querySelector('form') || dlg;
+      const sync = (ev) => {
+        const kind = form.querySelector('[name="kind"]:checked')?.value || 'outro';
+        const auto = kind === 'emergencia' && form.querySelector('[name="autoTarget"]')?.checked;
+        form.querySelectorAll('[data-show]').forEach((el) => { el.hidden = el.dataset.show !== kind; });
+        form.querySelectorAll('[data-hide]').forEach((el) => { el.hidden = el.dataset.hide === kind; });
+        const target = form.querySelector('[data-target]');
+        target.hidden = auto;
+        const label = target.querySelector('.field__label');
+        if (label) label.textContent = kind === 'mensal' ? 'Quanto guardar por mês' : 'Valor alvo';
+        // trocou o tipo: o ícone acompanha (se ainda era o ícone de um tipo)
+        if (ev?.target?.name === 'kind') {
+          const icon = GOAL_KINDS.find((k) => k.id === kind)?.icon;
+          const current = form.querySelector('[name="icon"]:checked')?.value;
+          if (icon && (!current || GOAL_KINDS.some((k) => k.icon === current))) {
+            const opt = form.querySelector(`[name="icon"][value="${icon}"]`);
+            if (opt) opt.checked = true;
+          }
+        }
+      };
+      form.addEventListener('change', sync);
+      sync();
+    },
     onSubmit: (form) => {
       const v = readForm(form);
+      const kind = form.querySelector('[name="kind"]:checked')?.value || 'outro';
+      const autoTarget = kind === 'emergencia' && Boolean(form.autoTarget?.checked);
+      const targetCents = autoTarget ? 0 : toCents(v.targetCents || '');
+      if (!autoTarget && !(targetCents > 0)) throw new A.ValidationError(kind === 'mensal' ? 'Informe quanto guardar por mês.' : 'Informe o valor alvo.', 'targetCents');
       A.saveGoal({
-        ...v, id: goal?.id, targetCents: toCents(v.targetCents), deadline: v.deadline || null,
+        description: v.description, id: goal?.id, kind, autoTarget, targetCents,
+        deadline: kind === 'mensal' ? null : v.deadline || null,
         initialCents: v.initialCents ? toCents(v.initialCents) : 0,
-        icon: form.querySelector('[name="icon"]:checked')?.value || '🎯',
-        emergency: form.emergency.checked,
+        icon: form.querySelector('[name="icon"]:checked')?.value || 'i:target',
         investmentIds: [...form.querySelectorAll('[name="inv"]:checked')].map((el) => el.value),
       });
-      toast(goal ? 'Meta atualizada.' : 'Meta criada.');
+      toast(goal ? 'Reserva atualizada.' : 'Reserva criada.');
     },
   });
 }
@@ -87,7 +136,7 @@ export function contributeGoal(goal, withdraw = false) {
     size: 'sm',
     submitLabel: withdraw ? 'Retirar' : 'Guardar',
     body: html`
-      <p class="dialog__text muted">Guardado: ${formatBRL(plan.saved)} de ${formatBRL(goal.targetCents)}
+      <p class="dialog__text muted">${plan.monthly ? `Neste mês: ${formatBRL(plan.monthSaved)} de ${formatBRL(plan.target)}` : `Guardado: ${formatBRL(plan.saved)}${plan.target ? ` de ${formatBRL(plan.target)}` : ''}`}
         ${plan.linked ? html` (${formatBRL(plan.linked)} nos investimentos ligados)` : ''}
         ${plan.perMonth ? html` · sugestão: ${formatBRL(plan.perMonth)}/mês` : ''}</p>
       ${moneyField({ label: 'Valor', name: 'cents', cents: !withdraw && plan.perMonth ? plan.perMonth : null })}
@@ -99,7 +148,7 @@ export function contributeGoal(goal, withdraw = false) {
       if (r?.reached) {
         confetti();
         buzz([20, 40, 20]);
-        toast(`Meta "${goal.description}" alcançada!`, { duration: 7000 });
+        toast(`Reserva "${goal.description}" completa!`, { duration: 7000 });
       } else toast(withdraw ? 'Retirada registrada.' : 'Valor guardado.');
     },
   });
@@ -120,7 +169,7 @@ export function editWish(wish = null) {
         ${moneyField({ label: 'Preço hoje', name: 'currentPriceCents', cents: w.currentPriceCents, required: false, hint: 'Atualize de vez em quando: o app avisa quando chegar no alvo.' })}
         ${field({ label: 'Link (opcional)', name: 'url', value: w.url, full: true, type: 'url', placeholder: 'https://…' })}
         ${selectField({ label: 'Prioridade', name: 'priority', value: w.priority, options: [{ value: 'alta', label: 'Alta' }, { value: 'media', label: 'Média' }, { value: 'baixa', label: 'Baixa' }] })}
-        ${selectField({ label: 'Juntar dinheiro na meta', name: 'goalId', value: w.goalId || '', options: [{ value: '', label: 'Nenhuma' }, ...data().goals.map((g) => ({ value: g.id, label: g.description }))] })}
+        ${selectField({ label: 'Juntar dinheiro na reserva', name: 'goalId', value: w.goalId || '', options: [{ value: '', label: 'Nenhuma' }, ...data().goals.map((g) => ({ value: g.id, label: g.description }))] })}
       </div>`,
     onSubmit: (form) => {
       const v = readForm(form);
@@ -133,7 +182,7 @@ export function editWish(wish = null) {
 // ---------- Envelopes ----------
 
 export function editEnvelope(env = null) {
-  const e = env || { name: '', icon: '🫙', monthlyCents: null, categoryIds: [], rollover: true };
+  const e = env || { name: '', icon: 'i:inbox', monthlyCents: null, categoryIds: [], rollover: true };
   const used = new Map((data().settings.envelopes || []).filter((x) => x.id !== env?.id).flatMap((x) => x.categoryIds.map((id) => [id, x.name])));
   openDialog({
     title: env ? 'Editar envelope' : 'Novo envelope',

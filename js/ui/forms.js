@@ -196,7 +196,7 @@ export function readSplits(root) {
 /** Texto curto de categoria para listas sem HTML (selects): emoji antigo + nome, ou só o nome. */
 export function catText(c) {
   if (!c) return 'Sem categoria';
-  return String(c.icon || '').startsWith('i:') ? c.name : `${c.icon} ${c.name}`;
+  return c.name;
 }
 
 export function dateField({ label, name, value = '', required = true, hint = '', min = '', max = '' }) {

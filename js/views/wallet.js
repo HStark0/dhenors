@@ -98,7 +98,10 @@ function cards() {
                 <h3>${c.name}</h3>
                 <p class="muted small">fecha dia ${c.closingDay} · vence dia ${c.dueDay}</p>
               </div>
-              <button type="button" class="icon-btn" data-action="card:edit" data-id="${c.id}" aria-label="Editar ${c.name}">${icon('pencil')}</button>
+              <span class="entity__icons">
+                <button type="button" class="icon-btn" data-action="card:edit" data-id="${c.id}" aria-label="Editar ${c.name}">${icon('pencil')}</button>
+                <button type="button" class="icon-btn danger" data-action="card:delete" data-id="${c.id}" aria-label="Excluir ${c.name}">${icon('trash-2')}</button>
+              </span>
             </header>
             <div class="credit-card__invoice">
               <p class="small muted">Fatura de ${formatMonth(next.ym)} · ${next.status === 'open' ? `fecha em ${next.daysToClose} ${next.daysToClose === 1 ? 'dia' : 'dias'}` : 'fechada'}</p>
@@ -115,7 +118,6 @@ function cards() {
               <button type="button" class="btn btn--primary btn--sm" data-action="card:buy" data-id="${c.id}">${icon('plus', 'icon--xs')} Compra</button>
               <button type="button" class="btn btn--secondary btn--sm" data-action="card:invoice" data-id="${c.id}" data-ym="${next.ym}">Fatura atual</button>
               ${prev.total > 0 ? html`<button type="button" class="btn btn--ghost btn--sm" data-action="card:invoice" data-id="${c.id}" data-ym="${prevYM}">Anterior</button>` : ''}
-              <button type="button" class="icon-btn danger" data-action="card:delete" data-id="${c.id}" aria-label="Excluir ${c.name}">${icon('trash-2')}</button>
             </footer>
           </article>`;
       })}

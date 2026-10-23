@@ -36,6 +36,13 @@ import { yearPlan } from '../domain/yearplan.js';
 import { STATUS_LABELS, STATUS_TONES, STATUS_ICONS } from '../domain/monthStatus.js';
 import { statusBadge, monthStrip, adviceList, weightList } from '../ui/outlookUI.js';
 import { flipLayout } from '../ui/motion.js';
+import { PARCEL_LIMIT_OPTIONS, AVERAGE_FROM, parcelLimitPct, parcelLimit, fixedIncome, monthOutflow } from '../domain/parcelLimit.js';
+import { RESERVE_OPTIONS, RESERVE_AVERAGE_FROM, reservePct, reserveStatus } from '../domain/reserve.js';
+import { accountsSummary } from '../domain/accounts.js';
+import { trackingStartYM } from '../domain/tracking.js';
+import { toIconValue } from '../domain/defaults.js';
+import { creditorsMonthCard } from '../ui/creditorsCard.js';
+import { employerIncomeFn } from '../domain/planning.js';
 
 const FILTERS = [
   { id: 'pending', label: 'A pagar' },
@@ -50,12 +57,17 @@ const FILTERS = [
  * quem já organizou o painel (ver dashboardOrder).
  */
 const CARDS = [
+  { id: 'balance', label: 'Saldo do mês', wide: true },
+  { id: 'parcels', label: 'Limite das parcelas', wide: true },
+  { id: 'reserve', label: 'Reserva de emergência', wide: true },
+  { id: 'flow', label: 'O que entra, fica e sai', wide: true },
   { id: 'summary', label: 'Salário, ganhos e gastos', wide: true },
   { id: 'outlook', label: 'Próximos 12 meses', wide: true },
   { id: 'checklist', label: 'Complete seu perfil' },
   { id: 'older', label: 'Atrasadas de meses anteriores' },
   { id: 'limit', label: 'Meta de gastos' },
   { id: 'bills', label: 'Contas do mês' },
+  { id: 'creditors', label: 'Credores do mês' },
   { id: 'actions', label: 'O que fazer agora' },
   { id: 'tips', label: 'Dicas para o seu dinheiro' },
   { id: 'weight', label: 'Gastos que pesam no futuro' },
@@ -124,6 +136,7 @@ export default {
 
     return html`
       ${pauseBanner()}
+      ${beforeStartBanner(d, ym)}
       ${backupReminder(d)}
       ${lead.length ? html`<section class="dash-lead">${lead.map((r) => r.block)}</section>` : ''}
 
@@ -160,6 +173,8 @@ export default {
     'dash:go': (el) => { location.hash = el.dataset.route; },
     'dash:salary': () => E.editSalaryBase(store.ui.ym), // o mês exibido no Painel
     'limit:edit': () => E.editSpendingLimit(),
+    'parcel:pct': (el) => A.setParcelLimitPct(Number(el.dataset.pct)),
+    'reserve:pct': (el) => A.setReservePct(Number(el.dataset.pct)),
     'extra:new': () => E.editExtraIncome(),
     'extra:new-outside': () => E.editExtraIncome(null, { preset: { description: 'Freela', kind: 'freela', payroll: false } }),
     'extra:edit': (el) => E.editExtraIncome(store.data.extraIncomes.find((x) => x.id === el.dataset.id)),
@@ -283,7 +298,6 @@ function summaryCard({ d, m, ym, isCurrent, today }) {
   const mm = monthMoney(d, ym, today);
   const room = isCurrent ? spendingRoom(d, today) : null;
   const canClose = ym <= currentYM() && !m.closed;
-  const negative = mm.balance < 0;
   const tone = mm.status === 'ok' && (mm.spending.overdue > 0 || (room && room.free <= 0)) ? 'warn' : STATUS_TONES[mm.status];
   const sal = mm.salary;
   const row = outlookRow(d, ym, today);
@@ -344,23 +358,6 @@ function summaryCard({ d, m, ym, isCurrent, today }) {
         </section>
       </div>
 
-      <div class="summary__balance">
-        ${commitRing(mm.committedPct, mm.status)}
-        <div class="summary__balance-text">
-          <p class="sfig__label">Saldo do mês · ganhos − gastos ${helpTip('saldoPrevisto')}</p>
-          <p class="summary__big summary__big--${mm.status} money ${negative ? 'neg' : ''}">${negative ? '−' : '+'}${formatBRL(Math.abs(mm.balance))}</p>
-          <p class="summary__status summary__status--${mm.status}">${icon(STATUS_ICONS[mm.status], 'icon--xs')} ${STATUS_SENTENCE[mm.status](mm)}</p>
-        </div>
-        ${mm.thirteenth ? html`
-          <div class="hero__mini" aria-label="13º salário, pago à parte">
-            <p class="hero__mini-label">${icon('sparkles', 'icon--xs')} 13º salário · ${mm.thirteenth.part === 1 ? '1ª' : '2ª'} parcela</p>
-            <p class="hero__mini-value money">${formatBRL(mm.thirteenth.net)}</p>
-            <p class="hero__mini-note">até ${mm.thirteenth.part === 1 ? '30/11' : '20/12'} · fora do saldo do mês</p>
-          </div>` : ''}
-      </div>
-
-      ${mm.earnings || mm.spending.total ? moneyStack(mm) : ''}
-
       <div class="summary__notes">
         ${showForecast ? html`
           <button type="button" class="summary__note" data-action="outlook:month" data-ym="${ym}">
@@ -381,6 +378,219 @@ function summaryCard({ d, m, ym, isCurrent, today }) {
             : html`<strong>Sem folga</strong> até o salário: faltam ${formatBRL(-room.free)}`}</span>
           <span class="hero__split">${formatBRL(room.dueBefore)} vencem antes do salário · ${formatBRL(room.dueAfter)} depois${room.source === 'accounts' ? ' · pelo saldo das suas contas' : ''}</span>
         </div>` : ''}
+    </article>`;
+}
+
+// ---------- Topo: saldo do mês, limite das parcelas e fluxo ----------
+
+/** Primeiro destaque: saldo do mês (ganhos − gastos), quanto está comprometido e como está pago. */
+function balanceCard({ d, ym, today, isCurrent }) {
+  const mm = monthMoney(d, ym, today);
+  const room = isCurrent ? spendingRoom(d, today) : null;
+  const tone = mm.status === 'ok' && (mm.spending.overdue > 0 || (room && room.free <= 0)) ? 'warn' : STATUS_TONES[mm.status];
+  const negative = mm.balance < 0;
+  return html`
+    <article class="card summary mbalance tone-${tone}" data-key="balance" aria-labelledby="mbalance-title">
+      <div class="mbalance__row">
+      <div class="summary__balance">
+        ${commitRing(mm.committedPct, mm.status)}
+        <div class="summary__balance-text">
+          <p class="sfig__label" id="mbalance-title"><span class="hero__label-long">Saldo de ${formatMonth(ym)} · ganhos − gastos</span><span class="hero__label-short">Saldo de ${formatMonthShort(ym)}</span> ${helpTip('saldoPrevisto')}</p>
+          <p class="summary__big summary__big--${mm.status} money ${negative ? 'neg' : ''}">${negative ? '−' : '+'}${formatBRL(Math.abs(mm.balance))}</p>
+          <p class="summary__status summary__status--${mm.status}">${icon(STATUS_ICONS[mm.status], 'icon--xs')} ${STATUS_SENTENCE[mm.status](mm)}</p>
+          <p class="mbalance__eq">Total do mês <strong class="money pos">${formatBRL(mm.earnings)}</strong> − gastos <strong class="money">${formatBRL(mm.spending.total)}</strong></p>
+          ${mm.earnings ? '' : html`<button type="button" class="btn btn--secondary btn--sm" data-action="dash:salary">${icon('plus', 'icon--xs')} Cadastrar salário</button>`}
+        </div>
+        ${mm.thirteenth ? html`
+          <div class="hero__mini" aria-label="13º salário, pago à parte">
+            <p class="hero__mini-label">${icon('sparkles', 'icon--xs')} 13º salário · ${mm.thirteenth.part === 1 ? '1ª' : '2ª'} parcela</p>
+            <p class="hero__mini-value money">${formatBRL(mm.thirteenth.net)}</p>
+            <p class="hero__mini-note">até ${mm.thirteenth.part === 1 ? '30/11' : '20/12'} · fora do saldo do mês</p>
+          </div>` : ''}
+      </div>
+      ${mm.earnings || mm.spending.total ? html`<div class="mbalance__stack">${moneyStack(mm)}</div>` : ''}
+      </div>
+    </article>`;
+}
+
+const PARCEL_STATUS = {
+  within: { label: 'Dentro do limite', tone: 'good', icon: 'circle-check' },
+  average: { label: 'Na média', tone: 'warn', icon: 'triangle-alert' },
+  over: { label: 'Acima do limite', tone: 'bad', icon: 'circle-alert' },
+  none: { label: 'Sem ganhos fixos', tone: 'info', icon: 'info' },
+};
+const TIP_ICON = { good: 'trending-up', warn: 'triangle-alert', bad: 'circle-alert', info: 'lightbulb' };
+
+/** Seletor 10/20/30%: o destaque desliza até a opção escolhida (--i). */
+function pctSelector(options, pct, action, label) {
+  return html`
+    <div class="plimit__seg" role="radiogroup" aria-label="${label}" style="--i:${options.indexOf(pct)};--n:${options.length}">
+      <span class="plimit__thumb" aria-hidden="true"></span>
+      ${options.map((p) => html`
+        <button type="button" role="radio" class="plimit__opt" data-action="${action}" data-pct="${p}" aria-checked="${p === pct}">${p}%</button>`)}
+    </div>`;
+}
+
+/** "Como melhorar": recomendações automáticas de um card. */
+function tipsBlock(tips) {
+  if (!tips.length) return '';
+  return html`
+    <div class="plimit__tips">
+      <p class="plimit__tips-title">${icon('lightbulb', 'icon--xs')} Como melhorar</p>
+      <ul>${tips.map((t) => html`<li class="plimit__tip plimit__tip--${t.tone}">${icon(TIP_ICON[t.tone] || 'info', 'icon--xs')}<span>${t.text}${t.route ? html` <a class="link" href="${t.route}">Abrir</a>` : ''}</span></li>`)}</ul>
+    </div>`;
+}
+
+/** Seletor 10/20/30% + status das parcelas do mês sobre os ganhos fixos + como melhorar. */
+function parcelCard({ d, ym, today }) {
+  const pct = parcelLimitPct(d.settings);
+  const r = parcelLimit(d, ym, pct, today);
+  const st = PARCEL_STATUS[r.status];
+  // Escala da barra: o limite fica a 80% da largura (sobra espaço para o "acima")
+  const scale = Math.max(r.limitCents / 0.8, r.total, 1);
+  const fill = Math.min(100, (r.total / scale) * 100);
+  const mark = Math.min(100, (r.limitCents / scale) * 100);
+  const desc = r.status === 'none' ? 'Sem salário ou ganho fixo neste mês para comparar.'
+    : !r.parcels.length ? `Nenhuma parcela neste mês. O limite de ${pct}% seria ${formatBRL(r.limitCents)}.`
+    : `${formatBRL(r.total)} em parcelas sobre ${formatBRL(r.fixedIncome)} de ganhos fixos.`;
+  return html`
+    <article class="card plimit tone-${st.tone}" data-key="parcels">
+      <header class="card__header">
+        <h2 class="card__title">${icon('percent')} Limite das parcelas ${helpTip('limiteParcelas')}</h2>
+        ${pctSelector(PARCEL_LIMIT_OPTIONS, pct, 'parcel:pct', 'Limite das parcelas sobre os ganhos fixos')}
+      </header>
+
+      <section class="pstatus pstatus--${r.status}" aria-live="polite">
+        <span class="pstatus__icon">${icon(st.icon)}</span>
+        <div class="pstatus__text">
+          <p class="pstatus__label">${st.label}</p>
+          <p class="pstatus__desc">${desc}</p>
+        </div>
+        ${r.status === 'none' ? '' : html`<p class="pstatus__pct"><strong>${formatPercent(r.usedPct, 1)}</strong><small>da renda fixa · meta ${pct}%</small></p>`}
+      </section>
+
+      ${r.status === 'none' ? '' : html`
+        <div class="pbar" role="img" aria-label="Parcelas: ${formatPercent(r.usedPct, 1)} dos ganhos fixos; limite ${pct}%">
+          <span class="pbar__fill pbar__fill--${r.status}" style="width:${fill.toFixed(2)}%"></span>
+          <span class="pbar__mark pbar__mark--avg" style="left:${(mark * AVERAGE_FROM).toFixed(2)}%" title="Na média a partir de ${formatPercent(pct * AVERAGE_FROM, 1)}"></span>
+          <span class="pbar__mark" style="left:${mark.toFixed(2)}%"><small>${pct}%</small></span>
+        </div>
+        <dl class="plimit__figs">
+          <div><dt>Parcelas do mês</dt><dd class="money">${formatBRL(r.total)}</dd></div>
+          <div><dt>Limite (${pct}% dos fixos)</dt><dd class="money">${formatBRL(r.limitCents)}</dd></div>
+          <div><dt>${r.room >= 0 ? 'Ainda cabe' : 'Passou do limite'}</dt><dd class="money ${r.room >= 0 ? 'pos' : 'neg'}">${formatBRL(Math.abs(r.room))}</dd></div>
+        </dl>`}
+
+      ${r.parcels.length ? html`
+        <ul class="mini-list mini-list--compact plimit__list">
+          ${r.parcels.slice(0, 4).map((p) => html`<li><span class="stack-text">${p.label} <small class="muted">${p.count > 1 ? `${p.n}/${p.count}` : ''}${p.card ? ` · ${p.card}` : ''}</small></span><span class="money">${formatBRL(p.cents)}</span></li>`)}
+          ${r.parcels.length > 4 ? html`<li class="muted small"><span>+ ${plural(r.parcels.length - 4, 'outra parcela', 'outras parcelas')}</span><span class="money">${formatBRL(sumCents(r.parcels.slice(4).map((p) => p.cents)))}</span></li>` : ''}
+        </ul>` : ''}
+
+      ${tipsBlock(r.tips)}
+    </article>`;
+}
+
+const RESERVE_STATUS = {
+  within: { label: 'Dentro da reserva', tone: 'good', icon: 'circle-check' },
+  average: { label: 'Na média', tone: 'warn', icon: 'triangle-alert' },
+  below: { label: 'Abaixo da reserva', tone: 'bad', icon: 'circle-alert' },
+  none: { label: 'Sem ganhos fixos', tone: 'info', icon: 'info' },
+};
+
+/** Seletor 10/20/30% + quanto foi guardado na reserva de emergência no mês × o percentual. */
+function reserveCard({ d, ym, today }) {
+  const pct = reservePct(d.settings);
+  const r = reserveStatus(d, ym, pct, today);
+  const st = RESERVE_STATUS[r.status];
+  // Escala da barra: a meta fica a 80% da largura (sobra espaço para o que passar)
+  const scale = Math.max(r.targetCents / 0.8, r.saved, 1);
+  const fill = Math.min(100, (Math.max(0, r.saved) / scale) * 100);
+  const mark = Math.min(100, (r.targetCents / scale) * 100);
+  const desc = r.status === 'none' ? 'Sem salário ou ganho fixo neste mês para calcular.'
+    : r.saved > 0 ? `${formatBRL(r.saved)} guardados na reserva de emergência neste mês.`
+    : `Nada guardado na reserva de emergência neste mês. A meta de ${pct}% é ${formatBRL(r.targetCents)}.`;
+  return html`
+    <article class="card plimit reserve tone-${st.tone}" data-key="reserve">
+      <header class="card__header">
+        <h2 class="card__title">${icon('shield-check')} Reserva de emergência ${helpTip('reservaMensal')}</h2>
+        ${pctSelector(RESERVE_OPTIONS, pct, 'reserve:pct', 'Quanto guardar na reserva sobre os ganhos fixos')}
+      </header>
+
+      <section class="pstatus pstatus--${r.status}" aria-live="polite">
+        <span class="pstatus__icon">${icon(st.icon)}</span>
+        <div class="pstatus__text">
+          <p class="pstatus__label">${st.label}</p>
+          <p class="pstatus__desc">${desc}</p>
+        </div>
+        ${r.status === 'none' ? '' : html`<p class="pstatus__pct"><strong>${formatPercent(r.savedPct, 1)}</strong><small>da renda fixa · meta ${pct}%</small></p>`}
+      </section>
+
+      ${r.status === 'none' ? '' : html`
+        <div class="pbar" role="img" aria-label="Guardado: ${formatPercent(r.savedPct, 1)} dos ganhos fixos; meta ${pct}%">
+          <span class="pbar__fill pbar__fill--${r.status}" style="width:${fill.toFixed(2)}%"></span>
+          <span class="pbar__mark pbar__mark--avg" style="left:${(mark * RESERVE_AVERAGE_FROM).toFixed(2)}%" title="Na média a partir de ${formatPercent(pct * RESERVE_AVERAGE_FROM, 1)}"></span>
+          <span class="pbar__mark" style="left:${mark.toFixed(2)}%"><small>${pct}%</small></span>
+        </div>
+        <dl class="plimit__figs">
+          <div><dt>Guardado no mês</dt><dd class="money">${formatBRL(r.saved)}</dd></div>
+          <div><dt>Meta (${pct}% dos fixos)</dt><dd class="money">${formatBRL(r.targetCents)}</dd></div>
+          <div><dt>${r.missing ? 'Falta guardar' : 'Reserva acumulada'}</dt><dd class="money ${r.missing ? 'neg' : 'pos'}">${formatBRL(r.missing || r.total)}</dd></div>
+        </dl>`}
+
+      ${tipsBlock(r.tips)}
+    </article>`;
+}
+
+/** Transparência: o que entra (fixos × variáveis), o que fica (saldo e reservas) e o que sai. */
+function flowCard({ d, ym, today, isCurrent }) {
+  const inc = fixedIncome(d, ym, today);
+  const out = monthOutflow(d, ym, today);
+  if (!inc.total && !out.total) return '';
+  const balance = inc.total - out.total;
+  const pf = d.investments?.length ? portfolio(d, today) : null;
+  const acc = (d.accounts || []).some((a) => !a.archived) ? accountsSummary(d, today, { salaryFn: employerIncomeFn(d) }) : null;
+  const share = (c) => (inc.total > 0 ? formatPercent(percent(c, inc.total)) : '');
+  const reserves = [
+    ...(pf && isCurrent ? [{ label: 'Aportado no mês', cents: pf.month.net }] : []),
+    ...(pf?.emergency ? [{ label: 'Reserva de emergência', cents: pf.emergency }] : []),
+    ...(pf ? [{ label: 'Investido no total', cents: pf.totals.value }] : []),
+    ...(acc ? [{ label: 'Saldo nas contas hoje', cents: acc.total }] : []),
+  ];
+  const lines = (list, empty) => (list.length
+    ? html`<ul class="flow__lines">${list.map((x) => html`<li><span>${x.label}</span><span class="money">${formatBRL(x.cents)}</span></li>`)}</ul>`
+    : html`<p class="muted small">${empty}</p>`);
+  return html`
+    <article class="card flow" data-key="flow">
+      <header class="card__header">
+        <h2 class="card__title">${icon('arrow-left-right')} <span class="hero__label-long">O que entra, o que fica, o que sai</span><span class="hero__label-short">Entra, fica e sai</span></h2>
+        <a class="link small" href="#/analise">Análise ${icon('arrow-right', 'icon--xs')}</a>
+      </header>
+      <div class="flow__cols">
+        <section class="flow__col flow__col--in" aria-label="O que entra">
+          <p class="flow__head">${icon('arrow-down-right', 'icon--xs')} Entra <strong class="money">${formatBRL(inc.total)}</strong></p>
+          <p class="flow__group"><span>Ganhos fixos ${helpTip('ganhosFixos')}</span><strong class="money">${formatBRL(inc.fixed.total)}</strong></p>
+          ${lines(inc.fixed.list, 'Nenhum ganho fixo cadastrado.')}
+          <p class="flow__group"><span>Variáveis e extras</span><strong class="money">${formatBRL(Math.max(0, inc.variable.total))}</strong></p>
+          ${lines(inc.variable.list, 'Nenhum ganho variável neste mês.')}
+        </section>
+        <section class="flow__col flow__col--keep" aria-label="O que fica">
+          <p class="flow__head">${icon('piggy-bank', 'icon--xs')} Fica <strong class="money ${balance < 0 ? 'neg' : ''}">${balance < 0 ? '−' : ''}${formatBRL(Math.abs(balance))}</strong></p>
+          <p class="flow__group"><span>Reservas</span></p>
+          ${reserves.length ? lines(reserves) : html`<p class="muted small">Nada guardado ainda. <a class="link" href="#/reservas">Guardar na reserva</a></p>`}
+        </section>
+        <section class="flow__col flow__col--out" aria-label="O que sai">
+          <p class="flow__head">${icon('arrow-up-right', 'icon--xs')} Sai <strong class="money">${formatBRL(out.total)}</strong></p>
+          <ul class="flow__lines flow__lines--bars">
+            ${out.list.map((x) => html`
+              <li class="${x.cents ? '' : 'is-zero'}">
+                <span>${x.label}</span><span class="money">${formatBRL(x.cents)}</span>
+                <span class="flow__bar" aria-hidden="true"><span style="width:${out.total ? ((x.cents / out.total) * 100).toFixed(2) : 0}%"></span></span>
+                ${inc.total ? html`<small class="muted">${share(x.cents)} dos ganhos</small>` : ''}
+              </li>`)}
+          </ul>
+        </section>
+      </div>
     </article>`;
 }
 
@@ -533,6 +743,10 @@ function count(items, kind) {
 // ---------- Blocos do painel ----------
 
 const BLOCKS = {
+  balance: (ctx) => balanceCard(ctx),
+  parcels: (ctx) => parcelCard(ctx),
+  reserve: (ctx) => reserveCard(ctx),
+  flow: (ctx) => flowCard(ctx),
   summary: (ctx) => summaryCard(ctx),
 
   outlook: ({ d, ym, today }) => {
@@ -561,6 +775,8 @@ const BLOCKS = {
   },
 
   limit: (ctx) => limitCard(ctx),
+
+  creditors: ({ d, ym, today }) => creditorsMonthCard(d, ym, today, { limit: 5 }),
 
   tips: ({ d, ym, today }) => {
     if (!d.settings.salaryHistory.length && !d.expenses.length && !d.recurring.length) return '';
@@ -762,7 +978,7 @@ const BLOCKS = {
         <ul class="budgets">
           ${list.map((e) => html`
             <li class="budget">
-              <span class="budget__name">${e.env.icon} ${e.env.name}</span>
+              <span class="budget__name">${icon(toIconValue(e.env.icon, 'i:inbox').slice(2), 'icon--xs')} ${e.env.name}</span>
               <span class="budget__value ${e.left < 0 ? 'state--over' : ''}">${formatBRL(e.left)} restam</span>
               ${meter(Math.min(e.spent, e.available), { max: e.available || 1, label: e.env.name, tone: e.left < 0 ? 'over' : e.pct > 80 ? 'warn' : '' })}
               <small class="muted">${formatBRL(e.spent)} de ${formatBRL(e.available)}${e.carry ? ` (inclui ${formatBRL(e.carry)} que sobrou)` : ''}</small>
@@ -864,7 +1080,7 @@ const BLOCKS = {
         ${barChart(series.map((s) => formatMonthShort(s.ym)), [
           { name: 'Renda', values: series.map((s) => s.income), className: 'is-income' },
           { name: 'Gastos', values: series.map((s) => s.spent), className: 'is-spent' },
-        ], { label: 'Renda, gastos e saldo dos últimos 6 meses', width: chartWidth(1), line: { name: 'Saldo', values: series.map((s) => s.balance), className: 'is-balance' }, action: 'dash:month', keys: series.map((s) => s.ym) })}
+        ], { label: 'Renda, gastos e saldo dos últimos 6 meses', width: chartWidth(0.5), line: { name: 'Saldo', values: series.map((s) => s.balance), className: 'is-balance' }, action: 'dash:month', keys: series.map((s) => s.ym) })}
         <p class="muted small">Passe o mouse (ou toque) para ver os valores; clique num mês para abrir o relatório.</p>
       </article>`;
   },
@@ -883,6 +1099,18 @@ function emptyList(filter, m) {
   return html`<div class="empty empty--sm">${filter === 'pending'
     ? html`${icon('circle-check', 'icon--lg pos')}<p><strong>Tudo pago neste mês!</strong></p>`
     : html`<p class="muted">Nenhuma conta paga ainda.</p>`}</div>`;
+}
+
+/** Mês de antes de a pessoa usar o app: explica por que está vazio (ver tracking.js). */
+function beforeStartBanner(d, ym) {
+  const start = trackingStartYM(d);
+  if (!start || ym >= start || d.closedMonths[ym]) return '';
+  return html`
+    <div class="banner" role="note">
+      ${icon('info')}
+      <p>Você começou a usar o app em <strong>${formatMonth(start)}</strong>. Antes disso, recorrentes, parcelas, faturas e salário não contam: aparecem só os lançamentos avulsos que você registrou.</p>
+      <a class="btn btn--secondary btn--sm" href="#/ajustes?aba=geral">Mudar o início</a>
+    </div>`;
 }
 
 function backupReminder(d) {

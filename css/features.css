@@ -204,7 +204,6 @@ kbd {
 .cat-icon--md .icon { width: 20px; height: 20px; }
 .cat-icon--lg { width: 44px; height: 44px; border-radius: 14px; }
 .cat-icon--lg .icon { width: 24px; height: 24px; }
-.cat-icon__emoji { font-size: .95em; line-height: 1; }
 
 /* ---------- Estados das contas ---------- */
 .item { transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease); }

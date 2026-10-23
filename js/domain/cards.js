@@ -18,6 +18,7 @@
 
 import { splitCents, sumCents } from '../core/money.js';
 import { addMonthsYM, dateInMonth, ymOf, todayISO, diffDays } from '../core/dates.js';
+import { beforeStart } from './tracking.js';
 import { recurringDates, entryKey, FREQ_DAYS } from './recurrence.js';
 
 export const invoiceKey = (cardId, ym) => `${cardId}|${ym}`;
@@ -125,7 +126,9 @@ export function invoice(state, card, ym, today = todayISO()) {
   const total = sumCents(lines.map((l) => l.cents));
   const { closing, due } = invoiceDates(card, ym);
   const pay = state.cardInvoices?.[invoiceKey(card.id, ym)] || {};
-  const status = pay.paidAt ? 'paid' : today >= closing ? 'closed' : 'open';
+  // Fatura de antes de a pessoa usar o app: paga (ver tracking.js)
+  const assumed = !pay.paidAt && beforeStart(state, ym);
+  const status = pay.paidAt || assumed ? 'paid' : today >= closing ? 'closed' : 'open';
   const byCat = new Map();
   for (const l of lines) {
     if (l.purchase.locked) continue; // crédito da fatura anterior não é gasto de nenhuma categoria
@@ -171,7 +174,7 @@ export function cardUsage(state, card, today = todayISO()) {
   // para a outra, que já está na soma do mês em que nasceu). Cobrança recorrente
   // futura ainda não aconteceu: não ocupa limite.
   for (const ym of months) {
-    if (state.cardInvoices?.[invoiceKey(card.id, ym)]?.paidAt) continue;
+    if (state.cardInvoices?.[invoiceKey(card.id, ym)]?.paidAt || beforeStart(state, ym)) continue;
     used += sumCents(invoiceLines(state, card, ym).filter((l) => !(l.purchase.recurringId && l.purchase.date > today)).map((l) => l.cents));
   }
   const limit = card.limitCents || 0;

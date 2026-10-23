@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { toCents } from '../js/core/money.js';
-import { createEmptyState, sanitizeProfile, sanitizeState } from '../js/domain/schema.js';
+import { sanitizeProfile, sanitizeState } from '../js/domain/schema.js';
 import { positionAt, DEFAULT_INVESTING } from '../js/domain/investments.js';
 import { stockSalesTax } from '../js/domain/investPlus.js';
 import { parsePayslipText, sideOf } from '../js/domain/payslip.js';
@@ -16,11 +16,12 @@ import { parseCardInvoice, alignToInvoice } from '../js/domain/cardInvoice.js';
 import { daysFor, vacationFor, vacationSplit, payrollFor, inssFor, irReductionFor } from '../js/domain/payroll.js';
 import { tablesFor } from '../js/domain/taxTables.js';
 import { parseCSV, parseOFX, fingerprint } from '../js/domain/importer.js';
+import { emptyState } from './helpers.mjs';
 
 // ---------- C3: IR na venda parcial de ações ----------
 
 function stockState(movements) {
-  const s = createEmptyState();
+  const s = emptyState();
   s.investments = [{
     id: 'itsa', name: 'ITSA4', type: 'acoes', ticker: 'ITSA4', institution: '', rate: { kind: 'none', bp: 0 },
     liquidity: 'd2', maturity: null, emergency: false, notes: '', movements,
@@ -98,7 +99,7 @@ test('M7: sobreaviso com value 0 não some na restauração', () => {
   assert.equal(p.additions.length, 1);
   assert.equal(p.additions[0].hourKind, 'sobreaviso');
   assert.equal(p.additions[0].value, 0);
-  const raw = createEmptyState();
+  const raw = emptyState();
   raw.settings.salaryHistory = [{ from: '2026-01', grossCents: 500000, dependents: 0, additions: [line], deductions: [] }];
   const back = sanitizeState(JSON.parse(JSON.stringify(raw)));
   assert.equal(back.settings.salaryHistory[0].additions[0].id, 'sa1');
@@ -107,7 +108,7 @@ test('M7: sobreaviso com value 0 não some na restauração', () => {
 // ---------- M8: recorrente anual no cartão ----------
 
 test('M8: assinatura no cartão entra na fatura que fecha depois da cobrança, no ritmo dela', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   const card = { id: 'c1', name: 'Cartão', closingDay: 3, dueDay: 10 };
   s.cards = [card];
   s.recurring = [
@@ -150,7 +151,7 @@ test('M9: a mesma compra parcelada tem a mesma impressão digital em faturas seg
 // ---------- M10/M11: férias ----------
 
 function vacationSettings(vacation) {
-  const s = createEmptyState().settings;
+  const s = emptyState().settings;
   s.salaryHistory = [{ from: '2026-01', grossCents: 600000, dependents: 0, additions: [], deductions: [] }];
   s.vacations = [{ id: 'v1', sellDays: 0, advance13: false, ...vacation }];
   return s;

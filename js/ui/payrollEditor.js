@@ -406,7 +406,7 @@ export function editPayrollLine(ym, kind, line = null) {
           form.loanCount.focus();
         }
       });
-      // Trocar R$ ↔ % limpa o valor (as unidades são diferentes)
+      // Trocar entre R$ e % limpa o valor (as unidades são diferentes)
       for (const r of form.querySelectorAll('[name="mode"]')) {
         r.addEventListener('change', () => {
           form.value.value = '';

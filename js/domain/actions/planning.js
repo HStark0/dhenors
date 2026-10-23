@@ -11,18 +11,26 @@ import { recurringActiveIn, recurringDates, variableEstimate, FREQ_DAYS } from '
 import { buildSnapshot, monthlyReport } from '../analysis.js';
 import { financialScore } from '../planning.js';
 import { ValidationError, text, cents, date, findOrThrow, entry } from './core.js';
+import { GOAL_KIND_IDS } from '../goals.js';
+import { toIconValue } from '../defaults.js';
 
-// ---------- Metas ----------
+// ---------- Reservas (antigas "Metas") ----------
 
 export function saveGoal(input) {
   return store.commit((d) => {
     const invIds = new Set((d.investments || []).map((i) => i.id));
+    const current = input.id ? findOrThrow(d.goals, input.id, 'Reserva') : null;
+    // A reserva padrão é sempre de emergência; o tipo das outras vem do formulário
+    const kind = current?.system || input.emergency === true ? 'emergencia' : GOAL_KIND_IDS.includes(input.kind) ? input.kind : 'outro';
+    const autoTarget = kind === 'emergencia' && input.autoTarget === true;
     const item = {
-      description: text(input.description, 'description', 'a descrição'),
-      targetCents: cents(input.targetCents, 'targetCents'),
-      deadline: date(input.deadline, 'deadline', { required: false }),
-      icon: text(input.icon || '🎯', 'icon', 'o ícone', { max: 24 }),
-      emergency: input.emergency === true,
+      description: text(input.description, 'description', 'o nome'),
+      kind,
+      autoTarget,
+      targetCents: autoTarget ? 0 : cents(input.targetCents, 'targetCents'),
+      deadline: kind === 'mensal' ? null : date(input.deadline, 'deadline', { required: false }),
+      icon: toIconValue(input.icon, 'i:target'),
+      emergency: kind === 'emergencia',
       investmentIds: [...new Set((input.investmentIds || []).filter((id) => invIds.has(id)))],
     };
     // Um investimento só pode estar ligado a uma meta (senão contaria em dobro)
@@ -31,14 +39,14 @@ export function saveGoal(input) {
       const clash = (g.investmentIds || []).find((id) => item.investmentIds.includes(id));
       if (clash) {
         const inv = d.investments.find((i) => i.id === clash);
-        throw new ValidationError(`"${inv?.name || 'Esse investimento'}" já está ligado à meta "${g.description}".`, 'investmentIds');
+        throw new ValidationError(`"${inv?.name || 'Esse investimento'}" já está ligado à reserva "${g.description}".`, 'investmentIds');
       }
     }
-    if (input.id) {
-      Object.assign(findOrThrow(d.goals, input.id, 'Meta'), item);
+    if (current) {
+      Object.assign(current, item);
       return null;
     }
-    const goal = { id: newId(), ...item, contributions: [] };
+    const goal = { id: newId(), ...item, system: false, contributions: [] };
     if (Number.isInteger(input.initialCents) && input.initialCents > 0) {
       goal.contributions.push({ id: newId(), date: todayISO(), cents: cents(input.initialCents, 'initialCents') });
     }
@@ -49,34 +57,37 @@ export function saveGoal(input) {
 
 export function deleteGoal(id) {
   return store.commit((d) => {
+    if (findOrThrow(d.goals, id, 'Reserva').system) throw new ValidationError('A Reserva de emergência é padrão e não pode ser excluída.');
     d.goals = d.goals.filter((g) => g.id !== id);
     for (const w of d.wishlist || []) if (w.goalId === id) w.goalId = null;
-  }, 'change', { undo: 'Meta excluída' });
+  }, 'change', { undo: 'Reserva excluída' });
 }
 
-/** Guarda (positivo) ou retira (negativo) dinheiro de uma meta. */
+/** Guarda (positivo) ou retira (negativo) dinheiro de uma reserva. */
 export function addContribution(goalId, value, when = todayISO()) {
   return store.commit((d) => {
-    const goal = findOrThrow(d.goals, goalId, 'Meta');
+    const goal = findOrThrow(d.goals, goalId, 'Reserva');
     if (!Number.isInteger(value) || value === 0 || Math.abs(value) > MAX_CENTS) throw new ValidationError('Informe um valor.', 'cents');
     date(when, 'date');
     const saved = goal.contributions.reduce((a, c) => a + c.cents, 0);
     if (saved + value < 0) throw new ValidationError('A retirada é maior que o valor guardado.', 'cents');
     goal.contributions.push({ id: newId(), date: when, cents: value });
     const after = saved + value;
+    // Alvo automático ou mensal: a comemoração fica com a tela (ver goalProgress)
+    if (goal.autoTarget || goal.kind === 'mensal') return { reached: false };
     return { reached: saved < goal.targetCents && after >= goal.targetCents };
   });
 }
 
 export function deleteContribution(goalId, contributionId) {
   return store.commit((d) => {
-    const goal = findOrThrow(d.goals, goalId, 'Meta');
+    const goal = findOrThrow(d.goals, goalId, 'Reserva');
     const rest = goal.contributions.filter((c) => c.id !== contributionId);
     if (rest.reduce((a, c) => a + c.cents, 0) < 0) {
-      throw new ValidationError('Remova antes as retiradas: o saldo da meta ficaria negativo.');
+      throw new ValidationError('Remova antes as retiradas: o saldo da reserva ficaria negativo.');
     }
     goal.contributions = rest;
-  }, 'change', { undo: 'Lançamento da meta removido' });
+  }, 'change', { undo: 'Lançamento da reserva removido' });
 }
 
 // ---------- Lista de desejos ----------
@@ -121,7 +132,7 @@ export function saveEnvelope(input) {
     const item = {
       id: input.id || newId(),
       name: text(input.name, 'name', 'o nome do envelope', { max: 40 }),
-      icon: text(input.icon || '🫙', 'icon', 'o ícone', { max: 24 }),
+      icon: toIconValue(input.icon, 'i:inbox'),
       monthlyCents: cents(input.monthlyCents, 'monthlyCents'),
       categoryIds: [...new Set((input.categoryIds || []).filter((id) => catIds.has(id)))],
       rollover: input.rollover !== false,

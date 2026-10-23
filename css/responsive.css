@@ -57,7 +57,8 @@ img, svg, video, canvas { max-width: 100%; }
 /* ---------- Selos com texto longo: reticências, nunca para fora do card ---------- */
 .badge { max-width: 100%; min-width: 0; }
 .badge, a.badge { overflow: hidden; text-overflow: ellipsis; }
-.entity__meta .badge { display: inline-block; vertical-align: middle; }
+/* ícone e texto lado a lado (inline-block empilhava o ícone em cima do texto) */
+.entity__meta .badge { display: inline-flex; vertical-align: middle; }
 
 /* ---------- Linhas (a receber, credores…): ações descem quando não cabem ---------- */
 .rows > .row { flex-wrap: wrap; row-gap: var(--sp-2); }
@@ -78,7 +79,7 @@ img, svg, video, canvas { max-width: 100%; }
 .mini-list > li > span:first-child { flex: 1 1 9rem; overflow-wrap: break-word; }
 .mini-list > li > :last-child:not(:first-child) { margin-left: auto; }
 .entity__head { flex-wrap: wrap; }
-.entity__title { flex: 1 1 9rem; }
+.entity__title { flex: 1 1 6rem; } /* 9rem empurrava o valor (R$ x/mês) para a linha de baixo em cards de 1/3 */
 .entity__title h3, .kv--stack strong { overflow-wrap: break-word; }
 .entity__value { margin-left: auto; }
 .kv--stack { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)) !important; }
@@ -98,3 +99,72 @@ img, svg, video, canvas { max-width: 100%; }
 /* Card de indicador empilhado (ícone em cima): o texto ocupa a largura do card,
    nunca a do próprio conteúdo (senão um número longo empurra o card) */
 .kpi > .kpi__body { max-width: 100%; align-self: stretch; }
+
+/* =============================================================
+   Alinhamento e aproveitamento do espaço (revisão de telas)
+   ============================================================= */
+
+/* Dicas: texto ocupa a linha, ícone e "dispensar" centralizados */
+.hint { align-items: center; }
+.hint > p { flex: 1; margin: 0; min-width: 0; }
+.hint > .icon, .hint > .icon-btn { flex: none; }
+
+/* Números do investimento: cabem 3 por linha quando há espaço */
+.invest__nums { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
+
+/* Rosca ao lado de um gráfico mais alto: fica no meio do card, sem vazio só embaixo */
+.grid--two > .card:has(> .chart--donut) { display: flex; flex-direction: column; }
+.grid--two > .card > .chart--donut { margin-block: auto; }
+
+/* Salário: os dois cards do topo com a mesma altura (o rodapé do principal vai ao pé) */
+.grid--hero { align-items: stretch; }
+.grid--hero > .salary-hero { display: flex; flex-direction: column; }
+
+/* Linha de conta: ícone, nome e selos fluem como texto (o nome não desce
+   sozinho para a linha de baixo deixando o ícone isolado) */
+.item__title { display: block; }
+.item__title > * { vertical-align: middle; }
+.item__title > .cat-icon { display: inline-flex; margin-right: 6px; }
+.item__title > .badge { margin-left: 4px; }
+/* situação numa linha só ("Atrasada · venceu há 74 dias"); se faltar espaço, reticências */
+.item__due .status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* KPIs em 2 colunas no celular: ícone no canto, sem gastar uma linha própria */
+@media (max-width: 639.98px) {
+  .grid--kpis > .kpi { position: relative; }
+  .grid--kpis > .kpi > .kpi__icon { position: absolute; top: var(--sp-4); right: var(--sp-4); width: 30px; height: 30px; }
+  .grid--kpis > .kpi .kpi__label { padding-right: 36px; }
+}
+
+/* "Sai": valores e % alinhados à direita da coluna */
+.flow__lines--bars > li > .money { justify-self: end; text-align: right; }
+.flow__lines--bars > li > small { justify-self: end; }
+
+/* Celular: menos vão entre a navegação do mês e o conteúdo (eram 29px) */
+@media (max-width: 639.98px) {
+  .content { padding-top: var(--sp-2); }
+  /* ações do topo da tela dividem a linha por igual (sem botão solto pela metade) */
+  .page-head__actions { width: 100%; }
+  .page-head > .btn, .page-head__actions > .btn { flex: 1 1 auto; justify-content: center; }
+}
+
+/* Celular: botões e ícones de ação do card na mesma linha */
+@media (max-width: 479.98px) {
+  .entity__actions { column-gap: 6px; }
+  .entity__icons { gap: 0; }
+  .entity__icons > .icon-btn { width: 34px; height: 34px; }
+}
+
+/* Ajustes no celular: um botão só ("Editar", "Alterar", "Ligado") fica à direita do
+   título, em vez de ocupar uma linha inteira sozinho */
+@media (max-width: 559px) {
+  .setting:has(> .btn:last-child):not(:has(> .setting__actions, > .segmented)) { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+}
+
+/* Ações centralizadas (ex.: Importar): os botões acompanham o texto centralizado */
+.card__actions.center { justify-content: center; }
+
+/* Retrospectiva: mesmo espaço entre todas as faixas (os blocos de baixo encostavam nos de cima) */
+.wrapped { display: flex; flex-direction: column; gap: var(--sp-3); }
+.wrapped > * { margin: 0; }
+.wrapped__grid { margin-top: 0; }

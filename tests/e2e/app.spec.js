@@ -6,7 +6,7 @@
 import { test, expect } from '@playwright/test';
 import { createFakeSupabase } from './fake-supabase.js';
 
-const ROUTES = ['painel', 'agenda', 'contas', 'carteira', 'salario', 'metas', 'investimentos', 'planejamento', 'analise', 'ajustes', 'busca', 'importar'];
+const ROUTES = ['painel', 'agenda', 'contas', 'carteira', 'salario', 'reservas', 'investimentos', 'planejamento', 'analise', 'ajustes', 'busca', 'importar'];
 const TABS = {
   contas: ['recorrentes', 'parcelas', 'assinaturas', 'receber', 'dividas'],
   salario: ['plantoes', 'irpf', 'rescisao', 'beneficios', 'carreira', 'tabelas'],
@@ -267,16 +267,35 @@ test('pagar e desfazer uma conta', async ({ page }) => {
   await expect(page.locator(`.item[data-key="${key}"]`)).not.toHaveClass(/item--paid/);
 });
 
-test('painel: salário, ganhos e gastos no topo; faixa dos 12 meses abre o porquê', async ({ page }) => {
+test('painel: saldo do mês e limite das parcelas no topo; seletor 10/20/30%', async ({ page }) => {
   const { errors } = await openApp(page);
-  const lead = page.locator('.dash-lead > :first-child');
-  await expect(lead).toHaveAttribute('data-key', 'summary');
+  const keys = await page.locator('.dash-lead > *').evaluateAll((els) => els.map((e) => e.getAttribute('data-key')));
+  expect(keys.slice(0, 5)).toEqual(['balance', 'parcels', 'reserve', 'flow', 'summary']);
+  const top = page.locator('[data-key="balance"]');
+  await expect(top.locator('.summary__big')).toBeVisible();
+  await expect(top.locator('.commit-ring')).toHaveAttribute('aria-label', /comprometidos/);
+  const card = page.locator('[data-key="parcels"]');
+  await expect(card.locator('.plimit__opt[aria-checked="true"]')).toHaveText('10%');
+  await expect(card.locator('.pstatus__label')).toHaveText(/Dentro do limite|Na média|Acima do limite|Sem ganhos fixos/);
+  await card.locator('.plimit__opt[data-pct="30"]').click();
+  await expect(card.locator('.plimit__opt[aria-checked="true"]')).toHaveText('30%');
+  await expect(page.locator('[data-key="flow"] .flow__col')).toHaveCount(3);
+  const reserve = page.locator('[data-key="reserve"]');
+  await expect(reserve.locator('.plimit__opt[aria-checked="true"]')).toHaveText('10%');
+  await expect(reserve.locator('.pstatus__label')).toHaveText(/Dentro da reserva|Na média|Abaixo da reserva|Sem ganhos fixos/);
+  await reserve.locator('.plimit__opt[data-pct="20"]').click();
+  await expect(reserve.locator('.plimit__opt[aria-checked="true"]')).toHaveText('20%');
+  expect(errors).toEqual([]);
+});
+
+test('painel: salário, ganhos e gastos; faixa dos 12 meses abre o porquê', async ({ page }) => {
+  const { errors } = await openApp(page);
+  const lead = page.locator('.dash-lead > [data-key="summary"]');
+  await expect(lead).toBeVisible();
   await expect(lead.locator('.sfig')).toHaveCount(3);
   await expect(lead.getByText('Salário do mês')).toBeVisible();
   await expect(lead.getByText('Ganhos do mês')).toBeVisible();
   await expect(lead.getByText('Gasto no mês')).toBeVisible();
-  await expect(lead.locator('.summary__big')).toBeVisible();
-  await expect(lead.locator('.commit-ring')).toHaveAttribute('aria-label', /comprometidos/);
   // detalhe do salário: bruto, adições e descontos
   await lead.locator('.sfig__details summary').click();
   await expect(lead.locator('.sfig__lines')).toContainText('INSS');

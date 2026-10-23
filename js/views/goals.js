@@ -1,9 +1,11 @@
 // =============================================================
-// Metas — objetivos de economia e lista de desejos
+// Reservas (antigas "Metas") — dinheiro guardado e lista de desejos
 // -------------------------------------------------------------
-// • Metas: guarde por contribuições ou ligue a investimentos (o saldo
-//   do investimento conta como guardado). Marque qual é a reserva de
-//   emergência (entra na Saúde financeira, sem contar em dobro).
+// • Reservas: cada uma tem um tipo (emergência, compra, economias,
+//   poupar no mês, viagem…). Guarde por contribuições ou ligue a
+//   investimentos (o saldo do investimento conta como guardado).
+//   Toda conta tem a "Reserva de emergência" padrão (não exclui; alvo
+//   automático de 6 meses de gastos — ver domain/goals.js).
 // • Desejos: o que você quer comprar, com preço-alvo, preço atual e a
 //   meta onde junta o dinheiro. Avisa quando o preço chega no alvo.
 // =============================================================
@@ -20,20 +22,22 @@ import { store } from '../core/store.js';
 import { formatBRL, formatPercent } from '../core/money.js';
 import { formatDateBR, todayISO } from '../core/dates.js';
 import { goalProgress } from '../domain/planning.js';
+import { kindOf } from '../domain/goals.js';
+import { toIconValue } from '../domain/defaults.js';
 import * as A from '../domain/actions.js';
 
 const TABS = [
-  { id: 'metas', label: 'Metas', icon: 'target' },
+  { id: 'reservas', label: 'Reservas', icon: 'piggy-bank' },
   { id: 'desejos', label: 'Lista de desejos', icon: 'gift' },
 ];
 
 export default {
-  id: 'metas',
-  title: 'Metas',
+  id: 'reservas',
+  title: 'Reservas',
 
   render() {
     const active = currentTab(TABS);
-    return html`${tabsNav('metas', TABS, active)}${active === 'metas' ? goals() : wishes()}`;
+    return html`${tabsNav('reservas', TABS, active)}${active === 'reservas' ? goals() : wishes()}`;
   },
 
   actions: {
@@ -44,7 +48,7 @@ export default {
     'goal:history': (el) => history(find(el)),
     'goal:delete': (el) => {
       const g = find(el);
-      E.confirmDelete(`a meta "${g.description}"`, () => A.deleteGoal(g.id));
+      E.confirmDelete(`a reserva "${g.description}"`, () => A.deleteGoal(g.id));
     },
     'wish:new': () => E.editWish(),
     'wish:edit': (el) => E.editWish(store.data.wishlist.find((w) => w.id === el.dataset.id)),
@@ -56,7 +60,8 @@ export default {
 const find = (el) => store.data.goals.find((g) => g.id === el.dataset.id);
 
 function goals() {
-  const list = store.data.goals;
+  // A reserva padrão (emergência) sempre primeiro
+  const list = [...store.data.goals].sort((a, b) => Boolean(b.system) - Boolean(a.system));
   const today = todayISO();
   const plans = list.map((g) => ({ g, p: goalProgress(store.data, g, today) }));
   const saved = plans.reduce((a, x) => a + x.p.saved, 0);
@@ -67,16 +72,16 @@ function goals() {
         <div><dt>Total guardado</dt><dd class="money pos">${formatBRL(saved)}</dd></div>
         <div><dt>Para cumprir os prazos</dt><dd class="money">${formatBRL(perMonth)}<small>/mês</small></dd></div>
       </dl>
-      <button type="button" class="btn btn--primary" data-action="goal:new">${icon('plus')} Nova meta</button>
+      <button type="button" class="btn btn--primary" data-action="goal:new">${icon('plus')} Nova reserva</button>
     </div>
 
     ${list.length ? html`<div class="cards-grid">${plans.map(({ g, p }) => card(g, p))}</div>`
     : html`
       <div class="card empty">
         ${icon('piggy-bank', 'icon--lg')}
-        <p><strong>Nenhuma meta ainda.</strong></p>
-        <p class="muted">Crie objetivos como "Reserva de emergência" ${helpTip('reserva')} e registre quanto guardou — ou ligue a meta ao investimento onde o dinheiro está.</p>
-        <button type="button" class="btn btn--primary" data-action="goal:new">${icon('plus')} Nova meta</button>
+        <p><strong>Nenhuma reserva ainda.</strong></p>
+        <p class="muted">Crie reservas para emergência ${helpTip('reserva')}, compras, viagens ou para poupar todo mês, e registre quanto guardou, ou ligue a reserva ao investimento onde o dinheiro está.</p>
+        <button type="button" class="btn btn--primary" data-action="goal:new">${icon('plus')} Nova reserva</button>
       </div>`}`;
 }
 
@@ -85,21 +90,24 @@ function card(g, p) {
   return html`
     <article class="card entity goal ${p.done ? 'is-done tone-good' : p.late ? 'tone-warn' : 'tone-info'}">
       <header class="entity__head">
-        <span class="entity__icon entity__icon--goal">${g.icon}</span>
+        <span class="entity__icon entity__icon--goal">${icon(toIconValue(g.icon, 'i:target').slice(2))}</span>
         <div class="entity__title">
-          <h3>${g.description} ${g.emergency ? html`<span class="badge badge--info">${icon('shield-check', 'icon--xs')} reserva</span>` : ''}</h3>
-          <p class="muted small">${g.deadline ? `Prazo: ${formatDateBR(g.deadline)}` : 'Sem prazo'}</p>
+          <h3>${g.description}${kindOf(g).label !== g.description ? html` <span class="badge ${g.emergency ? 'badge--info' : 'badge--muted'}">${kindOf(g).label}</span>` : ''}${g.system ? html` <span class="badge badge--muted" title="Toda conta tem esta reserva">padrão</span>` : ''}</h3>
+          <p class="muted small">${p.monthly ? 'Todo mês' : g.autoTarget ? 'Alvo: 6 meses de gastos' : g.deadline ? `Prazo: ${formatDateBR(g.deadline)}` : 'Sem prazo'}</p>
         </div>
         <p class="entity__value">${formatPercent(p.progress)}</p>
       </header>
-      ${meter(p.saved, { max: g.targetCents, label: `Progresso de ${g.description}`, tone: p.done ? 'good' : p.late ? 'warn' : '' })}
+      ${meter(p.monthly ? Math.max(0, p.monthSaved) : p.saved, { max: p.target || 1, label: `Progresso de ${g.description}`, tone: p.done ? 'good' : p.late ? 'warn' : '' })}
       <p class="entity__progress">
-        <span><strong class="money">${formatBRL(p.saved)}</strong> guardados</span>
-        <span>meta ${formatBRL(g.targetCents)}</span>
+        ${p.monthly
+          ? html`<span><strong class="money">${formatBRL(p.monthSaved)}</strong> guardados neste mês</span><span>de ${formatBRL(p.target)}/mês</span>`
+          : html`<span><strong class="money">${formatBRL(p.saved)}</strong> guardados</span><span>de ${formatBRL(p.target)}</span>`}
       </p>
       ${invs.length ? html`<p class="small muted">${icon('coins', 'icon--xs')} ${formatBRL(p.linked)} em ${invs.map((i) => i.name).join(', ')}${p.contributed ? ` + ${formatBRL(p.contributed)} guardados à parte` : ''}</p>` : ''}
       <p class="entity__meta">
-        ${p.done ? html`${icon('circle-check', 'icon--xs pos')} Meta alcançada!`
+        ${!p.target ? html`${icon('info', 'icon--xs')} O alvo aparece quando houver gastos lançados (6 meses de gastos).`
+          : p.done ? html`${icon('circle-check', 'icon--xs pos')} ${p.monthly ? 'Guardado o deste mês!' : 'Reserva completa!'}`
+          : p.monthly ? html`Faltam <strong>${formatBRL(p.remaining)}</strong> para o deste mês`
           : p.late ? html`${icon('triangle-alert', 'icon--xs')} Prazo passou · faltam ${formatBRL(p.remaining)}`
           : p.perMonth ? html`Guarde <strong>${formatBRL(p.perMonth)}/mês</strong> por ${p.monthsLeft} ${p.monthsLeft === 1 ? 'mês' : 'meses'}`
           : html`Faltam ${formatBRL(p.remaining)}`}
@@ -110,7 +118,7 @@ function card(g, p) {
         <span class="entity__icons">
         <button type="button" class="icon-btn" data-action="goal:history" data-id="${g.id}" aria-label="Histórico de ${g.description}" title="Histórico">${icon('history')}</button>
         <button type="button" class="icon-btn" data-action="goal:edit" data-id="${g.id}" aria-label="Editar ${g.description}">${icon('pencil')}</button>
-        <button type="button" class="icon-btn danger" data-action="goal:delete" data-id="${g.id}" aria-label="Excluir ${g.description}">${icon('trash-2')}</button>
+        ${g.system ? '' : html`<button type="button" class="icon-btn danger" data-action="goal:delete" data-id="${g.id}" aria-label="Excluir ${g.description}">${icon('trash-2')}</button>`}
         </span>
       </footer>
     </article>`;
@@ -119,7 +127,7 @@ function card(g, p) {
 function history(goal) {
   const list = [...goal.contributions].sort((a, b) => b.date.localeCompare(a.date));
   const { dialog } = openDialog({
-    title: `${goal.icon} ${goal.description}`,
+    title: goal.description,
     body: list.length ? html`
       <ul class="mini-list">
         ${list.map((c) => html`
@@ -154,7 +162,7 @@ function wishes() {
   const today = todayISO();
   return html`
     <div class="page-head">
-      <p class="muted">Anote o que quer comprar, o preço que topa pagar e junte numa meta. Atualize o preço de vez em quando.</p>
+      <p class="muted">Anote o que quer comprar, o preço que topa pagar e junte numa reserva. Atualize o preço de vez em quando.</p>
       <button type="button" class="btn btn--primary" data-action="wish:new">${icon('plus')} Novo desejo</button>
     </div>
     ${list.length ? html`
@@ -180,8 +188,8 @@ function wishes() {
                   ${atTarget ? html`<span class="badge badge--good">${icon('check', 'icon--xs')} chegou no preço-alvo!</span>` : w.targetPriceCents && w.currentPriceCents ? html`<span class="badge">faltam ${formatBRL(w.currentPriceCents - w.targetPriceCents)} de desconto</span>` : ''}
                 </p>
                 ${goal ? html`
-                  ${meter(gp.saved, { max: price || goal.targetCents, label: `Guardado para ${w.name}`, tone: price > 0 && gp.saved >= price ? 'good' : '' })}
-                  <p class="small muted">Meta "${goal.description}": ${formatBRL(gp.saved)} de ${formatBRL(price || goal.targetCents)}${price > 0 && gp.saved >= price ? ' · dá para comprar à vista!' : ''}</p>` : ''}`}
+                  ${meter(gp.saved, { max: price || gp.target || 1, label: `Guardado para ${w.name}`, tone: price > 0 && gp.saved >= price ? 'good' : '' })}
+                  <p class="small muted">Reserva "${goal.description}": ${formatBRL(gp.saved)} de ${formatBRL(price || gp.target)}${price > 0 && gp.saved >= price ? ' · dá para comprar à vista!' : ''}</p>` : ''}`}
               <footer class="entity__actions">
                 ${w.boughtAt ? '' : html`<button type="button" class="btn btn--secondary btn--sm" data-action="wish:bought" data-id="${w.id}">${icon('check', 'icon--xs')} Comprei</button>
                   <a class="btn btn--ghost btn--sm" href="#/planejamento?aba=comprar${price > 0 ? `&valor=${price}` : ''}">${icon('calculator', 'icon--xs')} Posso comprar?</a>`}
@@ -191,5 +199,5 @@ function wishes() {
             </article>`;
         })}
       </div>`
-    : html`<div class="card empty">${icon('gift', 'icon--lg')}<p><strong>Nenhum desejo anotado.</strong></p><p class="muted">Celular novo, viagem, bicicleta… anote, defina o preço que topa pagar e ligue a uma meta.</p><button type="button" class="btn btn--primary" data-action="wish:new">${icon('plus')} Novo desejo</button></div>`}`;
+    : html`<div class="card empty">${icon('gift', 'icon--lg')}<p><strong>Nenhum desejo anotado.</strong></p><p class="muted">Celular novo, viagem, bicicleta… anote, defina o preço que topa pagar e ligue a uma reserva.</p><button type="button" class="btn btn--primary" data-action="wish:new">${icon('plus')} Novo desejo</button></div>`}`;
 }

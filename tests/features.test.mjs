@@ -5,11 +5,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { easter, nthBusinessDay, isBusinessDay, holidayName } from '../js/core/calendar.js';
-import { createEmptyState } from '../js/domain/schema.js';
 import { paydayIn, nextPaydayFrom, vacationFor, payrollFor } from '../js/domain/payroll.js';
 import { computeMonth } from '../js/domain/ledger.js';
 import { budgetStatus, financialScore, simulate, calendarEvents, monthGrid, buildICS, dueReminders } from '../js/domain/planning.js';
 import { parseOFX, parseCSV, parseStatement, suggestCategory, cleanDescription, fingerprint } from '../js/domain/importer.js';
+import { emptyState } from './helpers.mjs';
 
 const profile = (cents) => ({ from: '2026-01', grossCents: cents, dependents: 0, additions: [], deductions: [] });
 
@@ -31,7 +31,7 @@ test('5º dia útil (com e sem sábado)', () => {
 });
 
 test('data de pagamento: dia fixo x dia útil', () => {
-  const s = createEmptyState().settings;
+  const s = emptyState().settings;
   s.salaryDay = 10;
   assert.equal(paydayIn(s, '2026-02'), '2026-02-10');
   s.payday = { mode: 'business', nth: 5, saturday: true };
@@ -41,7 +41,7 @@ test('data de pagamento: dia fixo x dia útil', () => {
 });
 
 test('férias: 1/3, abono sem impostos e salário só dos dias trabalhados', () => {
-  const s = createEmptyState().settings;
+  const s = emptyState().settings;
   s.salaryHistory = [profile(300000)];
   s.vacations = [{ id: 'v', start: '2026-07-01', days: 20, sellDays: 10, advance13: false }];
   const v = vacationFor(s, '2026-07');
@@ -53,7 +53,7 @@ test('férias: 1/3, abono sem impostos e salário só dos dias trabalhados', () 
 });
 
 test('orçamento por categoria e pontuação financeira', () => {
-  const st = createEmptyState();
+  const st = emptyState();
   st.settings.salaryHistory = [profile(500000)];
   const cat = st.categories[1];
   st.settings.budgets = { [cat.id]: 50000 };
@@ -67,7 +67,7 @@ test('orçamento por categoria e pontuação financeira', () => {
 });
 
 test('simulador: aumento de salário melhora o saldo projetado', () => {
-  const st = createEmptyState();
+  const st = emptyState();
   st.settings.salaryHistory = [profile(500000)];
   const r = simulate(st, { salaryPct: 10 }, '2026-11', 6, '2026-10-12');
   assert.equal(r.scenario.length, 6);
@@ -77,7 +77,7 @@ test('simulador: aumento de salário melhora o saldo projetado', () => {
 });
 
 test('agenda do mês e arquivo .ics', () => {
-  const st = createEmptyState();
+  const st = emptyState();
   st.settings.salaryHistory = [profile(500000)];
   st.expenses.push({ id: 'e', description: 'Luz; casa', cents: 12345, dueDate: '2026-10-20', paidAt: null });
   const ev = calendarEvents(st, '2026-10', '2026-10-12');
@@ -110,7 +110,7 @@ test('importação: OFX, CSV de conta e de cartão', () => {
 });
 
 test('categorização automática: regra, histórico e palavra-chave', () => {
-  const st = createEmptyState();
+  const st = emptyState();
   const transporte = st.categories.find((c) => c.name === 'Transporte');
   const lazer = st.categories.find((c) => c.name === 'Lazer e viagens');
   assert.equal(suggestCategory(st, 'UBER *TRIP 12/03').categoryId, transporte.id);
@@ -123,7 +123,7 @@ test('categorização automática: regra, histórico e palavra-chave', () => {
 });
 
 test('renda do mês inclui férias', () => {
-  const st = createEmptyState();
+  const st = emptyState();
   st.settings.salaryHistory = [profile(300000)];
   st.settings.vacations = [{ id: 'v', start: '2026-07-01', days: 30, sellDays: 0, advance13: false }];
   const m = computeMonth(st, '2026-07', '2026-07-01');

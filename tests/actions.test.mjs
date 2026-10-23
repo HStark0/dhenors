@@ -6,13 +6,14 @@ import assert from 'node:assert/strict';
 
 import { store } from '../js/core/store.js';
 import { toCents } from '../js/core/money.js';
-import { createEmptyState, sanitizeState } from '../js/domain/schema.js';
+import { sanitizeState } from '../js/domain/schema.js';
 import { computeMonth } from '../js/domain/ledger.js';
 import { monthSummary } from '../js/domain/analysis.js';
 import * as A from '../js/domain/actions.js';
+import { emptyState } from './helpers.mjs';
 
 before(() => {
-  store.data = createEmptyState();
+  store.data = emptyState();
   store.guest = false; // conta aberta (sem login, alterações pedem para entrar)
   const error = console.error;
   console.warn = () => {};
@@ -56,7 +57,7 @@ test('editar a recorrente não muda mês fechado nem mês já pago', () => {
 });
 
 test('meta: retirada e exclusão não deixam saldo negativo', () => {
-  A.saveGoal({ description: 'Viagem', targetCents: 100000, icon: '✈️' });
+  A.saveGoal({ description: 'Viagem', targetCents: 100000, icon: 'i:plane' });
   const g = store.data.goals[0];
   A.addContribution(g.id, 5000, '2026-10-01');
   assert.throws(() => A.addContribution(g.id, -6000, '2026-10-02'), /maior que o valor guardado/);

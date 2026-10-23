@@ -116,7 +116,7 @@ export function openPalette({ nav, commands, openEditor, voice = false }) {
         ...d.recurring.map((x) => ({ kind: 'recurring', x, label: x.description, hint: `${formatBRL(x.cents)} · dia ${x.dueDay}`, icon: 'repeat', date: '' })),
         ...d.installments.map((x) => ({ kind: 'installment', x, label: x.description, hint: `${x.count}× · total ${formatBRL(x.totalCents)}`, icon: 'calendar-range', date: x.firstDueDate })),
         ...(d.cardPurchases || []).map((x) => ({ kind: 'purchase', x, label: x.description, hint: `${formatBRL(Math.abs(x.cents))} · ${formatDateBR(x.date)}`, icon: 'credit-card', date: x.date })),
-        ...d.goals.map((x) => ({ kind: 'goal', x, label: x.description, hint: `meta ${formatBRL(x.targetCents)}`, icon: 'target', date: '' })),
+        ...d.goals.map((x) => ({ kind: 'goal', x, label: x.description, hint: x.autoTarget ? 'reserva · alvo automático' : `reserva · alvo ${formatBRL(x.targetCents)}`, icon: 'piggy-bank', date: '' })),
         ...(d.investments || []).map((x) => ({ kind: 'investment', x, label: x.name, hint: [INVEST_TYPES[x.type]?.label, x.institution].filter(Boolean).join(' · '), icon: 'coins', date: '' })),
       ].filter((r) => norm(r.label).includes(q) || (qDesc.length >= 2 && norm(r.label).includes(qDesc)) || (r.x.tags || []).some((t) => norm(t).includes(q.replace('#', ''))))
         .sort((a, b) => (b.date || '').localeCompare(a.date || ''))

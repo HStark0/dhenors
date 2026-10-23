@@ -8,6 +8,7 @@
 import { sumCents, percent, formatBRL, formatPercent, plural } from '../core/money.js';
 import { addMonthsYM, monthRange, todayISO, ymOf, formatMonth, formatMonthShort } from '../core/dates.js';
 import { computeMonth, installmentSummary, itemParts } from './ledger.js';
+import { trackingStartYM, beforeStart } from './tracking.js';
 import { memoByState } from '../core/memo.js';
 import { bigThreshold } from './monthStatus.js';
 import { invoiceLines } from './cards.js';
@@ -148,9 +149,10 @@ export function periodAnalysis(state, endYM, months, today = todayISO()) {
  *   variable         = max(lançado − pontual, mediana) + pontual
  */
 function projectionRaw(state, fromYM, months = 6, today = todayISO()) {
-  const history = monthSeries(state, addMonthsYM(fromYM, -1), 3, today);
+  // Só os meses desde o início do uso do app (antes dele não há dados reais)
+  const history = monthSeries(state, addMonthsYM(fromYM, -1), 3, today).filter((h) => h.closed || !beforeStart(state, h.ym));
   const variableEstimate = median(history.map((h) => h.variable).filter((v) => v > 0));
-  const avgExtras = Math.round(sumCents(history.map((h) => h.extras)) / 3);
+  const avgExtras = history.length ? Math.round(sumCents(history.map((h) => h.extras)) / history.length) : 0;
 
   return Array.from({ length: months }, (_, i) => {
     const ym = addMonthsYM(fromYM, i);
@@ -203,7 +205,7 @@ export const projection = (state, fromYM, months = 6, today = todayISO()) => pro
 /** Parcelamentos que terminam a partir de `fromYM`, com o valor liberado. */
 export function endingInstallments(state, fromYM) {
   return state.installments
-    .map((inst) => ({ inst, sum: installmentSummary(inst) }))
+    .map((inst) => ({ inst, sum: installmentSummary(inst, trackingStartYM(state)) }))
     .filter(({ sum }) => !sum.finished && sum.lastYM >= fromYM)
     .map(({ inst, sum }) => ({
       id: inst.id,
@@ -244,7 +246,7 @@ function insightsRaw(state, month, today) {
     out.push({ tone: 'bad', title: 'Mês no vermelho', text: `Os compromissos passam a renda em ${formatBRL(-month.balance)}.` });
   } else if (income.total > 0) {
     const rate = percent(month.balance, income.total);
-    if (rate >= 20) out.push({ tone: 'good', title: `Sobra prevista de ${formatPercent(rate)}`, text: `${formatBRL(month.balance)} livres. Que tal direcionar parte para uma meta?` });
+    if (rate >= 20) out.push({ tone: 'good', title: `Sobra prevista de ${formatPercent(rate)}`, text: `${formatBRL(month.balance)} livres. Que tal direcionar parte para uma reserva?` });
   }
 
   if (income.extrasCents > 0 && month.balance >= 0 && month.balance - income.extrasCents < 0) {
@@ -312,7 +314,8 @@ export function monthsWithData(state, today = todayISO()) {
     for (let guard = 0; ym <= end && guard < 240; guard++) { set.add(ym); ym = addMonthsYM(ym, 1); }
   }
   if (state.settings.salaryHistory.length) set.add(ymOf(today));
-  return [...set].filter((ym) => ym <= ymOf(today)).sort().reverse();
+  const start = trackingStartYM(state) || '';
+  return [...set].filter((ym) => ym <= ymOf(today) && (ym >= start || state.closedMonths[ym])).sort().reverse();
 }
 
 // ---------- Gastos por subcategoria (para relatórios e anomalias) ----------
@@ -336,14 +339,14 @@ export function spendingBreakdown(state, ym, today = todayISO()) {
     for (const p of itemParts(item)) {
       const cat = state.categories.find((c) => c.id === p.categoryId);
       const sub = cat?.subcategories.find((s) => s.id === p.subcategoryId);
-      add(`c:${cat?.name || 'Sem categoria'}`, { level: 'cat', name: cat?.name || 'Sem categoria', icon: cat?.icon || '🏷️' }, p.cents);
+      add(`c:${cat?.name || 'Sem categoria'}`, { level: 'cat', name: cat?.name || 'Sem categoria', icon: cat?.icon || 'i:tag' }, p.cents);
       if (sub) add(`s:${cat.name}›${sub.name}`, { level: 'sub', name: sub.name, parent: cat.name, icon: cat.icon }, p.cents);
     }
   }
   for (const inv of m.items.filter((i) => i.kind === 'invoice')) {
     for (const p of inv.parts || []) {
       const cat = state.categories.find((c) => c.id === p.categoryId);
-      add(`c:${cat?.name || 'Sem categoria'}`, { level: 'cat', name: cat?.name || 'Sem categoria', icon: cat?.icon || '🏷️' }, p.cents);
+      add(`c:${cat?.name || 'Sem categoria'}`, { level: 'cat', name: cat?.name || 'Sem categoria', icon: cat?.icon || 'i:tag' }, p.cents);
     }
   }
   return map;
@@ -434,7 +437,7 @@ export function comparePeriods(state, a, b, today = todayISO()) {
     const va = A.categories.get(name) || 0;
     const vb = B.categories.get(name) || 0;
     const cat = state.categories.find((c) => c.name === name);
-    return { name, icon: cat?.icon || '🏷️', color: cat?.color || '#64748B', a: va, b: vb, diff: va - vb, pct: vb ? percent(va - vb, vb) : null };
+    return { name, icon: cat?.icon || 'i:tag', color: cat?.color || '#64748B', a: va, b: vb, diff: va - vb, pct: vb ? percent(va - vb, vb) : null };
   }).sort((x, y) => Math.abs(y.diff) - Math.abs(x.diff));
   const delta = (k) => ({ a: A[k], b: B[k], diff: A[k] - B[k], pct: B[k] ? percent(A[k] - B[k], B[k]) : null });
   return { a: { ...a, months: A.months }, b: { ...b, months: B.months }, income: delta('income'), spent: delta('spent'), fixed: delta('fixed'), variable: delta('variable'), balance: delta('balance'), rows };
@@ -510,7 +513,7 @@ export function nextActions(state, month, today = todayISO(), { alertsCount = 0,
     if (out.length >= 4) break;
     if (/em atraso/.test(i.title)) continue; // já está no sino
     const action = /vermelho|limite|estourada/i.test(i.title) ? { label: 'Simular cortes', route: '#/planejamento' }
-      : /Sobra/.test(i.title) ? { label: 'Guardar numa meta', route: '#/metas' }
+      : /Sobra/.test(i.title) ? { label: 'Guardar numa reserva', route: '#/reservas' }
       : /parcelamento|termina/i.test(i.title) ? { label: 'Ver parcelamentos', route: '#/contas?aba=parcelas' }
       : /fixos/i.test(i.title) ? { label: 'Ver recorrentes', route: '#/contas?aba=recorrentes' }
       : /concentra|subiram/i.test(i.title) ? { label: 'Ver análise', route: '#/analise' }
@@ -538,6 +541,7 @@ export function yearWrapped(state, year, today = todayISO()) {
   for (const p of state.cardPurchases || []) if (p.date.startsWith(String(year)) && p.cents > 0) items.push({ description: p.description, cents: p.cents, dueDate: p.date, kind: 'purchase' });
   const best = sums.filter((s) => s.income > 0).sort((a, b) => b.balance - a.balance)[0] || null;
   const goalsReached = state.goals.filter((g) => {
+    if (g.autoTarget || g.kind === 'mensal' || !(g.targetCents > 0)) return false;
     let acc = 0;
     for (const c of [...g.contributions].sort((a, b) => a.date.localeCompare(b.date))) {
       acc += c.cents;

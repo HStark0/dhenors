@@ -3,7 +3,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { store } from '../js/core/store.js';
-import { createEmptyState, sanitizeState } from '../js/domain/schema.js';
+import { sanitizeState } from '../js/domain/schema.js';
 import { computeMonth, recurringDates, installmentSchedule, variableEstimate } from '../js/domain/ledger.js';
 import { emergencyCoverage, financialScore, spendingRoom, dailyCashflow } from '../js/domain/planning.js';
 import { mergeWithConflicts } from '../js/domain/merge.js';
@@ -15,9 +15,10 @@ import { shiftIncomes } from '../js/domain/shifts.js';
 import { benefitsIn, plrTax, jobNet } from '../js/domain/benefits.js';
 import { tablesFor, registerCustomTables } from '../js/domain/taxTables.js';
 import * as A from '../js/domain/actions.js';
+import { emptyState } from './helpers.mjs';
 
 const today = '2026-10-15';
-const reset = () => { store.data = createEmptyState(); store.data.onboarded = true; };
+const reset = () => { store.data = emptyState(); store.data.onboarded = true; };
 
 before(() => {
   store.guest = false; // conta aberta (sem login, alterações pedem para entrar)
@@ -50,25 +51,29 @@ test('item 5: reserva não conta em dobro e não é reconhecida pelo nome', () =
   let r = emergencyCoverage(store.data, '2026-10', today);
   assert.equal(r.saved, 632900);
   // marcada como reserva e sem ligação: provável duplicidade → vale o maior (8.000), não 14.329
-  const g = store.data.goals[0];
+  const g = store.data.goals.find((x) => x.description === 'Reserva');
   A.saveGoal({ ...g, id: g.id, emergency: true });
   r = emergencyCoverage(store.data, '2026-10', today);
   assert.equal(r.saved, 800000);
   assert.equal(r.overlap, true);
   // ligada ao investimento: conta uma vez (contribuições + investimento ligado)
-  A.saveGoal({ ...store.data.goals[0], id: g.id, emergency: true, investmentIds: [store.data.investments[0].id] });
+  A.saveGoal({ ...store.data.goals.find((x) => x.id === g.id), id: g.id, emergency: true, investmentIds: [store.data.investments[0].id] });
   r = emergencyCoverage(store.data, '2026-10', today);
   assert.equal(r.overlap, false);
   assert.equal(r.saved, 800000 + 632900);
 });
 
 test('item 5: migração do formato antigo marca a meta antiga de reserva uma única vez', () => {
-  const v7 = { ...createEmptyState(), schema: 7, goals: [{ id: 'g1', description: 'Reserva de emergência', targetCents: 100, contributions: [] }, { id: 'g2', description: 'Viagem', targetCents: 100, contributions: [] }] };
+  const v7 = { ...emptyState(), schema: 7, goals: [{ id: 'g1', description: 'Reserva de emergência', targetCents: 100, contributions: [] }, { id: 'g2', description: 'Viagem', targetCents: 100, contributions: [] }] };
   const s = sanitizeState(v7);
+  // a antiga "Reserva de emergência" vira a reserva padrão (sem criar outra)
   assert.equal(s.goals.find((x) => x.id === 'g1').emergency, true);
+  assert.equal(s.goals.find((x) => x.id === 'g1').system, true);
+  assert.equal(s.goals.filter((x) => x.emergency).length, 1);
   assert.equal(s.goals.find((x) => x.id === 'g2').emergency, false);
-  const v8 = sanitizeState({ ...s, goals: [{ ...s.goals[0], emergency: false }] });
-  assert.equal(v8.goals[0].emergency, false); // agora vale só a marcação
+  // formato novo: o nome não marca nada, vale o tipo
+  const v8 = sanitizeState({ ...s, goals: [...s.goals, { id: 'g3', description: 'Reserva da casa', targetCents: 100, kind: 'compra', contributions: [] }] });
+  assert.equal(v8.goals.find((x) => x.id === 'g3').emergency, false);
 });
 
 test('item 6: 4 contas atrasadas + meta de gastos estourada não dá nota "Boa"', () => {
@@ -88,7 +93,7 @@ test('item 6: 4 contas atrasadas + meta de gastos estourada não dá nota "Boa"'
 });
 
 test('item 7: mesmo item editado nos dois aparelhos vira conflito registrado', () => {
-  const base = { ...createEmptyState(), expenses: [{ id: 'a', description: 'Luz', cents: 100, dueDate: '2026-10-01' }] };
+  const base = { ...emptyState(), expenses: [{ id: 'a', description: 'Luz', cents: 100, dueDate: '2026-10-01' }] };
   const local = structuredClone(base); local.expenses[0].cents = 150;
   const remote = structuredClone(base); remote.expenses[0].cents = 180;
   const { state, conflicts } = mergeWithConflicts(base, local, remote);
@@ -120,7 +125,7 @@ test('item 14: gasto por dia separa o que vence antes e depois do salário', () 
 });
 
 test('item 27: estado dividido por coleção e ano, só o que mudou é enviado', async () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.expenses = [{ id: 'a', dueDate: '2025-05-01', cents: 1 }, { id: 'b', dueDate: '2026-05-01', cents: 2 }];
   s.closedMonths = { '2025-12': { x: 1 }, '2026-01': { y: 2 } };
   const parts = splitChunks(s);

@@ -19,6 +19,8 @@ import { formatBRL, toCents, formatPercent, sumCents } from '../core/money.js';
 import { currentYM, addMonthsYM, formatMonthShort, formatMonth, todayISO, formatDateBR, weekdayLong } from '../core/dates.js';
 import { simulate, dailyCashflow, spendingRoom } from '../domain/planning.js';
 import { installmentSummary, recurringActiveIn } from '../domain/ledger.js';
+import { trackingStartYM } from '../domain/tracking.js';
+import { toIconValue } from '../domain/defaults.js';
 import { yearPlan, canIBuy } from '../domain/yearplan.js';
 import { envelopeStatus, ruleStatus } from '../domain/analysis.js';
 import { GROUP_LABELS } from '../domain/defaults.js';
@@ -104,7 +106,7 @@ function simulator() {
   const labels = r.base.map((p) => formatMonthShort(p.ym));
   const active = Object.entries(f).some(([k, v]) => k !== 'months' && (Array.isArray(v) ? v.length : v));
   const recurring = d.recurring.filter((x) => recurringActiveIn(x, from));
-  const installments = d.installments.filter((x) => !installmentSummary(x).finished);
+  const installments = d.installments.filter((x) => !installmentSummary(x, trackingStartYM(d)).finished);
   const better = r.cumulativeDiff >= 0;
   const saved = d.settings.scenarios || [];
   const compare = (store.ui.filters.simCompare || []).map((id) => saved.find((s) => s.id === id)).filter(Boolean);
@@ -143,7 +145,7 @@ function simulator() {
           <fieldset class="sim-list">
             <legend class="field__label">Quitar parcelamentos agora</legend>
             ${installments.map((x) => html`
-              <label class="check check--sm"><input type="checkbox" data-filter="payoff" data-id="${x.id}" ${f.payoff.includes(x.id) ? 'checked' : ''}> ${x.description} <span class="muted">resta ${formatBRL(installmentSummary(x).remainingCents)}</span></label>`)}
+              <label class="check check--sm"><input type="checkbox" data-filter="payoff" data-id="${x.id}" ${f.payoff.includes(x.id) ? 'checked' : ''}> ${x.description} <span class="muted">resta ${formatBRL(installmentSummary(x, trackingStartYM(d)).remainingCents)}</span></label>`)}
             ${f.payoff.length ? control('discount', 'com desconto de', '%', f.discount, 'Desconto por antecipação (pergunte ao credor)') : ''}
           </fieldset>` : ''}
         ${saved.length ? html`
@@ -384,7 +386,7 @@ function envelopes() {
         ${list.map((e) => html`
           <article class="card entity">
             <header class="entity__head">
-              <span class="entity__icon">${e.env.icon}</span>
+              <span class="entity__icon">${icon(toIconValue(e.env.icon, 'i:inbox').slice(2))}</span>
               <div class="entity__title"><h3>${e.env.name}</h3><p class="muted small">${e.env.categoryIds.map((id) => catText(d.categories.find((c) => c.id === id))).join(', ') || 'sem categorias'}</p></div>
               <p class="entity__value money ${e.left < 0 ? 'state--over' : ''}">${formatBRL(e.left)}</p>
             </header>

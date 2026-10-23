@@ -30,10 +30,10 @@ Contas, cartões, salário com INSS e IR, holerite, plantões, metas, investimen
 
 A maioria dos apps de finanças não entende o contracheque brasileiro. O Dhenors parte do **salário bruto** e calcula sozinho o que cai na conta — INSS, Imposto de Renda, adicionais, plantões, horas extras, consignado, férias e 13º — e, a partir daí, mostra quanto do mês já está comprometido, quais meses vão apertar e quanto ainda dá para gastar.
 
-- 🇧🇷 **Feito para CLT e servidor público**: tabelas oficiais de INSS e IR por ano, 5º dia útil, feriados nacionais.
-- 🔒 **Privado**: os dados são cifrados no seu aparelho com uma frase que só você sabe, antes de ir para a nuvem. Nada fica salvo no navegador.
-- 📱 **Em qualquer aparelho**: navegador do computador ou do celular, instalável como app.
-- 💸 **Gratuito, sem anúncios e sem rastreadores.**
+- **Feito para CLT e servidor público**: tabelas oficiais de INSS e IR por ano, 5º dia útil, feriados nacionais.
+- **Privado**: os dados são cifrados no seu aparelho com uma frase que só você sabe, antes de ir para a nuvem. Nada fica salvo no navegador.
+- **Em qualquer aparelho**: navegador do computador ou do celular, instalável como app.
+- **Gratuito, sem anúncios e sem rastreadores.**
 
 ---
 
@@ -53,7 +53,7 @@ A maioria dos apps de finanças não entende o contracheque brasileiro. O Dhenor
 
 ## Funções, tela por tela
 
-### 🏠 Painel
+### Painel
 O resumo do mês, em cards que você pode reordenar, esconder e fixar (**Ajustes → Organizar o Painel**).
 - **Seu dinheiro no mês**: salário do mês (bruto, adições e descontos linha a linha), ganhos do mês (salário + ganhos fora da folha), gasto no mês (pago, falta e em atraso) e o **saldo do mês**, com quanto dos ganhos está comprometido e a situação: **folgado, apertado ou não fecha**.
 - **Próximos 12 meses**: cada mês marcado como folgado, apertado ou não fecha; tocar num mês mostra o que pesa nele (parcelas, faturas, anuais como IPVA, contas fixas, dia a dia) e como resolver.
@@ -61,17 +61,17 @@ O resumo do mês, em cards que você pode reordenar, esconder e fixar (**Ajustes
 - **O que fazer agora** e **dicas** com os seus números, em três níveis: simples, médias (antecipar uma parcela, adiar uma conta) e para planejar (guardar nos meses de folga, 13º, quanto cabe de parcela nova).
 - **Gastos que pesam no futuro**, **fluxo até o próximo salário** (quanto dá para gastar por dia), **meta de gastos** com o ritmo do mês, **saúde financeira**, **faturas dos cartões**, **orçamentos**, **envelopes**, **regra 50/30/20**, **receitas extras**, **investimentos**, **gastos por categoria** e **renda × gastos dos últimos 6 meses**.
 
-### 📅 Agenda
+### Agenda
 Calendário do mês com salário, contas, plantões, faturas (fechamento e vencimento), valores a receber, renovações de assinaturas, férias e metas. Mostra a situação do mês e exporta os vencimentos, com alarme, para Google Agenda, iPhone ou Outlook (.ics).
 
-### 📊 Análise
+### Análise
 - **Período**: gastos e receitas por categoria, tendências e gastos fora do padrão.
 - **Comparar**: dois meses ou intervalos lado a lado.
 - **Histórico**: meses fechados e **relatório do mês em PDF**.
 - **Saúde**: a nota de 0 a 100 mês a mês, com o que mais pesa.
 - **Retrospectiva** do ano.
 
-### 🧾 Contas a pagar
+### Contas a pagar
 - **Do mês**: contas avulsas, recorrentes, parcelas e faturas do mês, com situação (paga, vence hoje, vence logo, atrasada), pagar com a data real, pagar em lote, adiar e **fechar o mês**.
 - **Recorrentes**: semanais a anuais, valor fixo ou **estimado pela média** (luz, água), **reajuste automático** pelo IGP-M/IPCA no mês de aniversário.
 - **Parcelamentos**: carnês, empréstimos e financiamentos, com parcela atual, quanto falta e **quitação antecipada**.
@@ -80,11 +80,11 @@ Calendário do mês com salário, contas, plantões, faturas (fechamento e venci
 - **Dívidas**: simulação de quitação (bola de neve × avalanche).
 - Em cada conta: **etiquetas** (#viagem), **divisão entre categorias**, **anexos** (foto do comprovante ou boleto, guardados cifrados na nuvem), **boleto** e **Pix** pela câmera ou colando o código, e selos de **gasto exagerado**, **fora do comum** e **pesa no futuro**.
 
-### 💳 Cartões e contas bancárias
+### Cartões e contas bancárias
 - **Cartões de crédito** com fechamento e vencimento: cada compra (à vista ou parcelada) cai na fatura certa; a fatura vira uma conta do mês; limite usado e disponível; estornos abatem a fatura.
 - **Contas bancárias e carteiras** com saldo calculado, **transferências** (que não contam como gasto) e **conferência com o saldo do banco**.
 
-### 💰 Salário
+### Salário
 - **Contracheque**: do bruto ao líquido — INSS por faixa, IR com desconto simplificado e dependentes, adicionais, horas extras com DSR, noturno, sobreaviso, consignado, descontos em folha. Pagamento em dia fixo ou 5º dia útil, e salário pago no mês seguinte (competência × pagamento). **Importa o holerite em PDF** e confere verba a verba.
 - **Plantões**: escala no calendário, com valor por tipo; os plantões pagos na folha entram no mês certo.
 - **IR anual**: previsão completa × simplificada (restituir ou pagar).
@@ -94,28 +94,28 @@ Calendário do mês com salário, contas, plantões, faturas (fechamento e venci
 - **Tabelas** de INSS e IR por ano, com aviso quando um ano ainda não tem tabela.
 - **13º** com média das variáveis habituais e **férias** com 1/3 e adiantamento.
 
-### 🎯 Metas
+### Reservas
 - **Metas** com aportes ou ligadas a investimentos (o saldo investido conta como guardado), incluindo a **reserva de emergência** (o ideal de 6 meses de gastos).
 - **Lista de desejos** com preço-alvo, avisando quando o preço chega lá.
 
-### 📈 Investimentos
+### Investimentos
 - **Carteira**: renda fixa que rende sozinha (CDI, Selic, IPCA), ações, FIIs, ETFs, cripto e previdência, com aportes, resgates, IR regressivo, alocação e carteira ideal. **Taxas do Banco Central** e **cotações (brapi)** com um toque.
 - **Proventos**, **Comparar** (com CDI, IPCA e Ibovespa), **IR nas vendas** de ações (preço médio, isenção de R$ 20 mil, prejuízo a compensar, DARF), **Independência** financeira e **PGBL × VGBL**.
 
-### 🔮 Planejamento
+### Planejamento
 - **Simulador** com cenários salvos e comparação lado a lado ("e se eu cancelar…", "e se eu financiar…").
 - **Fluxo diário** até o próximo salário e **12 meses** com 13º, férias e despesas anuais.
 - **Posso comprar?**: à vista ou parcelado, com o efeito em cada mês.
 - **Envelopes** e **regra 50/30/20**.
 - **Prévia ao lançar**: ao digitar um parcelamento, compra no cartão, recorrente ou conta grande, o app mostra antes de salvar os meses em que ela aperta ("Com esta compra, junho fica negativo em R$ 230").
 
-### 📥 Importar extrato
+### Importar extrato
 Extrato do banco (**OFX/CSV**) ou fatura do cartão (**PDF** ou texto colado). Você revisa antes: categorias sugeridas pelas suas **regras**, e saídas que batem com uma conta em aberto (mesmo valor, até 7 dias) marcam essa conta como paga — sem duplicar. O arquivo é lido no próprio aparelho.
 
-### 🔎 Busca
+### Busca
 Busca por texto com filtros (período, categoria, valor, etiqueta) e **buscas salvas**.
 
-### ⚙️ Ajustes
+### Ajustes
 - **Geral**: perfil e renda, **alertas e dicas** (o que é mês apertado, gasto exagerado e gasto grande), aparência, organização do Painel e da barra do celular.
 - **Segurança**: onde ficam os dados, troca da frase, sair da conta, aparelhos conectados e modo discreto.
 - **Nuvem**: status da sincronização, conflitos, **histórico de versões** (as últimas 30, restauráveis), aparelhos e por quanto tempo lembrar o login.

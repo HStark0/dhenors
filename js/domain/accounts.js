@@ -17,6 +17,7 @@
 
 import { sumCents } from '../core/money.js';
 import { todayISO, ymOf, addMonthsYM, monthsBetween } from '../core/dates.js';
+import { clampToStart } from './tracking.js';
 import { invoice } from './cards.js';
 import { recurringIncomeBetween } from './recurringIncome.js';
 
@@ -44,7 +45,7 @@ export function accountMovements(state, account, date = todayISO(), { salaryFn =
   for (const x of state.extraIncomes || []) if (x.accountId === account.id && !x.payroll) add(x.date || `${x.ym}-01`, x.cents, x.description, 'income');
   for (const r of state.recurringIncomes || []) {
     if (r.accountId !== account.id) continue;
-    for (const x of recurringIncomeBetween(r, from ? ymOf(from) : r.startYM, ymOf(date))) add(x.date, x.cents, x.description, 'income');
+    for (const x of recurringIncomeBetween(r, from ? ymOf(from) : clampToStart(state, r.startYM), ymOf(date))) add(x.date, x.cents, x.description, 'income');
   }
   for (const e of state.expenses || []) if (e.accountId === account.id && e.paidAt) add(e.paidAt, -e.cents, e.description, 'expense');
   for (const r of state.recurring || []) {

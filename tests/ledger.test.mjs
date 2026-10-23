@@ -7,11 +7,12 @@ import assert from 'node:assert/strict';
 import { toCents, splitCents, formatBRL, percent } from '../js/core/money.js';
 import { addMonthsYM, addMonthsISO, dateInMonth, nextPayday, diffDays, monthRange } from '../js/core/dates.js';
 import { installmentSchedule, installmentInMonth, computeMonth, entryKey, overdueBefore, goalPlan, creditorMonthly } from '../js/domain/ledger.js';
-import { createEmptyState, sanitizeState } from '../js/domain/schema.js';
+import { sanitizeState } from '../js/domain/schema.js';
 import { payrollProfileFor, computePayroll, payrollFor, thirteenthFor, thirteenthMonths, inssBandFor } from '../js/domain/payroll.js';
 import { tablesFor } from '../js/domain/taxTables.js';
 import { planInstallment } from '../js/domain/ledger.js';
 import { buildSnapshot, monthSummary, projection, periodAnalysis, median } from '../js/domain/analysis.js';
+import { emptyState } from './helpers.mjs';
 
 const nbsp = (s) => s.replace(/ /g, ' ');
 
@@ -65,7 +66,7 @@ test('parcelas começando em 31/01 caem em todos os meses', () => {
 });
 
 function sampleState() {
-  const s = createEmptyState();
+  const s = emptyState();
   // salário já líquido (perfil legado) para manter as contas simples
   s.settings.salaryHistory = [{ from: '2026-01', grossCents: 500000, dependents: 0, additions: [], deductions: [], legacyNet: true }];
   s.extraIncomes = [{ id: 'x1', ym: '2026-10', description: 'Plantão', cents: 80000, date: '2026-10-10' }];
@@ -196,7 +197,7 @@ test('adicionais, extras na folha e descontos', () => {
 });
 
 test('renda do mês: plantão na folha soma o líquido marginal', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [gross(500000)];
   s.extraIncomes = [
     { id: 'p', ym: '2026-10', description: 'Plantão', cents: 100000, date: '2026-10-10', payroll: true },
@@ -261,7 +262,7 @@ test('regime de alíquota fixa (servidor/RPPS)', () => {
 });
 
 test('adicional variável só entra no mês lançado', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [gross(500000)];
   s.settings.payrollVariable = [{ id: 'v', kind: 'add', ym: '2026-10', description: 'Adicional noturno', mode: 'fixed', value: 40000, base: 'salary', taxable: true }];
   assert.equal(payrollFor(s.settings, '2026-10').gross, 540000);
@@ -273,7 +274,7 @@ test('13º proporcional à admissão, com 1ª e 2ª parcelas', () => {
   assert.equal(thirteenthMonths('2026-04-13', 2026), 9);  // abril conta (18 dias)
   assert.equal(thirteenthMonths('2026-04-20', 2026), 8);  // abril não conta (11 dias)
   assert.equal(thirteenthMonths('2025-04-13', 2026), 12);
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [gross(480000)];
   s.settings.employment = { admission: '2026-04-13', regime: 'inss', fixedRateBp: 1400, thirteenth: true };
   const nov = thirteenthFor(s.settings, '2026-11');
@@ -292,7 +293,7 @@ test('13º proporcional à admissão, com 1ª e 2ª parcelas', () => {
 });
 
 test('líquido conferido no holerite substitui a estimativa', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [gross(500000)];
   s.settings.actualNet = { '2026-10': 412345 };
   const m = computeMonth(s, '2026-10', '2026-10-12');
@@ -301,7 +302,7 @@ test('líquido conferido no holerite substitui a estimativa', () => {
 });
 
 test('saldo devedor do credor mês a mês', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.creditors = [{ id: 'c1', name: 'Banco', notes: '' }];
   // 4 parcelas de R$ 100 (set a dez), a 1ª já paga
   s.installments = [{ id: 'i1', description: 'TV', totalCents: 40000, count: 4, firstDueDate: '2026-09-10', dueDay: 10, paid: [1], creditorId: 'c1' }];

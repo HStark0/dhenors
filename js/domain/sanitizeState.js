@@ -7,7 +7,8 @@
 // e sanitizeInvest.js.
 // =============================================================
 
-import { CATEGORY_COLORS, LEGACY_STATE_COLORS, groupOfCategory } from './defaults.js';
+import { GOAL_KIND_IDS, ensureEmergencyGoal, kindOf } from './goals.js';
+import { CATEGORY_COLORS, LEGACY_STATE_COLORS, groupOfCategory, toIconValue } from './defaults.js';
 import { isValidISO, isValidYM } from '../core/dates.js';
 import { SCHEMA_VERSION, newId, DEFAULT_SHIFT_TYPES, DEFAULT_ALERTS, createEmptyState, FREQS, INCOME_KINDS, ACCOUNT_KINDS } from './stateShape.js';
 import { isObj, isInt, str, optId, arr, cents, day, color, tags, pick } from './sanitizeUtil.js';
@@ -72,6 +73,9 @@ export function sanitizeState(raw) {
       rules: arr(s.rules).filter((r) => isObj(r) && str(r.pattern, 60).trim()).slice(0, 500)
         .map((r) => ({ id: optId(r.id) || newId(), pattern: str(r.pattern, 60).trim(), categoryId: optId(r.categoryId), subcategoryId: optId(r.subcategoryId) })),
       spendingLimitCents: isInt(s.spendingLimitCents) && s.spendingLimitCents >= 0 ? s.spendingLimitCents : 0,
+      parcelLimitPct: [10, 20, 30].includes(s.parcelLimitPct) ? s.parcelLimitPct : 10,
+      reservePct: [10, 20, 30].includes(s.reservePct) ? s.reservePct : 10,
+      trackingStartYM: typeof s.trackingStartYM === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(s.trackingStartYM) ? s.trackingStartYM : null,
       alerts: sanitizeAlerts(s.alerts),
       investing: sanitizeInvesting(s.investing),
       indices: sanitizeIndices(s.indices),
@@ -88,7 +92,7 @@ export function sanitizeState(raw) {
       },
       rule503020: sanitizeRule(s.rule503020),
       envelopes: arr(s.envelopes).filter((e) => isObj(e) && str(e.name)).slice(0, 30)
-        .map((e) => ({ id: optId(e.id) || newId(), name: str(e.name, 40), icon: str(e.icon, 24) || '🫙', monthlyCents: cents(e.monthlyCents, { zero: true }) ? e.monthlyCents : 0, categoryIds: arr(e.categoryIds).map(optId).filter(Boolean), rollover: e.rollover !== false })),
+        .map((e) => ({ id: optId(e.id) || newId(), name: str(e.name, 40), icon: toIconValue(e.icon, 'i:inbox'), monthlyCents: cents(e.monthlyCents, { zero: true }) ? e.monthlyCents : 0, categoryIds: arr(e.categoryIds).map(optId).filter(Boolean), rollover: e.rollover !== false })),
       scenarios: arr(s.scenarios).filter((x) => isObj(x) && str(x.name) && isObj(x.scenario)).slice(0, 30)
         .map((x) => ({ id: optId(x.id) || newId(), name: str(x.name, 60), scenario: x.scenario, createdAt: str(x.createdAt, 40) })),
       savedSearches: arr(s.savedSearches).filter((x) => isObj(x) && str(x.name) && isObj(x.query)).slice(0, 30)
@@ -98,7 +102,7 @@ export function sanitizeState(raw) {
         hidden: arr(s.dashboard?.hidden).filter((x) => typeof x === 'string').slice(0, 40),
         pinned: arr(s.dashboard?.pinned).filter((x) => typeof x === 'string').slice(0, 40),
       },
-      tabbar: arr(s.tabbar).filter((x) => typeof x === 'string').slice(0, 4).length ? arr(s.tabbar).filter((x) => typeof x === 'string').slice(0, 4) : base.settings.tabbar,
+      tabbar: arr(s.tabbar).filter((x) => typeof x === 'string').slice(0, 4).length ? arr(s.tabbar).filter((x) => typeof x === 'string').slice(0, 4).map((x) => (x === 'metas' ? 'reservas' : x)) : base.settings.tabbar,
       onboardingSteps: isObj(s.onboardingSteps) ? Object.fromEntries(Object.entries(s.onboardingSteps).filter(([, v]) => typeof v === 'boolean')) : {},
       help: { dismissed: arr(s.help?.dismissed).filter((x) => typeof x === 'string').slice(0, 100) },
       lastSeenVersion: str(s.lastSeenVersion, 20) || null,
@@ -274,17 +278,25 @@ export function sanitizeState(raw) {
     }));
 
   state.goals = arr(raw.goals)
-    .filter((x) => isObj(x) && isInt(x.targetCents) && x.targetCents > 0)
-    .map((x) => ({
-      id: optId(x.id) || newId(), description: str(x.description, 120) || 'Meta', targetCents: x.targetCents,
-      deadline: isValidISO(x.deadline) ? x.deadline : null, icon: str(x.icon, 24) || '🎯',
+    .filter((x) => isObj(x) && isInt(x.targetCents) && (x.targetCents > 0 || (x.autoTarget === true && x.targetCents === 0)))
+    .map((x) => {
       // No formato antigo a reserva era reconhecida pelo NOME. Agora vale só a marcação;
       // na migração, metas antigas com "reserva"/"emergência" no nome ganham a marcação uma vez.
-      emergency: x.emergency === true || (fromSchema < 8 && /reserva|emerg/i.test(x.description || '')),
-      investmentIds: arr(x.investmentIds).map(optId).filter(Boolean),
-      contributions: arr(x.contributions).filter((c) => isObj(c) && isInt(c.cents) && isValidISO(c.date))
-        .map((c) => ({ id: optId(c.id) || newId(), date: c.date, cents: c.cents })),
-    }));
+      const emergency = x.kind === 'emergencia' || x.emergency === true || (fromSchema < 8 && /reserva|emerg/i.test(x.description || ''));
+      return {
+        id: optId(x.id) || newId(), description: str(x.description, 120) || 'Reserva', targetCents: x.targetCents,
+        kind: emergency ? 'emergencia' : GOAL_KIND_IDS.includes(x.kind) ? x.kind : 'outro',
+        emergency, system: x.system === true, autoTarget: x.autoTarget === true,
+        deadline: isValidISO(x.deadline) ? x.deadline : null, icon: toIconValue(x.icon, kindOf({ kind: emergency ? 'emergencia' : x.kind }).icon),
+        investmentIds: arr(x.investmentIds).map(optId).filter(Boolean),
+        contributions: arr(x.contributions).filter((c) => isObj(c) && isInt(c.cents) && isValidISO(c.date))
+          .map((c) => ({ id: optId(c.id) || newId(), date: c.date, cents: c.cents })),
+      };
+    });
+  // Só uma reserva padrão; e toda conta tem uma (ver goals.js)
+  state.goals.filter((g) => g.system).slice(1).forEach((g) => { g.system = false; });
+  for (const g of state.goals) if (g.system) Object.assign(g, { kind: 'emergencia', emergency: true });
+  ensureEmergencyGoal(state.goals);
 
   state.investments = arr(raw.investments).map(sanitizeInvestment).filter(Boolean);
   const invIds = new Set(state.investments.map((i) => i.id));
@@ -302,7 +314,7 @@ export function sanitizeState(raw) {
         // Formato antigo: cores de categoria que imitavam as cores de estado (atraso/vence logo) são trocadas
         if (fromSchema < 8 && LEGACY_STATE_COLORS.includes(col.toUpperCase())) col = CATEGORY_COLORS[i % CATEGORY_COLORS.length];
         return {
-          id: optId(c.id) || newId(), name: str(c.name, 60), icon: str(c.icon, 24) || '🏷️', color: col,
+          id: optId(c.id) || newId(), name: str(c.name, 60), icon: toIconValue(c.icon), color: col,
           group: pick(c.group, ['needs', 'wants', 'savings'], groupOfCategory(c.name)),
           subcategories: arr(c.subcategories).filter((sc) => isObj(sc) && str(sc.name))
             .map((sc) => ({ id: optId(sc.id) || newId(), name: str(sc.name, 60) })),
@@ -364,7 +376,7 @@ function isValidSnapshot(snap) {
   for (const k of ['invoice']) if (!isInt(snap.totals[k])) snap.totals[k] = 0;
   snap.categories = snap.categories
     .filter((c) => isObj(c) && isInt(c.cents))
-    .map((c) => ({ name: str(c.name, 60) || 'Sem categoria', icon: str(c.icon, 24) || '🏷️', color: color(c.color, '#64748B'), cents: c.cents }));
+    .map((c) => ({ name: str(c.name, 60) || 'Sem categoria', icon: toIconValue(c.icon), color: color(c.color, '#64748B'), cents: c.cents }));
   snap.items = snap.items
     .filter((i) => isObj(i) && isInt(i.cents) && isValidISO(i.dueDate))
     .map((i) => ({ kind: str(i.kind, 20), description: str(i.description, 120), cents: i.cents, dueDate: i.dueDate, paid: i.paid === true, paidAt: isValidISO(i.paidAt) ? i.paidAt : null, category: str(i.category, 60), parcel: isObj(i.parcel) && isInt(i.parcel.n) && isInt(i.parcel.count) ? { n: i.parcel.n, count: i.parcel.count } : null }));

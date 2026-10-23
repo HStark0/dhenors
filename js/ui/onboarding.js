@@ -25,7 +25,8 @@ export function profileChecklist(d) {
     { id: 'salary', label: 'Cadastrar o salário', done: d.settings.salaryHistory.length > 0, href: '#/salario', act: null },
     { id: 'bills', label: 'Lançar as contas fixas', done: d.recurring.length > 0 || steps.bills, href: null, act: 'onb:bills' },
     { id: 'card', label: 'Cadastrar o cartão de crédito', done: (d.cards || []).length > 0 || steps.card, href: null, act: 'onb:card' },
-    { id: 'goal', label: 'Criar uma meta (ex.: reserva)', done: d.goals.length > 0 || steps.goal, href: null, act: 'onb:goal' },
+    // A Reserva de emergência já existe em toda conta: o passo é começar a guardar nela
+    { id: 'goal', label: 'Começar sua reserva de emergência', done: d.goals.some((g) => g.contributions.length || g.investmentIds.length || !g.system) || steps.goal, href: '#/reservas', act: null },
     { id: 'cloud', label: 'Baixar um backup (cópia extra, opcional)', done: Boolean(d.lastBackupAt) || steps.cloud, href: null, act: 'backup:export' },
   ];
   return { list, done: list.filter((x) => x.done).length, total: list.length };
@@ -40,7 +41,7 @@ export function onboardingWizard() {
   const reopened = Boolean(store.data.onboarded);
   let step = reopened ? 2 : 1;
   const total = 4;
-  const titles = { 1: 'Bem-vindo ao Dhenors 👋', 2: 'Contas fixas do mês', 3: 'Cartão de crédito', 4: 'Uma meta para começar' };
+  const titles = { 1: 'Bem-vindo ao Dhenors', 2: 'Contas fixas do mês', 3: 'Cartão de crédito', 4: 'Sua reserva de emergência' };
   const body = () => {
     if (step === 1) {
       return html`
@@ -78,10 +79,9 @@ export function onboardingWizard() {
         </div>`;
     }
     return html`
-      <p class="dialog__text">A primeira meta da maioria das pessoas é a <strong>reserva de emergência</strong>: o ideal são 6 meses de gastos.</p>
+      <p class="dialog__text">Sua <strong>Reserva de emergência</strong> já está criada (em Reservas). O ideal é guardar 6 meses de gastos: sem valor, o app calcula esse alvo sozinho.</p>
       <div class="form-grid">
-        ${field({ label: 'Meta', name: 'goal', value: 'Reserva de emergência', extra: { maxlength: 120 } })}
-        ${moneyField({ label: 'Valor da meta', name: 'goalTarget', required: false })}
+        ${moneyField({ label: 'Alvo (opcional)', name: 'goalTarget', required: false, hint: 'Vazio = 6 meses dos seus gastos, calculado sozinho.' })}
         ${moneyField({ label: 'Já tenho guardado', name: 'goalSaved', required: false })}
       </div>`;
   };
@@ -129,8 +129,12 @@ export function onboardingWizard() {
         if (v.card?.trim()) A.saveCard({ name: v.card, closingDay: Number(v.closing || 3), dueDay: Number(v.due || 10), limitCents: v.limit ? toCents(v.limit) : 0 });
         A.setOnboardingStep('card', true);
       } else {
+        // Atualiza a reserva padrão (não cria outra)
+        const reserve = store.data.goals.find((g) => g.system);
         const target = toCents(v.goalTarget || '');
-        if (Number.isFinite(target) && target > 0) A.saveGoal({ description: v.goal || 'Reserva de emergência', targetCents: target, emergency: /reserva|emerg/i.test(v.goal || ''), initialCents: toCents(v.goalSaved || '') || 0, icon: '🛡️' });
+        const saved = toCents(v.goalSaved || '');
+        if (reserve && Number.isFinite(target) && target > 0) A.saveGoal({ ...reserve, id: reserve.id, autoTarget: false, targetCents: target });
+        if (reserve && Number.isFinite(saved) && saved > 0) A.addContribution(reserve.id, saved);
         A.setOnboardingStep('goal', true);
         toast('Tudo pronto! Use o botão "Novo" para lançar suas contas.');
         return undefined;

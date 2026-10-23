@@ -43,7 +43,10 @@ function statusText(item, today = todayISO()) {
     const late = item.paidAt && item.paidAt > item.dueDate ? diffDays(item.dueDate, item.paidAt) : 0;
     return `Pago${item.paidAt && item.paidAtKnown !== false ? ` em ${formatDayMonth(item.paidAt)}` : ''}${late > 0 ? ` · ${late} ${late === 1 ? 'dia' : 'dias'} de atraso` : ''}`;
   }
-  if (item.status === 'overdue') return `Atrasada · venceu ${relativeDays(item.dueDate, today)}`;
+  if (item.status === 'overdue') {
+    const when = relativeDays(item.dueDate, today);
+    return when === 'ontem' ? 'Venceu ontem' : `Atrasada ${when}`; // curto: cabe numa linha no celular
+  }
   if (item.status === 'today') return 'Vence hoje';
   return `Vence ${relativeDays(item.dueDate, today)}`;
 }

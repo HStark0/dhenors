@@ -136,7 +136,7 @@ function period() {
         <p class="field__hint">Comparado com a mediana dos últimos 6 meses (só aparece com pelo menos 3 meses de histórico).</p>
       </article>` : ''}
 
-    <section class="grid grid--two grid--top">
+    <section class="masonry">
       <article class="card">
         <header class="card__header"><h2 class="card__title">${icon('lightbulb')} Dicas para ${formatMonth(ym)} e os próximos meses ${helpTip('dicas')}</h2></header>
         ${adviceList(advice, { limit: 5 })}
@@ -148,9 +148,6 @@ function period() {
           ${weightList(weight, 8)}`
         : html`<p class="muted small">Nada lançado neste mês continua comprometendo os próximos.</p>`}
       </article>
-    </section>
-
-    <section class="grid grid--two">
       <article class="card">
         <header class="card__header"><h2 class="card__title">${icon('chart-column')} Renda × gastos</h2><span class="muted small">clique num mês para o relatório</span></header>
         ${barChart(labels, [
@@ -162,9 +159,6 @@ function period() {
         <header class="card__header"><h2 class="card__title">${icon('chart-line')} Saldo de cada mês</h2></header>
         ${lineChart(labels, [{ name: 'Saldo', values: a.series.map((s) => s.balance), className: 'is-balance' }], { label: 'Saldo por mês', width: chartWidth(0.5), action: 'an:month', keys: a.series.map((s) => s.ym) })}
       </article>
-    </section>
-
-    <section class="grid grid--two">
       <article class="card">
         <header class="card__header"><h2 class="card__title">${icon('chart-pie')} Para onde foi o dinheiro</h2><span class="muted small">toque numa fatia para ver as contas</span></header>
         ${donutChart(a.categories.map((c) => ({ label: c.name, value: c.cents, color: c.color, id: d.categories.find((x) => x.name === c.name)?.id })),
@@ -183,19 +177,6 @@ function period() {
             ${a.extrasShare > 25 ? 'É uma parte grande: evite assumir custos fixos contando com ela.' : ''}</p>
           </div>` : ''}
       </article>
-    </section>
-
-    <article class="card">
-      <header class="card__header"><h2 class="card__title">${icon('trending-up')} Projeção dos próximos 6 meses</h2></header>
-      <p class="muted small">Considera salário, 13º, férias, benefícios, receitas recorrentes, recorrentes, parcelas e faturas agendadas e uma estimativa de gastos avulsos (mediana dos últimos 3 meses; gastos grandes somam por cima). Renda extra avulsa futura só entra se já estiver lançada.</p>
-      ${lineChart(proj.map((p) => formatMonthShort(p.ym)), [
-        { name: 'Saldo projetado', values: proj.map((p) => p.balance), className: 'is-balance' },
-        { name: 'Compromissos', values: proj.map((p) => p.spent), className: 'is-spent', dashed: true },
-      ], { label: 'Projeção de saldo e compromissos', width: chartWidth(1) })}
-      ${monthStrip(outlook)}
-    </article>
-
-    <section class="grid grid--two">
       <article class="card">
         <header class="card__header"><h2 class="card__title">${icon('calendar-range')} Parcelamentos terminando</h2></header>
         ${ending.length ? html`
@@ -215,7 +196,18 @@ function period() {
               </li>`)}
           </ul>` : html`<p class="muted small">Sem gastos no período.</p>`}
       </article>
-    </section>`;
+    </section>
+
+    <article class="card">
+      <header class="card__header"><h2 class="card__title">${icon('trending-up')} Projeção dos próximos 6 meses</h2></header>
+      <p class="muted small">Considera salário, 13º, férias, benefícios, receitas recorrentes, recorrentes, parcelas e faturas agendadas e uma estimativa de gastos avulsos (mediana dos últimos 3 meses; gastos grandes somam por cima). Renda extra avulsa futura só entra se já estiver lançada.</p>
+      ${lineChart(proj.map((p) => formatMonthShort(p.ym)), [
+        { name: 'Saldo projetado', values: proj.map((p) => p.balance), className: 'is-balance' },
+        { name: 'Compromissos', values: proj.map((p) => p.spent), className: 'is-spent', dashed: true },
+      ], { label: 'Projeção de saldo e compromissos', width: chartWidth(1) })}
+      ${monthStrip(outlook)}
+    </article>
+`;
 }
 
 // ---------- Comparar períodos ----------
@@ -459,7 +451,7 @@ function wrapped() {
         <article class="card"><p class="kpi__label">Renda no ano</p><p class="big-number money">${formatBRL(w.income)}</p></article>
         <article class="card"><p class="kpi__label">Gastos no ano</p><p class="big-number money">${formatBRL(w.spent)}</p></article>
         <article class="card"><p class="kpi__label">Investido (líquido)</p><p class="big-number money">${formatBRL(w.invested)}</p></article>
-        <article class="card"><p class="kpi__label">Metas batidas</p><p class="big-number">${w.goalsReached.length}</p><p class="small muted">${w.goalsReached.map((g) => `${g.icon} ${g.description}`).join(' · ')}</p></article>
+        <article class="card"><p class="kpi__label">Reservas completas</p><p class="big-number">${w.goalsReached.length}</p><p class="small muted">${w.goalsReached.map((g) => g.description).join(' · ')}</p></article>
         ${w.shifts ? html`<article class="card"><p class="kpi__label">Plantões</p><p class="big-number">${w.shifts}</p></article>` : ''}
         ${w.bestMonth ? html`<article class="card"><p class="kpi__label">Melhor mês</p><p class="big-number">${formatMonthShort(w.bestMonth.ym)}</p><p class="small muted">sobrou ${formatBRL(w.bestMonth.balance)}</p></article>` : ''}
       </div>

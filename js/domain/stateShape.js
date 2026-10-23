@@ -6,6 +6,7 @@
 // completo do estado está documentado no topo de schema.js.
 // =============================================================
 
+import { defaultEmergencyGoal } from './goals.js';
 import { DEFAULT_CATEGORIES, CATEGORY_COLORS } from './defaults.js';
 import { DEFAULT_INVESTING } from './investments.js';
 
@@ -67,6 +68,9 @@ export function createEmptyState() {
       reminders: { enabled: false, daysBefore: 1, mode: 'daily', push: false },
       rules: [],
       spendingLimitCents: 0,
+      parcelLimitPct: 10,
+      reservePct: 10,
+      trackingStartYM: null,
       alerts: { ...DEFAULT_ALERTS },
       investing: structuredClone(DEFAULT_INVESTING),
       indices: { ipca12Bp: 450, igpm12Bp: 400, ipcaMonthly: {}, igpmMonthly: {}, updatedAt: null },
@@ -108,7 +112,7 @@ export function createEmptyState() {
     receivables: [],
     debts: [],
     wishlist: [],
-    goals: [],
+    goals: [defaultEmergencyGoal()],
     investments: [],
     creditors: [],
     categories: createDefaultCategories(),

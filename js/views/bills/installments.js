@@ -14,6 +14,7 @@ import { store } from '../../core/store.js';
 import { formatBRL, plural } from '../../core/money.js';
 import { currentYM, formatDateBR, formatMonthShort, monthsBetween } from '../../core/dates.js';
 import { installmentSummary, installmentInMonth } from '../../domain/ledger.js';
+import { trackingStartYM } from '../../domain/tracking.js';
 import { earlyPayoff } from '../../domain/debts.js';
 import * as A from '../../domain/actions.js';
 
@@ -21,7 +22,8 @@ export function renderInstallments() {
   const d = store.data;
   const now = currentYM();
   const show = store.ui.filters.installments || 'active';
-  const all = d.installments.map((inst) => ({ inst, s: installmentSummary(inst) }));
+  const start = trackingStartYM(d);
+  const all = d.installments.map((inst) => ({ inst, s: installmentSummary(inst, start) }));
   const active = all.filter((x) => !x.s.finished);
   const done = all.filter((x) => x.s.finished);
   const list = (show === 'active' ? active : done)
@@ -100,7 +102,7 @@ function card(inst, s, now) {
 
 /** Simulação de quitação antecipada: desconto dos juros futuros. */
 function payoffDialog(inst) {
-  const s = installmentSummary(inst);
+  const s = installmentSummary(inst, trackingStartYM(store.data));
   const open = s.schedule.filter((p) => !p.paid).map((p) => p.cents);
   const render = (rateBp) => {
     const r = earlyPayoff(open, rateBp);

@@ -248,7 +248,7 @@ export function balanceCheckDialog(account, expected) {
       if (!Number.isFinite(v)) throw new A.ValidationError('Informe o saldo.', 'cents');
       A.checkBalance(account.id, v, todayISO(), { adjust: form.adjust.checked });
       const diff = v - expected;
-      toast(diff === 0 ? 'Saldo confere com o previsto. 👌' : `Diferença de ${formatBRL(Math.abs(diff))} (${diff > 0 ? 'sobrando' : 'faltando'} no banco).${form.adjust.checked ? ' Saldo ajustado.' : ''}`, { type: diff === 0 ? 'success' : 'info', duration: 8000 });
+      toast(diff === 0 ? 'Saldo confere com o previsto.' : `Diferença de ${formatBRL(Math.abs(diff))} (${diff > 0 ? 'sobrando' : 'faltando'} no banco).${form.adjust.checked ? ' Saldo ajustado.' : ''}`, { type: diff === 0 ? 'success' : 'info', duration: 8000 });
     },
   });
 }

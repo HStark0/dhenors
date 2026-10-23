@@ -8,6 +8,8 @@
 import { sumCents, percent, plural } from '../core/money.js';
 import { addMonthsYM, dateInMonth, ymOf, todayISO, parseYM, daysInMonth, toISO, addDaysISO, diffDays } from '../core/dates.js';
 import { computeMonth, overdueBefore, goalPlan, installmentSummary, incomeFor, thirteenthOf } from './ledger.js';
+import { trackingStartYM } from './tracking.js';
+import { EMERGENCY_MONTHS } from './goals.js';
 import { monthSeries, projection, median } from './analysis.js';
 import { payrollProfileFor, vacationIn, paydayIn } from './payroll.js';
 import { newId } from './schema.js';
@@ -46,7 +48,7 @@ export function budgetStatus(state, ym, today = todayISO()) {
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
-/** Valor atual dos investimentos ligados a uma meta. */
+/** Valor atual dos investimentos ligados a uma reserva. */
 export function linkedValue(state, goal, today = todayISO()) {
   if (!goal.investmentIds?.length) return 0;
   const investing = investingOf(state.settings);
@@ -54,8 +56,39 @@ export function linkedValue(state, goal, today = todayISO()) {
     .map((i) => positionAt(i, investing, today, state.settings.quotes).value));
 }
 
-/** Progresso da meta contando os investimentos ligados a ela. */
-export const goalProgress = (state, goal, today = todayISO()) => goalPlan(goal, today, linkedValue(state, goal, today));
+/** Custo de um mês típico: mediana dos gastos dos 3 meses anteriores (ou o mês atual). */
+export function monthlyCost(state, ym, today = todayISO()) {
+  const spent = monthSeries(state, addMonthsYM(ym, -1), 3, today).map((m) => m.spent).filter((v) => v > 0);
+  return spent.length ? median(spent) : computeMonth(state, ym, today).totals.all;
+}
+
+/** Alvo da reserva: o informado ou, no automático, 6 meses de gastos. */
+export function goalTarget(state, goal, today = todayISO()) {
+  if (!goal.autoTarget) return goal.targetCents;
+  return Math.round(monthlyCost(state, ymOf(today), today) * EMERGENCY_MONTHS);
+}
+
+/**
+ * Progresso da reserva contando os investimentos ligados a ela.
+ * "Poupar no mês" (kind 'mensal'): o alvo é mensal, então o progresso é
+ * o que entrou NESTE mês (monthSaved); saved continua sendo o total.
+ */
+export function goalProgress(state, goal, today = todayISO()) {
+  const target = goalTarget(state, goal, today);
+  const plan = goalPlan({ ...goal, targetCents: target }, today, linkedValue(state, goal, today));
+  const ym = ymOf(today);
+  const monthSaved = sumCents(goal.contributions.filter((c) => ymOf(c.date) === ym).map((c) => c.cents));
+  const out = { ...plan, target, monthSaved, monthly: goal.kind === 'mensal' };
+  if (out.monthly) {
+    const remaining = Math.max(0, target - monthSaved);
+    Object.assign(out, {
+      remaining, perMonth: remaining, monthsLeft: null, late: false,
+      progress: target > 0 ? Math.min(100, (Math.max(0, monthSaved) / target) * 100) : 0,
+      done: target > 0 && remaining === 0,
+    });
+  }
+  return out;
+}
 
 /**
  * Quanto a reserva de emergência cobre de meses de gastos.
@@ -77,8 +110,7 @@ export function emergencyCoverage(state, ym, today = todayISO()) {
   const looseGoals = goals.filter((g) => !(g.investmentIds || []).length && sumCents(g.contributions.map((c) => c.cents)) > 0);
   const overlap = looseGoals.length > 0 && invSaved > 0;
   const saved = overlap ? Math.max(goalSaved, invSaved) : goalSaved + invSaved;
-  const spent = monthSeries(state, addMonthsYM(ym, -1), 3, today).map((m) => m.spent).filter((v) => v > 0);
-  const monthly = spent.length ? median(spent) : computeMonth(state, ym, today).totals.all;
+  const monthly = monthlyCost(state, ym, today);
   return { saved, goalSaved, invSaved, overlap, monthly, months: monthly > 0 ? saved / monthly : 0, hasGoal: goals.length + invs.length > 0 };
 }
 
@@ -128,7 +160,7 @@ export function financialScore(state, ym, today = todayISO()) {
       key: 'reserve', label: 'Reserva de emergência', max: 20,
       value: reserve.monthly ? `${reserve.months.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${reserve.months >= 1 && reserve.months < 2 ? 'mês' : 'meses'} de gastos` : '—',
       points: 20 * clamp01(reserve.months / 6),
-      tip: reserve.hasGoal ? (reserve.months >= 6 ? 'Reserva completa (6+ meses).' : 'Meta: 6 meses de gastos guardados.') : 'Crie uma meta de "reserva de emergência" ou marque um investimento como reserva.',
+      tip: reserve.months >= 6 ? 'Reserva completa (6+ meses).' : reserve.saved > 0 ? 'Objetivo: 6 meses de gastos guardados.' : 'Comece a guardar na sua Reserva de emergência (em Reservas).',
     },
     {
       key: 'month', label: limit ? 'Gastos do mês × renda e meta' : 'Gastos do mês × renda', max: 15,
@@ -350,7 +382,7 @@ export function simulate(state, scenario, fromYM, months = 12, today = todayISO(
   for (const id of sc.payoff || []) {
     const inst = sim.installments.find((x) => x.id === id);
     if (!inst) continue;
-    const sum = installmentSummary(inst);
+    const sum = installmentSummary(inst, trackingStartYM(state));
     const future = sum.schedule.filter((p) => !p.paid && p.ym >= fromYM);
     if (!future.length) continue;
     const remaining = sumCents(future.map((p) => p.cents));
@@ -464,7 +496,7 @@ export function buildICS(state, fromYM, months = 12, daysBefore = 1, today = tod
         `DTSTAMP:${stamp}`,
         `DTSTART;VALUE=DATE:${icsDate(it.dueDate)}`,
         `DTEND;VALUE=DATE:${icsDate(addDaysISO(it.dueDate, 1))}`,
-        `SUMMARY:${icsText(`💸 ${it.description} — ${value}`)}`,
+        `SUMMARY:${icsText(`${it.description} — ${value}`)}`,
         `DESCRIPTION:${icsText(`Vencimento no Dhenors${it.parcel ? ` · parcela ${it.parcel.n}/${it.parcel.count}` : ''}`)}`,
         'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsText(`Vence ${daysBefore ? `em ${plural(daysBefore, 'dia')}` : 'hoje'}: ${it.description}`)}`,
         daysBefore ? `TRIGGER:-P${daysBefore - 1}DT15H` : 'TRIGGER:PT9H', 'END:VALARM',

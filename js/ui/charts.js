@@ -279,7 +279,13 @@ export function lineChart(labels, series, { label = 'Gráfico de linha', height 
     return `<rect x="${fmt(left)}" y="${padT}" width="${fmt(Math.max(1, right - left))}" height="${fmt(plotH)}" class="chart__hit" ${tipAttr(tip)} ${a11y} ${action && keys ? `data-action="${escapeHTML(action)}" data-key="${escapeHTML(keys[i])}"` : ''}></rect>`;
   }).join('');
 
-  const markSVG = marks.map((m) => `<g class="chart__mark"><line x1="${fmt(x(m.index))}" x2="${fmt(x(m.index))}" y1="${padT}" y2="${padT + plotH}"/><text x="${fmt(x(m.index))}" y="${padT + 10}" text-anchor="middle">${escapeHTML(m.label)}</text></g>`).join('');
+  // Rótulo do destaque: perto das bordas, encosta para dentro (não cobre o eixo)
+  const markSVG = marks.map((m) => {
+    const mx = x(m.index);
+    const anchor = mx - padL < 30 ? 'start' : W - padR - mx < 30 ? 'end' : 'middle';
+    const tx = anchor === 'start' ? mx + 4 : anchor === 'end' ? mx - 4 : mx;
+    return `<g class="chart__mark"><line x1="${fmt(mx)}" x2="${fmt(mx)}" y1="${padT}" y2="${padT + plotH}"/><text x="${fmt(tx)}" y="${padT + 10}" text-anchor="${anchor}">${escapeHTML(m.label)}</text></g>`;
+  }).join('');
 
   return html`
     <figure class="chart">

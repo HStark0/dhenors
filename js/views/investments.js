@@ -267,7 +267,7 @@ function allocationCard(pf, d, today) {
         </ul>
         ${plan.length ? html`
           <div class="note">${icon('sparkles')}<span>Próximo aporte de <strong>${formatBRL(next)}</strong>: ${plan.map((p, i) => html`${i ? (i === plan.length - 1 ? ' e ' : ', ') : ''}<strong>${formatBRL(p.cents)}</strong> em ${p.label.toLowerCase()}`)}.</span></div>`
-        : html`<p class="muted small">Carteira equilibrada com a ideal. 👌</p>`}`
+        : html`<p class="muted small">${icon('circle-check', 'icon--xs pos')} Carteira equilibrada com a ideal.</p>`}`
       : ''}
     </article>`;
 }
@@ -291,7 +291,7 @@ function card(inv, pos, investing, today) {
   return html`
     <article class="card entity invest ${pos.value <= 0 ? 'is-muted' : pos.gain < 0 ? 'tone-bad' : pos.gain > 0 ? 'tone-good' : 'tone-info'}" style="--cat:${cls.color}">
       <header class="entity__head">
-        <span class="entity__icon">${t.icon}</span>
+        <span class="entity__icon">${icon(t.icon)}</span>
         <div class="entity__title">
           <h3>${inv.name}</h3>
           <p class="muted small">${sub}</p>
@@ -313,7 +313,7 @@ function card(inv, pos, investing, today) {
         ${inv.emergency ? html`<span class="badge badge--info">${icon('shield-check', 'icon--xs')} Reserva</span>` : ''}
         ${inv.ticker ? html`<span class="badge badge--muted" title="${saleTaxLabel(inv)}">${inv.ticker}${pos.qty ? ` · ${pos.qty.toLocaleString('pt-BR')} cotas` : ''}${pos.quoted ? ' · pela cotação' : ''}</span>` : ''}
         ${inv.pension ? html`<span class="badge badge--muted">${inv.pension.toUpperCase()}</span>` : ''}
-        ${goalsOf(inv).map((g) => html`<a class="badge badge--good" href="#/metas">${icon('target', 'icon--xs')} ${g.description}</a>`)}
+        ${goalsOf(inv).map((g) => html`<a class="badge badge--good" href="#/reservas">${icon('target', 'icon--xs')} ${g.description}</a>`)}
       </p>
 
       <footer class="entity__actions">

@@ -2,9 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { merge, mergeStates } from '../js/domain/merge.js';
-import { createEmptyState } from '../js/domain/schema.js';
+import { emptyState } from './helpers.mjs';
 
-const st = (expenses, extra = {}) => ({ ...createEmptyState(), categories: [], expenses, ...extra });
+const st = (expenses, extra = {}) => ({ ...emptyState(), categories: [], expenses, ...extra });
 const e = (id, cents = 100, d = 'x') => ({ id, description: d, cents, dueDate: '2026-10-01' });
 
 test('itens novos dos dois aparelhos ficam', () => {
@@ -35,7 +35,7 @@ test('alterações em campos diferentes do mesmo item se juntam', () => {
 });
 
 test('ajustes: cada campo pelo lado que mudou', () => {
-  const base = createEmptyState();
+  const base = emptyState();
   const local = structuredClone(base); local.settings.profileName = 'Ana';
   const remote = structuredClone(base); remote.settings.theme = 'dark';
   const m = merge(base, local, remote);

@@ -5,7 +5,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createEmptyState } from '../js/domain/schema.js';
 import { payrollFor, inssFor, absencesIn, formatHours } from '../js/domain/payroll.js';
 import { incomeFor, payslipIncome } from '../js/domain/ledger.js';
 import { calendarEvents } from '../js/domain/planning.js';
@@ -13,7 +12,7 @@ import { dsrDaysIn } from '../js/core/calendar.js';
 import { tablesFor } from '../js/domain/taxTables.js';
 
 const settings = () => {
-  const s = createEmptyState().settings;
+  const s = emptyState().settings;
   s.salaryHistory = [{ from: '2026-04', grossCents: 202660, dependents: 0,
     additions: [{ id: 'peri', description: 'Adicional de periculosidade', mode: 'percent', value: 3000, base: 'salary', taxable: true }],
     deductions: [] }];
@@ -87,7 +86,7 @@ test('salário-família só até o limite de remuneração', () => {
 });
 
 test('salário que cai no mês seguinte: holerite de set entra em out', () => {
-  const st = createEmptyState();
+  const st = emptyState();
   st.settings = settings();
   st.settings.payday = { mode: 'business', nth: 5, saturday: true, nextMonth: true };
   const set = payslipIncome(st, '2026-09');
@@ -104,6 +103,7 @@ test('salário que cai no mês seguinte: holerite de set entra em out', () => {
 // ---------- Importação do holerite (texto colado, dados fictícios) ----------
 import { parsePayslipText, planFromPayslip, friendlyName } from '../js/domain/payslip.js';
 import { applyPayslipTo } from '../js/domain/actions.js';
+import { emptyState } from './helpers.mjs';
 
 const SAMPLE = `EMPRESA EXEMPLO LTDA                HOLERITE                    Comp.: 9 / 2026
                          FULANO DE TAL                                  Página 1
@@ -129,7 +129,7 @@ test('lê o texto do holerite e importa batendo o líquido', () => {
   assert.equal(parsed.baseSalary, 202660);
   assert.equal(parsed.net, 236179);
   assert.deepEqual(parsed.totals, { proventos: 294164, descontos: 57985 });
-  const st = createEmptyState();
+  const st = emptyState();
   const plan = planFromPayslip(parsed, st.settings);
   const by = (code) => plan.items.find((x) => x.code === code);
   assert.equal(by('0405').action, 'sick');

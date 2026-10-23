@@ -79,7 +79,7 @@ export default {
             <li><span class="dot dot--card"></span>Fatura fecha</li>
             <li><span class="dot dot--receivable"></span>A receber</li>
             <li><span class="dot dot--renewal"></span>Renovações</li>
-            <li><span class="dot dot--vacation"></span>Férias, metas e vencimentos</li>
+            <li><span class="dot dot--vacation"></span>Férias, reservas e vencimentos</li>
           </ul>
         </article>
 

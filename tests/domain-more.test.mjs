@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 
 import { store } from '../js/core/store.js';
 import { diffDays } from '../js/core/dates.js';
-import { createEmptyState, sanitizeState, SCHEMA_VERSION } from '../js/domain/schema.js';
+import { sanitizeState, SCHEMA_VERSION } from '../js/domain/schema.js';
 import { parseBoleto, _dv } from '../js/domain/boleto.js';
 import { parsePix, buildPix } from '../js/domain/pix.js';
 import { parseCardInvoice, findDueDate } from '../js/domain/cardInvoice.js';
@@ -21,9 +21,10 @@ import { compareLines } from '../js/domain/payslip.js';
 import { payrollFor } from '../js/domain/payroll.js';
 import { parseQuickAdd } from '../js/domain/quickadd.js';
 import * as A from '../js/domain/actions.js';
+import { emptyState } from './helpers.mjs';
 
 const today = '2026-10-15';
-const reset = () => { store.data = createEmptyState(); store.data.onboarded = true; };
+const reset = () => { store.data = emptyState(); store.data.onboarded = true; };
 
 before(() => {
   store.guest = false; // conta aberta (sem login, alterações pedem para entrar)

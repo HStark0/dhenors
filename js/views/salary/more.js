@@ -128,7 +128,7 @@ export function renderExit() {
             <dl class="kv kv--stack">
               ${r.fgts.fine ? html`<div><span>Multa do FGTS (${Math.round(r.reason.fine * 100)}%)</span><strong class="money">${formatBRL(r.fgts.fine)}</strong></div>` : ''}
               ${r.fgts.withdraw ? html`<div><span>Saque do FGTS (${Math.round(r.reason.withdraw * 100)}%)</span><strong class="money">${formatBRL(r.fgts.withdraw)}</strong></div>` : ''}
-              <div><span><strong>Total que você recebe</strong></span><strong class="money pos">${formatBRL(r.total)}</strong></div>
+              <div><span><strong>Você recebe</strong></span><strong class="money pos">${formatBRL(r.total)}</strong></div>
             </dl>` : html`<p class="muted small">Neste tipo de saída, o FGTS fica na conta (não há saque nem multa).</p>`}
           ${r.notes.map((n) => html`<p class="field__hint">${n}</p>`)}`}
       </article>
@@ -293,7 +293,7 @@ export function renderCareer() {
       </section>` : ''}
     <article class="card">
       <h2 class="card__title">${icon('trending-up')} Linha do tempo</h2>
-      ${lineChart(t.map((x) => formatMonthShort(x.from)), [
+      ${t.length < 2 ? '' : lineChart(t.map((x) => formatMonthShort(x.from)), [
         { name: 'Bruto', values: t.map((x) => x.gross), className: 'is-income' },
         { name: 'Líquido fixo', values: t.map((x) => x.net), className: 'is-balance' },
       ], { label: 'Evolução do salário', width: chartWidth(1) })}

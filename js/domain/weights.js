@@ -22,6 +22,7 @@ import { sumCents, percent, formatBRL, formatPercent, plural } from '../core/mon
 import { addMonthsYM, formatMonthShort, todayISO, ymOf } from '../core/dates.js';
 import { memoByState } from '../core/memo.js';
 import { monthItems, computeMonth, installmentSchedule, recurringDates, FREQ_DAYS } from './ledger.js';
+import { trackingStartYM } from './tracking.js';
 import { purchaseSchedule, invoiceMonthFor } from './cards.js';
 import { simulatePayoff } from './debts.js';
 import { median } from './analysis.js';
@@ -45,7 +46,7 @@ function futureWeightRaw(state, ym, today = todayISO()) {
 
   // Parcelamentos com parcela no mês e parcelas em aberto depois dele
   for (const inst of state.installments || []) {
-    const schedule = installmentSchedule(inst);
+    const schedule = installmentSchedule(inst, trackingStartYM(state));
     const here = schedule.find((p) => p.ym === ym);
     if (!here) continue;
     const later = schedule.filter((p) => p.ym > ym && !p.paid);

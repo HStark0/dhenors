@@ -2,15 +2,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createEmptyState, sanitizeState } from '../js/domain/schema.js';
+import { sanitizeState } from '../js/domain/schema.js';
 import { payrollFor, thirteenthFor, variableAverageFor, onCallLinesFor } from '../js/domain/payroll.js';
 import { thirteenthOf } from '../js/domain/ledger.js';
+import { emptyState } from './helpers.mjs';
 
 const profile = (cents, extra = {}) => ({ from: '2026-01', grossCents: cents, dependents: 0, additions: [], deductions: [], ...extra });
 const onCall = { id: 'sa', description: 'Sobreaviso', mode: 'hours', value: 20 * 60, hourKind: 'sobreaviso', dsr: false, taxable: true };
 
 test('sobreaviso: fixo de R$ 0,00 todo mês; só ganha valor com as horas do mês', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [profile(440000, { additions: [onCall] })];
   // Hora = 4.400 ÷ 220 = R$ 20,00 → sobreaviso = 20 ÷ 3 por hora
   const none = payrollFor(s.settings, '2026-10').additions.find((a) => a.id === 'sa');
@@ -31,7 +32,7 @@ test('sobreaviso: fixo de R$ 0,00 todo mês; só ganha valor com as horas do mê
 });
 
 test('13º: média das variáveis, 1ª parcela = 50% e 2ª = total − 1ª − INSS − IR', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [profile(300000)];
   s.settings.employment = { admission: null, regime: 'inss', fixedRateBp: 1400, thirteenth: true };
   // Horas extras variáveis: R$ 600 em março e R$ 1.200 em setembro
@@ -57,7 +58,7 @@ test('13º: média das variáveis, 1ª parcela = 50% e 2ª = total − 1ª − I
 });
 
 test('13º: plantões pagos na folha entram na média', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [profile(300000)];
   s.extraIncomes = [{ id: 'p', ym: '2026-05', description: 'Plantão', cents: 100000, payroll: true }];
   const t = thirteenthOf(s, '2026-11');
@@ -67,7 +68,7 @@ test('13º: plantões pagos na folha entram na média', () => {
 });
 
 test('13º proporcional: mês de admissão conta com 15 dias ou mais', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [profile(240000)];
   s.settings.employment = { admission: '2026-07-10', regime: 'inss', fixedRateBp: 1400, thirteenth: true };
   const nov = thirteenthFor(s.settings, '2026-11');
@@ -81,7 +82,7 @@ test('apagar só o salário: mantém contas e o resto; pode desfazer', async () 
   const A = await import('../js/domain/actions.js');
   store.guest = false; // conta aberta (sem login, alterações pedem para entrar)
   console.warn = () => {}; console.error = () => {};
-  store.data = createEmptyState();
+  store.data = emptyState();
   const d = store.data;
   d.onboarded = true;
   d.settings.salaryHistory = [profile(500000, { additions: [onCall] })];
@@ -118,7 +119,7 @@ test('sobreaviso fixo é salvo com 0 horas (R$ 0,00) mesmo sem informar horas', 
   const { store } = await import('../js/core/store.js');
   const A = await import('../js/domain/actions.js');
   store.guest = false; // conta aberta (sem login, alterações pedem para entrar)
-  store.data = createEmptyState();
+  store.data = emptyState();
   store.data.onboarded = true;
   store.data.settings.salaryHistory = [profile(440000)];
   A.savePayrollLine('2026-10', 'add', { description: 'Sobreaviso', mode: 'hours', value: NaN, hourKind: 'sobreaviso', dsr: false, taxable: true, variable: false });

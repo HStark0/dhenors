@@ -72,6 +72,8 @@ const ALIASES = {
   recorrentes: 'contas?aba=recorrentes', parcelas: 'contas?aba=parcelas', assinaturas: 'contas?aba=assinaturas',
   credores: 'ajustes?aba=credores', categorias: 'ajustes?aba=categorias', historico: 'analise?aba=historico',
   simulador: 'planejamento?aba=simulador', plantoes: 'salario?aba=plantoes', cartoes: 'carteira?aba=cartoes',
+  // "Metas" virou "Reservas" (links e atalhos antigos continuam funcionando)
+  metas: 'reservas', desejos: 'reservas?aba=desejos',
 };
 
 /**
@@ -91,7 +93,7 @@ const NAV_SECTIONS = [
     { id: 'salario', label: 'Salário', icon: 'banknote' },
   ] },
   { title: 'Futuro', items: [
-    { id: 'metas', label: 'Metas', icon: 'target' },
+    { id: 'reservas', label: 'Reservas', icon: 'piggy-bank' },
     { id: 'investimentos', label: 'Investimentos', icon: 'coins' },
     { id: 'planejamento', label: 'Planejamento', icon: 'wand-sparkles' },
   ] },
@@ -111,7 +113,7 @@ function currentRoute() {
 }
 
 /** Barra inferior do celular: 3 atalhos configuráveis + "Novo" + "Mais" (padrão: Painel, Agenda, Contas). */
-const tabbarIds = () => (store.data.settings.tabbar || ['painel', 'agenda', 'contas']).filter((id) => NAV.some((n) => n.id === id)).slice(0, 3);
+const tabbarIds = () => (store.data.settings.tabbar || ['painel', 'agenda', 'contas']).map((id) => (id === 'metas' ? 'reservas' : id)).filter((id) => NAV.some((n) => n.id === id)).slice(0, 3);
 
 // ---------- Ações globais (data-action) ----------
 
@@ -164,7 +166,7 @@ const ACTIONS = {
   'install:app': () => installApp(),
   'onb:bills': () => E.editRecurring(),
   'onb:card': () => E.editCard(),
-  'onb:goal': () => E.editGoal(),
+  'onb:goal': () => { location.hash = '#/reservas'; },
   'onb:wizard': () => onboardingWizard(),
   'undo:last': () => { try { const l = store.undo(); if (l) toast(`Desfeito: ${l}.`, { type: 'info' }); } catch (err) { toastError(err.message); } },
 };

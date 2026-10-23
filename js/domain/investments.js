@@ -39,21 +39,21 @@ export const CLASS_KEYS = Object.keys(INVEST_CLASSES);
  * `taxed` = sofre IR regressivo na renda fixa (LCI/LCA e poupança são isentas).
  */
 export const INVEST_TYPES = {
-  tesouro_selic: { label: 'Tesouro Selic', cls: 'rf', icon: '🏛️', rate: { kind: 'cdi', bp: 10000 }, taxed: true, liquidity: 'd1' },
-  tesouro_pre: { label: 'Tesouro Prefixado', cls: 'rf', icon: '🏛️', rate: { kind: 'pre', bp: 1300 }, taxed: true, liquidity: 'maturity' },
-  tesouro_ipca: { label: 'Tesouro IPCA+', cls: 'rf', icon: '🏛️', rate: { kind: 'ipca', bp: 700 }, taxed: true, liquidity: 'maturity' },
-  cdb: { label: 'CDB', cls: 'rf', icon: '🏦', rate: { kind: 'cdi', bp: 10000 }, taxed: true, liquidity: 'd0' },
-  lci_lca: { label: 'LCI / LCA', cls: 'rf', icon: '🏡', rate: { kind: 'cdi', bp: 9000 }, taxed: false, liquidity: 'maturity' },
-  caixinha: { label: 'Caixinha / conta remunerada', cls: 'rf', icon: '📦', rate: { kind: 'cdi', bp: 10000 }, taxed: true, liquidity: 'd0' },
-  poupanca: { label: 'Poupança', cls: 'rf', icon: '🐷', rate: { kind: 'poup', bp: 0 }, taxed: false, liquidity: 'd0' },
-  cri_cra: { label: 'CRI / CRA / Debênture incentivada', cls: 'rf', icon: '📜', rate: { kind: 'ipca', bp: 650 }, taxed: false, liquidity: 'maturity' },
-  fundo: { label: 'Fundo de investimento', cls: 'fundos', icon: '🧺', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd30' },
-  acoes: { label: 'Ações', cls: 'rv', icon: '📈', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd2' },
-  fii: { label: 'Fundos imobiliários (FII)', cls: 'rv', icon: '🏢', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd2' },
-  etf: { label: 'ETF / BDR', cls: 'rv', icon: '🌎', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd2' },
-  cripto: { label: 'Criptomoedas', cls: 'cripto', icon: '🪙', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd0' },
-  previdencia: { label: 'Previdência privada (PGBL/VGBL)', cls: 'prev', icon: '🧓', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd30' },
-  outro: { label: 'Outro', cls: 'outros', icon: '💼', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'none' },
+  tesouro_selic: { label: 'Tesouro Selic', cls: 'rf', icon: 'landmark', rate: { kind: 'cdi', bp: 10000 }, taxed: true, liquidity: 'd1' },
+  tesouro_pre: { label: 'Tesouro Prefixado', cls: 'rf', icon: 'landmark', rate: { kind: 'pre', bp: 1300 }, taxed: true, liquidity: 'maturity' },
+  tesouro_ipca: { label: 'Tesouro IPCA+', cls: 'rf', icon: 'landmark', rate: { kind: 'ipca', bp: 700 }, taxed: true, liquidity: 'maturity' },
+  cdb: { label: 'CDB', cls: 'rf', icon: 'building-2', rate: { kind: 'cdi', bp: 10000 }, taxed: true, liquidity: 'd0' },
+  lci_lca: { label: 'LCI / LCA', cls: 'rf', icon: 'house', rate: { kind: 'cdi', bp: 9000 }, taxed: false, liquidity: 'maturity' },
+  caixinha: { label: 'Caixinha / conta remunerada', cls: 'rf', icon: 'wallet', rate: { kind: 'cdi', bp: 10000 }, taxed: true, liquidity: 'd0' },
+  poupanca: { label: 'Poupança', cls: 'rf', icon: 'piggy-bank', rate: { kind: 'poup', bp: 0 }, taxed: false, liquidity: 'd0' },
+  cri_cra: { label: 'CRI / CRA / Debênture incentivada', cls: 'rf', icon: 'scroll-text', rate: { kind: 'ipca', bp: 650 }, taxed: false, liquidity: 'maturity' },
+  fundo: { label: 'Fundo de investimento', cls: 'fundos', icon: 'layers', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd30' },
+  acoes: { label: 'Ações', cls: 'rv', icon: 'chart-candlestick', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd2' },
+  fii: { label: 'Fundos imobiliários (FII)', cls: 'rv', icon: 'building', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd2' },
+  etf: { label: 'ETF / BDR', cls: 'rv', icon: 'globe', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd2' },
+  cripto: { label: 'Criptomoedas', cls: 'cripto', icon: 'coins', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd0' },
+  previdencia: { label: 'Previdência privada (PGBL/VGBL)', cls: 'prev', icon: 'umbrella', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'd30' },
+  outro: { label: 'Outro', cls: 'outros', icon: 'briefcase', rate: { kind: 'none', bp: 0 }, taxed: false, liquidity: 'none' },
 };
 
 /** Como a taxa é informada. */

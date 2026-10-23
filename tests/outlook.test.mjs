@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createEmptyState, sanitizeState, SCHEMA_VERSION, DEFAULT_ALERTS } from '../js/domain/schema.js';
+import { sanitizeState, SCHEMA_VERSION, DEFAULT_ALERTS } from '../js/domain/schema.js';
 import { computeMonth, extrasOf } from '../js/domain/ledger.js';
 import { projection, insightsFor, nextActions } from '../js/domain/analysis.js';
 import { yearPlan, canIBuy } from '../js/domain/yearplan.js';
@@ -15,13 +15,14 @@ import { futureWeight, futureWeightSummary, itemFlags, purchaseFlags } from '../
 import { adviceFor } from '../js/domain/advice.js';
 import { accountBalance } from '../js/domain/accounts.js';
 import { mergeStates } from '../js/domain/merge.js';
+import { emptyState } from './helpers.mjs';
 
 const TODAY = '2026-10-15';
 const profile = (cents) => ({ from: '2026-01', grossCents: cents, dependents: 0, additions: [], deductions: [] });
 
 /** Estado com salário, aluguel e luz (variável). */
 function base(gross = 500000) {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [profile(gross)];
   s.recurring.push({ id: 'aluguel', description: 'Aluguel', cents: 150000, dueDay: 10, startYM: '2026-01', endYM: null, freq: 'monthly', tags: [] });
   return s;
@@ -61,7 +62,7 @@ test('sanitização: limites fora da faixa voltam ao padrão; recorrente de plan
 });
 
 test('merge entre aparelhos: receita recorrente criada em um lado entra no outro', () => {
-  const b = createEmptyState();
+  const b = emptyState();
   const local = structuredClone(b);
   local.recurringIncomes.push({ id: 'r1', description: 'Pensão', cents: 60000, day: 10, startYM: '2026-10', endYM: null, kind: 'extra', accountId: null, skipped: [] });
   const remote = structuredClone(b);

@@ -29,7 +29,7 @@ export function editInvestment(inv = null) {
   const isNew = !inv;
   const i = inv || { name: '', type: 'cdb', institution: '', rate: { ...INVEST_TYPES.cdb.rate }, liquidity: INVEST_TYPES.cdb.liquidity, maturity: '', emergency: false, notes: '', ticker: '', pension: '' };
   const typeOptions = CLASS_KEYS.flatMap((cls) => Object.entries(INVEST_TYPES).filter(([, t]) => t.cls === cls)
-    .map(([value, t]) => ({ value, label: `${t.icon} ${t.label}` })));
+    .map(([value, t]) => ({ value, label: t.label })));
 
   openDialog({
     title: isNew ? 'Novo investimento' : 'Editar investimento',
@@ -228,7 +228,7 @@ export function investmentHistory(inv) {
             </li>`)}
         </ul>` : html`<p class="muted">Nenhum movimento ainda.</p>`}`;
   };
-  const { dialog } = openDialog({ title: `${typeOf(inv).icon} ${inv.name}`, body: render() });
+  const { dialog } = openDialog({ title: inv.name, body: render() });
   dialog.addEventListener('click', async (ev) => {
     const btn = ev.target.closest('[data-del]');
     if (!btn) return;

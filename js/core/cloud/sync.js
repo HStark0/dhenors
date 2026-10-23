@@ -14,6 +14,7 @@ import { encryptJSON, decryptJSON, isEnvelope } from '../crypto.js';
 import { hashChunks } from '../../domain/chunks.js';
 import { SCHEMA_VERSION } from '../../domain/schema.js';
 import { CloudError } from './http.js';
+import { isPristineDefault } from '../../domain/goals.js';
 
 export const partAAD = (userId, name, rev) => `${userId}|${name}|${rev}`;
 export const manifestAAD = (userId, version) => `${userId}|manifest|${version}`;
@@ -114,7 +115,8 @@ export function countItems(state) {
   let n = 0;
   for (const [k, v] of Object.entries(state)) {
     if (SKIP_TOP.has(k)) continue;
-    if (Array.isArray(v)) n += v.length;
+    if (k === 'goals' && Array.isArray(v)) n += v.filter((g) => !isPristineDefault(g)).length;
+    else if (Array.isArray(v)) n += v.length;
     else if (v && typeof v === 'object') n += Object.keys(v).length;
   }
   for (const k of SETTINGS_LISTS) if (Array.isArray(state.settings?.[k])) n += state.settings[k].length;

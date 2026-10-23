@@ -23,6 +23,9 @@
 //     reminders: { enabled, daysBefore, mode: 'each'|'daily'|'weekly', push },
 //     rules: [{ id, pattern, categoryId, subcategoryId }],    // categorização automática
 //     spendingLimitCents,                                      // meta (limite) de gastos mensal
+//     parcelLimitPct: 10|20|30,                                // teto das parcelas sobre os ganhos fixos (painel)
+//     reservePct: 10|20|30,                                    // quanto guardar na reserva de emergência (painel)
+//     trackingStartYM: "AAAA-MM" | null,                       // mês em que os cálculos começam (null = automático, ver tracking.js)
 //     alerts: { tightPct, overspendPct, bigPct, push },        // limites de "apertado", "exagerado", "grande"
 //     investing: { cdiBp, ipcaBp, selicBp, monthlyTargetCents, targets: { classe: % }, ratesUpdatedAt },
 //     indices: { ipca12Bp, igpm12Bp, ipcaMonthly: { "AAAA-MM": bp }, igpmMonthly, updatedAt }, // BCB
@@ -68,7 +71,9 @@
 //   receivables:  [{ id, creditorId, person, description, cents, date, dueDate, receivedAt, notes }],
 //   debts:        [{ id, name, creditorId, balanceCents, rateMonthlyBp, paymentCents, notes }],
 //   wishlist:     [{ id, name, targetPriceCents, currentPriceCents, url, goalId, priority, boughtAt }],
-//   goals:        [{ id, description, targetCents, deadline, icon, emergency, investmentIds, contributions: [{ id, date, cents }] }],
+//   goals:        [{ id, description, kind, targetCents, autoTarget, system, deadline, icon, emergency, investmentIds, contributions: [{ id, date, cents }] }],
+//                 // "Reservas" na tela. kind: ver GOAL_KINDS (goals.js); system = a Reserva de emergência padrão (não exclui);
+//                 // autoTarget = alvo de 6 meses de gastos calculado sozinho (targetCents fica 0)
 //   creditors:    [{ id, name, notes }],
 //   categories:   [{ id, name, icon, color, group: 'needs'|'wants'|'savings', subcategories: [{ id, name }] }],
 //   closedMonths: { "AAAA-MM": snapshot },                       // fotografia do mês fechado

@@ -15,7 +15,9 @@ import { store } from '../../core/store.js';
 import { formatBRL, toCents, percent, plural } from '../../core/money.js';
 import { formatMonth, todayISO, formatDateBR, formatMonthShort, ymOf } from '../../core/dates.js';
 import { computeMonth, creditorOutstanding, creditorMonthly, installmentSummary } from '../../domain/ledger.js';
-import { GROUP_LABELS, EMOJI_ICONS } from '../../domain/defaults.js';
+import { trackingStartYM } from '../../domain/tracking.js';
+import { GROUP_LABELS } from '../../domain/defaults.js';
+import { creditorsMonthCard } from '../../ui/creditorsCard.js';
 import * as A from '../../domain/actions.js';
 
 // ---------- Categorias ----------
@@ -26,13 +28,11 @@ export function renderCategories() {
   const spent = new Map(computeMonth(d, ym, todayISO()).categories.map((c) => [c.id, c.cents]));
   const budgets = d.settings.budgets || {};
   const totalBudget = Object.values(budgets).reduce((a, b) => a + b, 0);
-  const emojis = d.categories.filter((c) => !String(c.icon).startsWith('i:') && EMOJI_ICONS[c.icon]).length;
 
   return html`
     <div class="page-head">
       <p class="muted">Gastos de ${formatMonth(ym)}${totalBudget ? html` · orçamento total <strong>${formatBRL(totalBudget)}</strong>` : ''}. Defina um teto mensal por categoria para acompanhar no Painel.</p>
       <div class="page-head__actions">
-        ${emojis ? html`<button type="button" class="btn btn--ghost" data-action="cat:icons" title="Trocar os emojis por ícones iguais em todo aparelho">${icon('palette')} Usar ícones novos</button>` : ''}
         <button type="button" class="btn btn--ghost" data-action="cat:restore">${icon('undo-2')} Restaurar padrão</button>
         <button type="button" class="btn btn--primary" data-action="cat:new">${icon('plus')} Nova categoria</button>
       </div>
@@ -138,43 +138,13 @@ export function renderCreditors() {
             </li>`)}
         </ul>
       </article>
-      ${monthlyTable(rows.map((r) => r.c), today)}` : html`
+      ${creditorsMonthCard(d, ymOf(today), today, { detailsAction: 'cred:details' })}` : html`
       <div class="card empty">
         ${icon('handshake', 'icon--lg')}
         <p><strong>Ninguém cadastrado.</strong></p>
         <p class="muted">Associe contas e parcelamentos a um banco, loja ou pessoa para saber quanto deve a cada um — e quanto te devem.</p>
         <button type="button" class="btn btn--primary" data-action="cred:new">${icon('plus')} Nova</button>
       </div>`}`;
-}
-
-/**
- * Saldo devedor de cada credor mês a mês (até 12 meses, cortando
- * os meses em que já não deve nada a ninguém).
- */
-function monthlyTable(creditors, today) {
-  const d = store.data;
-  const per = creditors
-    .map((c) => ({ c, months: creditorMonthly(d, c.id, ymOf(today), 12, today) }))
-    .filter((x) => x.months.some((m) => m.balanceCents || m.dueCents));
-  if (!per.length) return '';
-  const last = Math.max(...per.map((x) => x.months.findLastIndex((m) => m.balanceCents || m.dueCents)));
-  const months = per[0].months.slice(0, last + 1).map((m) => m.ym);
-  const totals = months.map((_, i) => per.reduce((a, x) => a + x.months[i].balanceCents, 0));
-  const cell = (m) => html`<td class="money">${formatBRL(m.balanceCents)}${m.dueCents ? html`<br><small class="muted">paga ${formatBRL(m.dueCents)}</small>` : ''}</td>`;
-  return html`
-    <article class="card">
-      <h2 class="card__title">${icon('calendar')} Saldo devedor mês a mês</h2>
-      <p class="muted small">Quanto você ainda deve a cada um no início do mês e, embaixo, quanto vence naquele mês. Contas atrasadas entram no mês atual; recorrentes contam só no "paga".</p>
-      <div class="table-wrap">
-        <table class="table table--compact">
-          <thead><tr><th scope="col">Credor</th>${months.map((ym) => html`<th scope="col">${formatMonthShort(ym)}</th>`)}</tr></thead>
-          <tbody>
-            ${per.map((x) => html`<tr><th scope="row">${x.c.name}</th>${x.months.slice(0, months.length).map(cell)}</tr>`)}
-          </tbody>
-          ${per.length > 1 ? html`<tfoot><tr><th scope="row">Total</th>${totals.map((t) => html`<td class="money"><strong>${formatBRL(t)}</strong></td>`)}</tr></tfoot>` : ''}
-        </table>
-      </div>
-    </article>`;
 }
 
 const findCred = (el) => store.data.creditors.find((c) => c.id === el.dataset.id);
@@ -186,7 +156,7 @@ function usage(d, id) {
 function details(c) {
   const d = store.data;
   const expenses = d.expenses.filter((e) => e.creditorId === c.id && !e.paidAt).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  const installments = d.installments.filter((i) => i.creditorId === c.id).map((i) => ({ i, s: installmentSummary(i) })).filter((x) => !x.s.finished);
+  const installments = d.installments.filter((i) => i.creditorId === c.id).map((i) => ({ i, s: installmentSummary(i, trackingStartYM(d)) })).filter((x) => !x.s.finished);
   const recurring = d.recurring.filter((r) => r.creditorId === c.id && !r.endYM);
   const owes = (d.receivables || []).filter((r) => r.creditorId === c.id && !r.receivedAt);
   const today = todayISO();
@@ -230,7 +200,6 @@ export const categoryActions = {
     });
     if (ok) { A.restoreDefaultCategories(); toast('Categorias padrão restauradas.'); }
   },
-  'cat:icons': () => { A.useCategoryIcons(EMOJI_ICONS); toast('Ícones atualizados.', { action: { label: 'Desfazer', run: () => store.undo() } }); },
   'sub:new': (el) => E.editSubcategory(el.dataset.cat),
   'sub:edit': (el) => E.editSubcategory(el.dataset.cat, findCat(el.dataset.cat).subcategories.find((s) => s.id === el.dataset.id)),
   'sub:delete': (el) => {

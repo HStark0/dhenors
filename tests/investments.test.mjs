@@ -5,19 +5,20 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { store } from '../js/core/store.js';
-import { createEmptyState, sanitizeState } from '../js/domain/schema.js';
+import { sanitizeState } from '../js/domain/schema.js';
 import { emergencyCoverage } from '../js/domain/planning.js';
 import {
   annualRate, positionAt, portfolio, rebalance, project, irRate, DEFAULT_INVESTING,
 } from '../js/domain/investments.js';
 import * as A from '../js/domain/actions.js';
+import { emptyState } from './helpers.mjs';
 
 const cfg = { ...DEFAULT_INVESTING, cdiBp: 1490, ipcaBp: 450 };
 const inv = (over) => ({ id: 'i1', name: 'Teste', type: 'cdb', rate: { kind: 'pre', bp: 1000 }, liquidity: 'd0', maturity: null, emergency: false, movements: [], ...over });
 const mov = (kind, date, cents, id = `${kind}-${date}`) => ({ id, kind, date, cents, note: '' });
 
 before(() => {
-  store.data = createEmptyState();
+  store.data = emptyState();
   store.guest = false; // conta aberta (sem login, alterações pedem para entrar)
   const error = console.error;
   console.warn = () => {};

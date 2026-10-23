@@ -6,7 +6,7 @@
 import { html } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { openDialog, confirmDialog } from '../ui/dialog.js';
-import { field, categoryFields, bindCategorySelects, switchField } from '../ui/forms.js';
+import { field, categoryFields, bindCategorySelects, switchField, monthField } from '../ui/forms.js';
 import { tabsNav, currentTab } from '../ui/tabs.js';
 import { togglePush } from '../ui/notify.js';
 import { cloudSettingsSection } from '../ui/cloudUI.js';
@@ -25,16 +25,17 @@ import { ACCENTS, isDiscreet, setDiscreet } from '../core/theme.js';
 import { errorLog, clearErrorLog } from '../core/errors.js';
 import { cloud } from '../core/cloud.js';
 import { formatBRL, plural } from '../core/money.js';
-import { formatDateBR, currentYM, todayISO, diffDays } from '../core/dates.js';
+import { formatDateBR, currentYM, todayISO, diffDays, formatMonth } from '../core/dates.js';
 import { payrollFor, payrollProfileFor, paydayLabel, nextPaydayFrom } from '../domain/payroll.js';
 import * as A from '../domain/actions.js';
 import { alertsOf } from '../domain/monthStatus.js';
+import { trackingStartYM, detectedStartYM } from '../domain/tracking.js';
 import { DEFAULT_ALERTS } from '../domain/schema.js';
 import { APP_VERSION } from '../version.js';
 import { CHANGELOG } from '../changelog.js';
 import { renderCategories, renderCreditors, categoryActions } from './settings/categories.js';
 
-const TABBAR_LABELS = { painel: 'Painel', agenda: 'Agenda', contas: 'Contas a pagar', carteira: 'Cartões e contas', salario: 'Salário', metas: 'Metas', investimentos: 'Investimentos', planejamento: 'Planejamento', analise: 'Análise', ajustes: 'Ajustes' };
+const TABBAR_LABELS = { painel: 'Painel', agenda: 'Agenda', contas: 'Contas a pagar', carteira: 'Cartões e contas', salario: 'Salário', reservas: 'Reservas', investimentos: 'Investimentos', planejamento: 'Planejamento', analise: 'Análise', ajustes: 'Ajustes' };
 
 const TABS = [
   { id: 'geral', label: 'Geral', icon: 'user-cog' },
@@ -75,6 +76,25 @@ export default {
       body: field({ label: 'Como quer ser chamado?', name: 'profileName', value: store.data.settings.profileName, extra: { maxlength: 60, autocomplete: 'given-name' } }),
       onSubmit: (form) => { A.updateProfile({ profileName: form.profileName.value }); toast('Perfil salvo.'); },
     }),
+    'set:start': () => {
+      const d = store.data;
+      const auto = detectedStartYM(d);
+      openDialog({
+        title: 'Início do controle',
+        size: 'sm',
+        submitLabel: 'Salvar',
+        body: html`
+          <p class="dialog__text">Mês a partir do qual o app conta seus gastos e ganhos. Antes dele, contas recorrentes, parcelas e faturas contam como já pagas (você ainda não usava o app) e não entram em médias, histórico nem na nota de saúde. Gastos e ganhos avulsos que você lançou com data antiga continuam valendo.</p>
+          ${monthField({ label: 'Começar a contar em', name: 'start', value: trackingStartYM(d) || currentYM(), hint: auto ? `Automático: ${formatMonth(auto)}, quando você começou a usar o app.` : '' })}`,
+        footer: d.settings.trackingStartYM ? html`<button type="button" class="btn btn--ghost" data-reset>Usar o automático</button>` : '',
+        onMount: (dlg) => dlg.querySelector('[data-reset]')?.addEventListener('click', () => {
+          try { A.setTrackingStart(null); } catch (err) { if (err?.name !== 'GuestError') toastError(err.message); return; }
+          dlg.close();
+          toast('Início automático.');
+        }),
+        onSubmit: (form) => { A.setTrackingStart(form.start.value); toast(`Contando a partir de ${formatMonth(form.start.value)}.`); },
+      });
+    },
     'set:alerts': () => {
       const a = alertsOf(store.data.settings);
       const num = (label, name, value, min, max, hint) => field({ label, name, type: 'number', value, required: true, hint, extra: { min, max, step: 1, inputmode: 'numeric' } });
@@ -116,7 +136,7 @@ export default {
       if (store.guest) { openAuth('signin'); return; } // sem login não há dados para apagar
       const ok = await confirmDialog({
         title: 'Apagar todos os dados',
-        message: 'Isso remove TODAS as contas, cartões, parcelamentos, metas, categorias e anexos da sua conta, em todos os aparelhos. As versões anteriores continuam no histórico da nuvem por um tempo (Nuvem → Histórico de versões).',
+        message: 'Isso remove TODAS as contas, cartões, parcelamentos, reservas, categorias e anexos da sua conta, em todos os aparelhos. As versões anteriores continuam no histórico da nuvem por um tempo (Nuvem → Histórico de versões).',
         confirmLabel: 'Apagar tudo',
         danger: true,
         typed: 'EXCLUIR',
@@ -165,6 +185,14 @@ function choice(action, value, current, label, ic) {
   return html`<button type="button" class="segmented__btn" data-action="${action}" data-value="${value}" aria-pressed="${value === current}">${ic ? icon(ic, 'icon--xs') : ''} ${label}</button>`;
 }
 
+/** "Desde out/2026 (quando a conta foi criada)" — ver tracking.js. */
+function startLine(d) {
+  const start = trackingStartYM(d);
+  if (!start) return 'Todos os meses contam.';
+  const chosen = Boolean(d.settings.trackingStartYM);
+  return `Os cálculos contam a partir de ${formatMonth(start)}${chosen ? ' (escolhido por você)' : ' (quando você começou a usar o app)'}. Antes disso, recorrentes, parcelas e faturas não ficam atrasadas nem entram em médias.`;
+}
+
 function geral() {
   const s = store.data.settings;
   const alerts = alertsOf(s);
@@ -182,6 +210,10 @@ function geral() {
             <a class="btn btn--secondary btn--sm" href="#/salario">${icon('banknote', 'icon--xs')} Abrir salário</a>
             <button type="button" class="btn btn--ghost btn--sm" data-action="salary:edit">${icon('calendar-days', 'icon--xs')} Data</button>
           </div>
+        </div>
+        <div class="setting">
+          <div><strong>Início do controle</strong><p class="muted small">${startLine(store.data)}</p></div>
+          <button type="button" class="btn btn--ghost btn--sm" data-action="set:start">Alterar</button>
         </div>
         <div class="setting">
           <div><strong>Meta de gastos mensal</strong><p class="muted small">${s.spendingLimitCents ? formatBRL(s.spendingLimitCents) : 'Desativada'}</p></div>
@@ -266,7 +298,7 @@ function geral() {
 }
 
 function tabbarDialog() {
-  const opts = [['painel', 'Painel'], ['agenda', 'Agenda'], ['contas', 'Contas a pagar'], ['carteira', 'Cartões e contas bancárias'], ['salario', 'Salário'], ['metas', 'Metas'], ['investimentos', 'Investimentos'], ['planejamento', 'Planejamento'], ['analise', 'Análise'], ['ajustes', 'Ajustes']];
+  const opts = [['painel', 'Painel'], ['agenda', 'Agenda'], ['contas', 'Contas a pagar'], ['carteira', 'Cartões e contas bancárias'], ['salario', 'Salário'], ['reservas', 'Reservas'], ['investimentos', 'Investimentos'], ['planejamento', 'Planejamento'], ['analise', 'Análise'], ['ajustes', 'Ajustes']];
   const cur = store.data.settings.tabbar || ['painel', 'agenda', 'contas'];
   openDialog({
     title: 'Atalhos da barra do celular',
@@ -460,7 +492,7 @@ function data() {
       <section class="card card--danger">
         <h2 class="card__title">${icon('triangle-alert')} Zona de perigo</h2>
         <div class="setting">
-          <div><strong>Apagar só o salário</strong><p class="muted small">Remove o salário, adicionais, descontos em folha e o vínculo. Contas, cartões, metas, investimentos e o resto do app continuam. Dá para desfazer logo em seguida.</p></div>
+          <div><strong>Apagar só o salário</strong><p class="muted small">Remove o salário, adicionais, descontos em folha e o vínculo. Contas, cartões, reservas, investimentos e o resto do app continuam. Dá para desfazer logo em seguida.</p></div>
           <button type="button" class="btn btn--ghost danger btn--sm" data-action="set:wipe-salary">Apagar salário</button>
         </div>
         <div class="setting">
@@ -510,7 +542,7 @@ function privacy() {
     <div class="settings">
       <section class="card prose">
         <h2 class="card__title">${icon('shield-check')} Política de privacidade (curta)</h2>
-        <p><strong>O que o Dhenors guarda:</strong> só o que você digita (contas, salário, metas…), na <strong>sua conta</strong> do Supabase, <strong>criptografado no aparelho</strong> com uma frase que só você sabe. O servidor guarda blocos ilegíveis, a lista de aparelhos conectados (nome e data) e o e-mail da conta. Não há anúncios, rastreadores nem análise de uso.</p>
+        <p><strong>O que o Dhenors guarda:</strong> só o que você digita (contas, salário, reservas…), na <strong>sua conta</strong> do Supabase, <strong>criptografado no aparelho</strong> com uma frase que só você sabe. O servidor guarda blocos ilegíveis, a lista de aparelhos conectados (nome e data) e o e-mail da conta. Não há anúncios, rastreadores nem análise de uso.</p>
         <p><strong>No navegador:</strong> só o acesso à conta (pelo tempo que você escolheu ao entrar) e as preferências de aparência. Nenhum dado financeiro, cópia ou anexo fica no aparelho.</p>
         <p><strong>Notificações push (opcional):</strong> o servidor recebe só quantas contas vencem por dia, sem valores nem nomes.</p>
         <p><strong>Fale conosco:</strong> o que você escreve no formulário (nome, e-mail, mensagem e o anexo, se houver), a versão do app e o tipo de aparelho vão por e-mail (serviço Resend) para quem desenvolve o Dhenors, só para responder você. Nenhum dado financeiro vai junto.</p>
@@ -544,7 +576,7 @@ function wipeSalaryDialog() {
     submitLabel: 'Apagar salário',
     body: html`
       <p class="dialog__text">Sempre sai: <strong>salário bruto, adicionais, descontos em folha, consignados, variáveis, sobreaviso, líquidos conferidos, admissão/13º e dia do pagamento</strong>.</p>
-      <p class="dialog__text muted small">Contas, cartões, parcelamentos, metas, investimentos, categorias, rendas extras fora da folha e ajustes do app <strong>não</strong> são tocados.</p>
+      <p class="dialog__text muted small">Contas, cartões, parcelamentos, reservas, investimentos, categorias, rendas extras fora da folha e ajustes do app <strong>não</strong> são tocados.</p>
       ${switchField({ label: 'Também apagar férias, faltas e afastamentos', name: 'vacations', checked: true })}
       ${switchField({ label: 'Também apagar a escala de plantões e as rendas pagas na folha', name: 'shifts', checked: false })}
       ${switchField({ label: 'Também apagar benefícios, outros vínculos, FGTS e dados do IR anual', name: 'benefits', checked: false })}`,

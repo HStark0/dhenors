@@ -9,6 +9,7 @@ import { isValidYM, ymOf, todayISO, currentYM, monthsBetween, addMonthsYM } from
 import { newId } from '../schema.js';
 import { planInstallment, FREQ_DAYS, recurringDates } from '../ledger.js';
 import { invoiceKey } from '../cards.js';
+import { clampToStart } from '../tracking.js';
 import {
   ValidationError, text, cents, date, intRange, refs, splits, assertOpen, findOrThrow, entry, cleanupEntry, tags,
 } from './core.js';
@@ -148,7 +149,7 @@ export function saveRecurringScoped(input, scope, ym) {
  */
 function pinOldValueBefore(d, rec, oldCents, ym) {
   let guard = 0;
-  for (let m = rec.startYM; m < ym && guard < 600; m = addMonthsYM(m, 1), guard++) {
+  for (let m = clampToStart(d, rec.startYM); m < ym && guard < 600; m = addMonthsYM(m, 1), guard++) {
     if (d.closedMonths[m]) continue;
     for (const due of recurringDates(rec, m)) {
       const [key, e] = entry(d, rec.id, FREQ_DAYS[rec.freq] ? due : m);

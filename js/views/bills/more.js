@@ -114,7 +114,7 @@ export function renderDebts() {
   return html`
     <div class="page-head">
       <dl class="stats">
-        <div><dt>Total devido</dt><dd class="money neg">${formatBRL(total)}</dd></div>
+        <div><dt>Total devido</dt><dd class="money ${total > 0 ? 'neg' : ''}">${formatBRL(total)}</dd></div>
         <div><dt>Dívidas</dt><dd>${debts.length}</dd></div>
       </dl>
       <button type="button" class="btn btn--primary" data-action="debt:new">${icon('plus')} Nova dívida</button>

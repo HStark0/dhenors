@@ -4,8 +4,8 @@
 // -------------------------------------------------------------
 // • Ícones das categorias: ícones próprios (SVG do sprite, prefixo
 //   "i:") desenhados dentro de um círculo da cor da categoria — iguais
-//   no Windows, Android e iPhone. Emojis de cadastros antigos
-//   continuam funcionando (ver ui/catIcon.js).
+//   no Windows, Android e iPhone. Emojis de cadastros antigos viram
+//   o ícone equivalente ao abrir os dados (toIconValue).
 // • Paleta SEM vermelho e âmbar: essas cores ficam reservadas para os
 //   estados (vermelho = atrasada, âmbar = vence logo, violeta =
 //   orçamento estourado). Assim "Saúde" não parece "atrasada".
@@ -30,16 +30,37 @@ export const CATEGORY_ICONS = [
   'i:shield', 'i:circle-dollar-sign', 'i:hand-heart', 'i:sprout', 'i:credit-card', 'i:wallet', 'i:users',
 ];
 
-/** Emojis das versões antigas → ícone equivalente (para o visual ficar uniforme). */
-export const EMOJI_ICONS = {
-  '🏠': 'house', '🍽️': 'utensils', '🛒': 'shopping-cart', '🚗': 'car', '⛽': 'fuel', '🚌': 'bus', '💊': 'pill',
-  '🩺': 'stethoscope', '🏋️': 'dumbbell', '🎓': 'graduation-cap', '📚': 'book-open', '🎮': 'gamepad-2', '✈️': 'plane',
-  '🎬': 'clapperboard', '🎉': 'party-popper', '💳': 'credit-card', '🏦': 'landmark', '📈': 'trending-up', '💰': 'circle-dollar-sign',
-  '🧾': 'receipt-text', '📱': 'smartphone', '💻': 'laptop', '🌐': 'wifi', '📺': 'tv', '👕': 'shirt', '🛍️': 'shopping-bag',
-  '💄': 'sparkles', '🎁': 'gift', '👨‍👩‍👧': 'users', '🐾': 'paw-print', '💼': 'briefcase', '🧰': 'wrench', '🔧': 'wrench',
-  '💡': 'lightbulb', '💧': 'droplet', '🔥': 'flame', '🏛️': 'landmark', '📄': 'file-text', '🐷': 'piggy-bank', '🎯': 'target',
-  '☕': 'coffee', '🍔': 'utensils', '🍺': 'beer', '🧹': 'house', '🛡️': 'shield', '🏥': 'heart-pulse', '🎵': 'music', '🏷️': 'tag',
+/**
+ * Emojis das versões antigas → ícone equivalente. O app não mostra emoji
+ * em lugar nenhum: os cadastros antigos são convertidos ao abrir os dados
+ * (ver toIconValue). As chaves ficam escritas como escapes Unicode.
+ */
+const EMOJI_LIST = {
+  '\u{1F3E0}': 'house', '\u{1F37D}\u{FE0F}': 'utensils', '\u{1F6D2}': 'shopping-cart', '\u{1F697}': 'car',
+  '\u{26FD}': 'fuel', '\u{1F68C}': 'bus', '\u{1F48A}': 'pill', '\u{1FA7A}': 'stethoscope',
+  '\u{1F3CB}\u{FE0F}': 'dumbbell', '\u{1F393}': 'graduation-cap', '\u{1F4DA}': 'book-open', '\u{1F3AE}': 'gamepad-2',
+  '\u{2708}\u{FE0F}': 'plane', '\u{1F3AC}': 'clapperboard', '\u{1F389}': 'party-popper', '\u{1F4B3}': 'credit-card',
+  '\u{1F3E6}': 'landmark', '\u{1F4C8}': 'trending-up', '\u{1F4B0}': 'circle-dollar-sign', '\u{1F9FE}': 'receipt-text',
+  '\u{1F4F1}': 'smartphone', '\u{1F4BB}': 'laptop', '\u{1F310}': 'wifi', '\u{1F4FA}': 'tv',
+  '\u{1F455}': 'shirt', '\u{1F6CD}\u{FE0F}': 'shopping-bag', '\u{1F484}': 'sparkles', '\u{1F381}': 'gift',
+  '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}': 'users', '\u{1F43E}': 'paw-print', '\u{1F4BC}': 'briefcase', '\u{1F9F0}': 'wrench',
+  '\u{1F527}': 'wrench', '\u{1F4A1}': 'lightbulb', '\u{1F4A7}': 'droplet', '\u{1F525}': 'flame',
+  '\u{1F3DB}\u{FE0F}': 'landmark', '\u{1F4C4}': 'file-text', '\u{1F437}': 'piggy-bank', '\u{1F3AF}': 'target',
+  '\u{2615}': 'coffee', '\u{1F354}': 'utensils', '\u{1F37A}': 'beer', '\u{1F9F9}': 'house',
+  '\u{1F6E1}\u{FE0F}': 'shield', '\u{1F3E5}': 'heart-pulse', '\u{1F3B5}': 'music', '\u{1F3F7}\u{FE0F}': 'tag',
+  '\u{1F3D6}\u{FE0F}': 'tree-palm', '\u{1F48D}': 'heart', '\u{1F476}': 'baby', '\u{1FAD9}': 'inbox',
 };
+const stripVS = (s) => String(s).replace(/\uFE0F/g, '');
+/** Emoji (com ou sem o seletor de variação) → nome do ícone do sprite. */
+export const EMOJI_ICONS = Object.fromEntries(Object.entries(EMOJI_LIST).flatMap(([k, v]) => [[k, v], [stripVS(k), v]]));
+
+/** Valor de ícone guardado → sempre "i:nome" (emoji antigo vira o ícone equivalente; desconhecido, o padrão). */
+export function toIconValue(value, fallback = 'i:tag') {
+  const s = String(value || '');
+  if (/^i:[a-z0-9-]+$/.test(s)) return s;
+  const name = EMOJI_ICONS[s] || EMOJI_ICONS[stripVS(s)];
+  return name ? `i:${name}` : fallback;
+}
 
 /** group: necessidades (needs), desejos (wants) ou poupança/investimento (savings) — regra 50/30/20. */
 export const DEFAULT_CATEGORIES = [

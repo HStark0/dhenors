@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
     if (isSunday && row.weekly) {
       let week = 0;
       for (let i = 0; i < 7; i++) week += s[dateISO(i)] || 0;
-      messages.push({ title: 'Resumo da semana', body: week ? `${week} ${week === 1 ? 'conta vence' : 'contas vencem'} nos próximos 7 dias${nOverdue ? ` e ${nOverdue} ${nOverdue === 1 ? 'está atrasada' : 'estão atrasadas'}` : ''}.` : 'Nenhuma conta vence nesta semana. 🎉', tag: 'dhenors-weekly', url: './index.html#/agenda' });
+      messages.push({ title: 'Resumo da semana', body: week ? `${week} ${week === 1 ? 'conta vence' : 'contas vencem'} nos próximos 7 dias${nOverdue ? ` e ${nOverdue} ${nOverdue === 1 ? 'está atrasada' : 'estão atrasadas'}` : ''}.` : 'Nenhuma conta vence nesta semana.', tag: 'dhenors-weekly', url: './index.html#/agenda' });
     } else if (nToday || nTomorrow || nOverdue) {
       const parts = [];
       if (nOverdue) parts.push(`${nOverdue} ${nOverdue === 1 ? 'atrasada' : 'atrasadas'}`);

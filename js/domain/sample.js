@@ -18,6 +18,8 @@ export function createSampleState(today = todayISO()) {
   const cat = (name) => s.categories.find((c) => c.name === name);
   const sub = (c, name) => c.subcategories.find((x) => x.name === name)?.id || null;
   s.onboarded = true;
+  // Usa o app desde prev2: os meses antes disso não contam (ver tracking.js)
+  s.createdAt = `${prev2}-01T12:00:00.000Z`;
   s.settings.profileName = 'Exemplo';
   s.settings.payday = { mode: 'business', nth: 5, saturday: true, nextMonth: false };
   s.settings.salaryHistory = [{
@@ -78,9 +80,10 @@ export function createSampleState(today = todayISO()) {
   const cdb = { id: newId(), name: 'CDB Liquidez Diária', type: 'cdb', institution: 'Nubank', rate: { kind: 'cdi', bp: 10000 }, liquidity: 'd0', maturity: null, emergency: true, notes: '', ticker: '', pension: '', movements: [{ id: newId(), date: dateInMonth(addMonthsYM(ym, -8), 10), kind: 'aporte', cents: 500000, note: '' }, { id: newId(), date: dateInMonth(prev, 10), kind: 'aporte', cents: 50000, note: '' }] };
   const fii = { id: newId(), name: 'HGLG11', type: 'fii', institution: 'Corretora', rate: { kind: 'none', bp: 0 }, liquidity: 'd2', maturity: null, emergency: false, notes: '', ticker: 'HGLG11', pension: '', movements: [{ id: newId(), date: dateInMonth(addMonthsYM(ym, -5), 12), kind: 'aporte', cents: 160000, qty: 10, note: '' }, { id: newId(), date: dateInMonth(prev, 15), kind: 'provento', cents: 1100, note: 'Rendimento' }] };
   s.investments.push(cdb, fii);
+  Object.assign(s.goals.find((g) => g.system), { investmentIds: [cdb.id] });
   s.goals.push(
-    { id: newId(), description: 'Reserva de emergência', targetCents: 2400000, deadline: null, icon: '🛡️', emergency: true, investmentIds: [cdb.id], contributions: [] },
-    { id: newId(), description: 'Viagem de fim de ano', targetCents: 500000, deadline: dateInMonth(addMonthsYM(ym, 2), 20), icon: '✈️', emergency: false, investmentIds: [], contributions: [{ id: newId(), date: dateInMonth(prev, 6), cents: 150000 }] },
+    { id: newId(), description: 'Viagem de fim de ano', kind: 'viagem', targetCents: 500000, autoTarget: false, system: false, deadline: dateInMonth(addMonthsYM(ym, 2), 20), icon: 'i:plane', emergency: false, investmentIds: [], contributions: [{ id: newId(), date: dateInMonth(prev, 6), cents: 150000 }] },
+    { id: newId(), description: 'Poupar todo mês', kind: 'mensal', targetCents: 30000, autoTarget: false, system: false, deadline: null, icon: 'i:piggy-bank', emergency: false, investmentIds: [], contributions: [] },
   );
   s.receivables.push({ id: newId(), creditorId: null, person: 'Ana (irmã)', description: 'Empréstimo', cents: 30000, date: dateInMonth(prev, 22), dueDate: dateInMonth(ym, 28), receivedAt: null, partials: [], notes: '' });
   return s;

@@ -17,6 +17,26 @@ export function setSpendingLimit(value) {
   return store.commit((d) => { d.settings.spendingLimitCents = cents(value, 'spendingLimit', { allowZero: true }); });
 }
 
+/** Teto das parcelas do mês sobre os ganhos fixos: 10, 20 ou 30%. */
+export function setParcelLimitPct(pct) {
+  return store.commit((d) => { d.settings.parcelLimitPct = [10, 20, 30].includes(Number(pct)) ? Number(pct) : 10; });
+}
+
+/** Quanto guardar por mês na reserva de emergência: 10, 20 ou 30% dos ganhos fixos. */
+export function setReservePct(pct) {
+  return store.commit((d) => { d.settings.reservePct = [10, 20, 30].includes(Number(pct)) ? Number(pct) : 10; });
+}
+
+/** Mês em que os cálculos começam ('AAAA-MM'); null volta ao automático (ver tracking.js). */
+export function setTrackingStart(ym) {
+  return store.commit((d) => {
+    if (ym == null || ym === '') { d.settings.trackingStartYM = null; return; }
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) throw new ValidationError('trackingStart', 'Informe o mês no formato AAAA-MM.');
+    if (ym > currentYM()) throw new ValidationError('trackingStart', 'O início não pode ser depois do mês atual.');
+    d.settings.trackingStartYM = ym;
+  });
+}
+
 export function setTheme(theme) {
   return store.commit((d) => { d.settings.theme = ['auto', 'light', 'dark', 'oled'].includes(theme) ? theme : 'auto'; }, 'appearance');
 }

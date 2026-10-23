@@ -7,7 +7,7 @@ import { store } from '../../core/store.js';
 import { MAX_CENTS } from '../../core/money.js';
 import { isValidISO, ymOf } from '../../core/dates.js';
 import { newId, createDefaultCategories } from '../schema.js';
-import { CATEGORY_COLORS, groupOfCategory } from '../defaults.js';
+import { CATEGORY_COLORS, groupOfCategory, toIconValue } from '../defaults.js';
 import { ValidationError, text, findOrThrow } from './core.js';
 import { setItemPaid } from './bills.js';
 
@@ -45,7 +45,7 @@ export function saveCategory(input) {
     if (dup) throw new ValidationError('Já existe uma categoria com esse nome.', 'name');
     const item = {
       name,
-      icon: text(input.icon || 'i:tag', 'icon', 'o ícone', { max: 24 }),
+      icon: toIconValue(input.icon),
       color: /^#[0-9a-f]{6}$/i.test(input.color) ? input.color : CATEGORY_COLORS[d.categories.length % CATEGORY_COLORS.length],
       group: ['needs', 'wants', 'savings'].includes(input.group) ? input.group : groupOfCategory(name),
     };
@@ -113,12 +113,6 @@ export function restoreDefaultCategories() {
   });
 }
 
-/** Troca os emojis das categorias pelos ícones próprios equivalentes. */
-export function useCategoryIcons(map) {
-  return store.commit((d) => {
-    for (const c of d.categories) if (!String(c.icon).startsWith('i:') && map[c.icon]) c.icon = `i:${map[c.icon]}`;
-  }, 'change', { undo: 'Ícones das categorias trocados' }); // o aviso oferece "Desfazer"
-}
 
 // ---------- Regras de categorização ----------
 

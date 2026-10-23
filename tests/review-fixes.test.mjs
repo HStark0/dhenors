@@ -5,7 +5,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { store } from '../js/core/store.js';
-import { createEmptyState, sanitizeState } from '../js/domain/schema.js';
+import { sanitizeState } from '../js/domain/schema.js';
 import { computeMonth, incomeFor } from '../js/domain/ledger.js';
 import { invoice, cardUsage } from '../js/domain/cards.js';
 import { thirteenthFor, vacationFor } from '../js/domain/payroll.js';
@@ -13,6 +13,7 @@ import { simulate, calendarEvents, employerIncomeFn } from '../js/domain/plannin
 import { accountBalance } from '../js/domain/accounts.js';
 import { canIBuy } from '../js/domain/yearplan.js';
 import * as A from '../js/domain/actions.js';
+import { emptyState } from './helpers.mjs';
 
 const profile = (cents) => ({ from: '2026-01', grossCents: cents, dependents: 0, additions: [], deductions: [] });
 const card = { id: 'c1', name: 'Cartão', closingDay: 3, dueDay: 10, limitCents: 500000, color: '#000000', accountId: null, archived: false };
@@ -23,7 +24,7 @@ before(() => {
 });
 
 test('fechar o mês: o mês aparece fechado na hora e a conta variável fica com a estimativa que aparecia', () => {
-  store.data = createEmptyState();
+  store.data = emptyState();
   const d = store.data;
   d.settings.salaryHistory = [profile(400000)];
   d.recurring.push({ id: 'luz', description: 'Luz', cents: 15000, dueDay: 10, startYM: '2026-01', endYM: null, freq: 'monthly', variable: true, tags: [] });
@@ -36,7 +37,7 @@ test('fechar o mês: o mês aparece fechado na hora e a conta variável fica com
   assert.equal(computeMonth(store.data, '2026-09', today).closed, true, 'sem cache velho de "aberto"');
   // set/26 já tinha valor confirmado; out (sem valor) usaria a média: confere o mês fechado
   assert.equal(store.data.closedMonths['2026-09'].items.find((i) => i.description === 'Luz').cents, shown);
-  store.data = createEmptyState();
+  store.data = emptyState();
   const s = store.data;
   s.recurring.push({ id: 'luz', description: 'Luz', cents: 15000, dueDay: 10, startYM: '2026-01', endYM: null, freq: 'monthly', variable: true, tags: [] });
   for (const [ym, c] of [['2026-06', 20000], ['2026-07', 22000], ['2026-08', 24000]]) s.recurringEntries[`luz|${ym}`] = { paidAt: `${ym}-10`, cents: c, skipped: false };
@@ -45,7 +46,7 @@ test('fechar o mês: o mês aparece fechado na hora e a conta variável fica com
 });
 
 test('fatura com estorno maior que as compras: o crédito abate a fatura seguinte', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.cards.push(card);
   s.cardPurchases.push({ id: 'p1', cardId: 'c1', description: 'Compra', date: '2026-10-05', cents: 10000, count: 1, tags: [] });
   s.cardPurchases.push({ id: 'p2', cardId: 'c1', description: 'Estorno', date: '2026-10-06', cents: -35000, count: 1, tags: [] });
@@ -61,7 +62,7 @@ test('fatura com estorno maior que as compras: o crédito abate a fatura seguint
 });
 
 test('13º adiantado nas férias: dezembro desconta o valor que foi pago, não a parcela recalculada', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [profile(500000)];
   s.settings.employment.admission = '2020-01-01';
   s.settings.vacations = [{ id: 'v', start: '2026-07-01', days: 30, sellDays: 0, advance13: true }];
@@ -74,7 +75,7 @@ test('13º adiantado nas férias: dezembro desconta o valor que foi pago, não a
 });
 
 test('saldo da conta-salário conta o 13º (e não só o salário)', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [profile(500000)];
   s.settings.employment.admission = '2020-01-01';
   s.accounts.push({ id: 'a1', name: 'Banco', kind: 'salario', institution: '', color: '#000000', anchor: { cents: 0, date: '2026-12-01' }, archived: false });
@@ -86,7 +87,7 @@ test('saldo da conta-salário conta o 13º (e não só o salário)', () => {
 });
 
 test('simulador: cancelar recorrente que começa no mês da simulação tira ela de todos os meses', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [profile(400000)];
   s.recurring.push({ id: 'gym', description: 'Academia', cents: 20000, dueDay: 5, startYM: '2026-11', endYM: null, freq: 'monthly', tags: [] });
   const r = simulate(s, { cutRecurring: ['gym'] }, '2026-11', 3, '2026-10-15');
@@ -94,7 +95,7 @@ test('simulador: cancelar recorrente que começa no mês da simulação tira ela
 });
 
 test('Agenda: fechamento do cartão no dia certo e com o valor da fatura que fecha', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   const late = { ...card, id: 'c2', closingDay: 28, dueDay: 5 }; // fecha 28, vence 5 do mês seguinte
   s.cards.push(card, late);
   s.cardPurchases.push({ id: 'p', cardId: 'c2', description: 'Loja', date: '2026-10-10', cents: 10000, count: 1, tags: [] });
@@ -105,7 +106,7 @@ test('Agenda: fechamento do cartão no dia certo e com o valor da fatura que fec
 });
 
 test('"Posso comprar?" parcelado não perde centavos', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [profile(400000)];
   const r = canIBuy(s, { cents: 100000, count: 3 }, 12, '2026-10-15');
   const paid = r.months.reduce((a, m) => a + (m.before - m.after), 0);
@@ -127,7 +128,7 @@ test('backup: recorrente com fim antes do início ou cartão inexistente não so
 });
 
 test('excluir em lote não mexe em mês fechado', () => {
-  store.data = createEmptyState();
+  store.data = emptyState();
   store.data.recurring.push({ id: 'r', description: 'Net', cents: 10000, dueDay: 5, startYM: '2026-01', endYM: null, freq: 'monthly', tags: [] });
   A.closeMonth('2026-08');
   const item = computeMonth(store.data, '2026-08', '2026-10-15').items.find((i) => i.refId === 'r');
@@ -135,7 +136,7 @@ test('excluir em lote não mexe em mês fechado', () => {
 });
 
 test('pagar fatura guarda o valor pago (mudar uma compra depois não altera a fatura paga)', () => {
-  store.data = createEmptyState();
+  store.data = emptyState();
   store.data.cards.push(card);
   store.data.cardPurchases.push({ id: 'p', cardId: 'c1', description: 'Loja', date: '2026-09-10', cents: 30000, count: 1, tags: [] });
   const item = computeMonth(store.data, '2026-10', '2026-10-15').items.find((i) => i.kind === 'invoice');

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { deriveKey, encryptJSON, decryptJSON, randomSalt } from '../js/core/crypto.js';
 import { store, SchemaTooNewError } from '../js/core/store.js';
-import { createEmptyState, SCHEMA_VERSION } from '../js/domain/schema.js';
+import { SCHEMA_VERSION } from '../js/domain/schema.js';
 import { mergeWithConflicts } from '../js/domain/merge.js';
 import { hashChunks } from '../js/domain/chunks.js';
 import {
@@ -13,6 +13,7 @@ import {
   countItems, hasUserData, addConflictCopy, conflictCopies,
 } from '../js/core/cloud/sync.js';
 import { CloudError } from '../js/core/cloud/http.js';
+import { emptyState } from './helpers.mjs';
 
 let key;
 let otherKey;
@@ -93,11 +94,11 @@ test('nuvem: índice amarrado à versão (servidor não troca índice velho por 
 // ---------- C2: versão mais nova do formato ----------
 
 test('C2: dados da nuvem de versão mais nova lançam erro (nunca viram estado vazio)', async () => {
-  const newer = { ...createEmptyState(), schema: SCHEMA_VERSION + 1 };
+  const newer = { ...emptyState(), schema: SCHEMA_VERSION + 1 };
   assert.throws(() => assertSchema(newer), (e) => e instanceof CloudError && e.tooNew && /Atualize o app/.test(e.message));
-  assert.doesNotThrow(() => assertSchema(createEmptyState()));
+  assert.doesNotThrow(() => assertSchema(emptyState()));
 
-  const mine = createEmptyState();
+  const mine = emptyState();
   mine.expenses.push({ id: 'x1', description: 'Luz', cents: 100, dueDate: '2026-10-01' });
   store.data = mine;
   store.guest = false; // conta aberta
@@ -112,7 +113,7 @@ test('C2: dados da nuvem de versão mais nova lançam erro (nunca viram estado v
 test('saiu da conta durante uma sincronização: dados da nuvem não entram no exemplo', async () => {
   store.close();
   const sample = store.data;
-  const real = createEmptyState();
+  const real = emptyState();
   real.settings.profileName = 'Conta real';
   await store.applyRemote(real);
   assert.equal(store.data, sample);
@@ -120,9 +121,9 @@ test('saiu da conta durante uma sincronização: dados da nuvem não entram no e
 });
 
 test('C2: backup de versão mais nova é recusado sem mexer nos dados', async () => {
-  const mine = createEmptyState();
+  const mine = emptyState();
   store.open(mine);
-  await assert.rejects(store.replace({ ...createEmptyState(), schema: SCHEMA_VERSION + 1 }), /mais nova/);
+  await assert.rejects(store.replace({ ...emptyState(), schema: SCHEMA_VERSION + 1 }), /mais nova/);
   assert.equal(store.data.updatedAt, mine.updatedAt);
   assert.equal(store.guest, false);
 });
@@ -145,9 +146,9 @@ test('M1: envio só zera "pendente" se nada mudou durante o envio', () => {
 
 // ---------- merge: exclusões ----------
 
-// Datas fixas: createEmptyState() usa a hora atual, e três chamadas em milissegundos
+// Datas fixas: emptyState() usa a hora atual, e três chamadas em milissegundos
 // diferentes viravam um conflito falso em createdAt (teste instável).
-const st = (extra = {}) => ({ ...createEmptyState(), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', categories: [], ...extra });
+const st = (extra = {}) => ({ ...emptyState(), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', categories: [], ...extra });
 const inst = (paid) => ({ id: 'p1', description: 'TV', totalCents: 3000, count: 3, paid });
 
 test('merge: desmarcar uma parcela num aparelho não volta pelo outro', () => {
@@ -178,14 +179,14 @@ test('merge: apagado aqui e alterado na nuvem vira conflito (dá para refazer a 
 // ---------- M5: aparelho "vazio" ----------
 
 test('M5: cartões, contas, investimentos e plantões contam como dados do aparelho', () => {
-  assert.equal(countItems(createEmptyState()), 0);
-  assert.equal(hasUserData(createEmptyState()), false);
+  assert.equal(countItems(emptyState()), 0);
+  assert.equal(hasUserData(emptyState()), false);
   for (const col of ['cards', 'accounts', 'investments', 'shifts', 'debts']) {
-    const s = createEmptyState();
+    const s = emptyState();
     s[col].push({ id: 'x' });
     assert.equal(hasUserData(s), true, col);
   }
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory.push({ from: '2026-01' });
   assert.equal(hasUserData(s), true);
 });
@@ -213,7 +214,7 @@ test('visitante: qualquer alteração pede login e nada muda (aparência vale)',
   globalThis.document = { dispatchEvent: (ev) => { if (ev.type === 'dhenors:need-login') asked++; } };
   try {
     assert.throws(() => store.commit((d) => { d.expenses.length = 0; }), GuestError);
-    await assert.rejects(store.replace(createEmptyState()), GuestError);
+    await assert.rejects(store.replace(emptyState()), GuestError);
   } finally { globalThis.document = prevDoc; }
   assert.equal(asked, 2);
   assert.equal(JSON.stringify(store.data), before);
@@ -224,7 +225,7 @@ test('visitante: qualquer alteração pede login e nada muda (aparência vale)',
 test('entrar abre os dados da conta; sair tira da memória e volta ao exemplo', () => {
   const reasons = [];
   const unsub = store.subscribe((r) => reasons.push(r));
-  const mine = createEmptyState();
+  const mine = emptyState();
   mine.settings.profileName = 'Minha conta';
   store.open(mine);
   assert.equal(store.guest, false);
@@ -238,7 +239,7 @@ test('entrar abre os dados da conta; sair tira da memória e volta ao exemplo', 
 });
 
 test('"Apagar todos os dados" vira um estado vazio que vai para a nuvem', async () => {
-  store.open(createEmptyState());
+  store.open(emptyState());
   store.data.expenses.push({ id: 'x' });
   const reasons = [];
   const unsub = store.subscribe((r) => reasons.push(r));
@@ -276,7 +277,7 @@ test('lembrar o login: só acesso (sem dados), no lugar certo e com validade', a
 
 test('anexos: a chave própria do arquivo sobrevive à validação do estado', async () => {
   const { sanitizeState } = await import('../js/domain/schema.js');
-  const st = createEmptyState();
+  const st = emptyState();
   st.schema = 1; // força passar pelo sanitizador
   st.expenses.push({ id: 'e1', description: 'Luz', cents: 100, dueDate: '2026-10-10', attachments: [{ id: 'a1', name: 'x.jpg', type: 'image/jpeg', size: 10, k: 'A'.repeat(43) + '=' }, { id: 'a2', name: 'y', type: '', size: 1, k: 'não é base64!' }] });
   const out = sanitizeState(st).expenses[0].attachments;

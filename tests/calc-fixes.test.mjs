@@ -3,16 +3,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createEmptyState } from '../js/domain/schema.js';
 import { invoiceLines, cardUsage, scaleSplits } from '../js/domain/cards.js';
 import { salaryBalanceDays, vacationAvos } from '../js/domain/termination.js';
 import { stockSalesTax } from '../js/domain/investPlus.js';
 import { averageMonthlyContribution } from '../js/domain/investments.js';
 import { canIBuy } from '../js/domain/yearplan.js';
 import { isBusinessDay } from '../js/core/calendar.js';
+import { emptyState } from './helpers.mjs';
 
 test('assinatura no cartão cobrada depois do fechamento vai para a fatura seguinte (como uma compra)', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   const card = { id: 'c1', name: 'Cartão', closingDay: 3, dueDay: 10 };
   s.cards = [card];
   s.recurring = [{ id: 'nf', description: 'Netflix', cents: 5590, dueDay: 20, startYM: '2026-09', endYM: null, cardId: 'c1' }];
@@ -22,7 +22,7 @@ test('assinatura no cartão cobrada depois do fechamento vai para a fatura segui
 });
 
 test('limite usado conta a assinatura do cartão mesmo sem compras', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   const card = { id: 'c1', name: 'Cartão', closingDay: 3, dueDay: 10, limitCents: 100000 };
   s.cards = [card];
   s.recurring = [{ id: 'sp', description: 'Spotify', cents: 2190, dueDay: 15, startYM: '2026-09', endYM: null, cardId: 'c1' }];
@@ -46,7 +46,7 @@ test('rescisão: saldo de salário em mês comercial (30 dias) e avos de férias
 });
 
 test('DARF vence no último dia ÚTIL do mês seguinte (nunca num domingo)', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.investments = [{
     id: 'x', name: 'PETR4', type: 'acoes', ticker: 'PETR4', institution: '', rate: { kind: 'none', bp: 0 }, liquidity: 'd2', maturity: null, emergency: false, notes: '',
     movements: [
@@ -60,7 +60,7 @@ test('DARF vence no último dia ÚTIL do mês seguinte (nunca num domingo)', () 
 });
 
 test('aporte médio desconta vendas (independência financeira)', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.investments = [{
     id: 'x', name: 'ITSA4', type: 'acoes', ticker: 'ITSA4', institution: '', rate: { kind: 'none', bp: 0 }, liquidity: 'd2', maturity: null, emergency: false, notes: '',
     movements: [
@@ -72,7 +72,7 @@ test('aporte médio desconta vendas (independência financeira)', () => {
 });
 
 test('"Posso comprar?" à vista: uma compra pequena também diminui o que sobra no mês', () => {
-  const s = createEmptyState();
+  const s = emptyState();
   s.settings.salaryHistory = [{ from: '2026-01', grossCents: 500000, dependents: 0, additions: [], deductions: [] }];
   const r = canIBuy(s, { cents: 40000, count: 1 }, 3, '2026-10-15');
   assert.equal(r.months[0].before - r.months[0].after, 40000);
