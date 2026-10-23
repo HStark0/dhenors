@@ -268,6 +268,7 @@ test('pagar e desfazer uma conta', async ({ page }) => {
 });
 
 test('painel: saldo do mês e limite das parcelas no topo; seletor 10/20/30%', async ({ page }) => {
+  test.slow(); // criptografia de verdade (PBKDF2 com 600 mil iterações)
   const { errors } = await openApp(page);
   const keys = await page.locator('.dash-lead > *').evaluateAll((els) => els.map((e) => e.getAttribute('data-key')));
   expect(keys.slice(0, 5)).toEqual(['balance', 'parcels', 'reserve', 'flow', 'summary']);
@@ -277,6 +278,8 @@ test('painel: saldo do mês e limite das parcelas no topo; seletor 10/20/30%', a
   const card = page.locator('[data-key="parcels"]');
   await expect(card.locator('.plimit__opt[aria-checked="true"]')).toHaveText('10%');
   await expect(card.locator('.pstatus__label')).toHaveText(/Dentro do limite|Na média|Acima do limite|Sem ganhos fixos/);
+  // sem login o seletor só pede para entrar; mudar a porcentagem exige conta aberta
+  await signUp(page);
   await card.locator('.plimit__opt[data-pct="30"]').click();
   await expect(card.locator('.plimit__opt[aria-checked="true"]')).toHaveText('30%');
   await expect(page.locator('[data-key="flow"] .flow__col')).toHaveCount(3);
