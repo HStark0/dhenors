@@ -275,6 +275,8 @@ test('painel: saldo do mês e limite das parcelas no topo; seletor 10/20/30%', a
   const top = page.locator('[data-key="balance"]');
   await expect(top.locator('.summary__big')).toBeVisible();
   await expect(top.locator('.commit-ring')).toHaveAttribute('aria-label', /comprometidos/);
+  // o fluxo só aparece com movimento no mês: a demonstração tem, a conta nova (vazia) não
+  await expect(page.locator('[data-key="flow"] .flow__col')).toHaveCount(3);
   const card = page.locator('[data-key="parcels"]');
   await expect(card.locator('.plimit__opt[aria-checked="true"]')).toHaveText('10%');
   await expect(card.locator('.pstatus__label')).toHaveText(/Dentro do limite|Na média|Acima do limite|Sem ganhos fixos/);
@@ -282,7 +284,6 @@ test('painel: saldo do mês e limite das parcelas no topo; seletor 10/20/30%', a
   await signUp(page);
   await card.locator('.plimit__opt[data-pct="30"]').click();
   await expect(card.locator('.plimit__opt[aria-checked="true"]')).toHaveText('30%');
-  await expect(page.locator('[data-key="flow"] .flow__col')).toHaveCount(3);
   const reserve = page.locator('[data-key="reserve"]');
   await expect(reserve.locator('.plimit__opt[aria-checked="true"]')).toHaveText('10%');
   await expect(reserve.locator('.pstatus__label')).toHaveText(/Dentro da reserva|Na média|Abaixo da reserva|Sem ganhos fixos/);
